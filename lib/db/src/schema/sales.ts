@@ -92,6 +92,8 @@ export const salesOrdersTable = pgTable("sales_orders", {
   customerId: integer("customer_id").references(() => customersTable.id),
   customerName: text("customer_name"),
   customerEmail: text("customer_email"),
+  salesRepId: text("sales_rep_id"), // Clerk user ID of the assigned sales rep
+  salesRepName: text("sales_rep_name"), // Display name of the sales rep
   customerRef: text("customer_ref"),
   deliveryAddressLine1: text("delivery_address_line1"),
   deliveryAddressLine2: text("delivery_address_line2"),
@@ -129,7 +131,8 @@ export const soLinesTable = pgTable("so_lines", {
     .notNull()
     .references(() => salesOrdersTable.id, { onDelete: "cascade" }),
   lineNumber: integer("line_number").notNull(),
-  lineType: text("line_type").notNull().default("stock"), // stock | service | charge | comment
+  lineType: text("line_type").notNull().default("stock"), // stock | service | charge | comment | kit
+  parentLineId: integer("parent_line_id"), // non-null for kit component lines (references parent kit header line id)
   itemId: integer("item_id").references(() => itemsTable.id),
   itemCode: text("item_code"),
   itemName: text("item_name"),
@@ -186,6 +189,7 @@ export const pickSlipsTable = pgTable("pick_slips", {
     .notNull()
     .references(() => salesOrdersTable.id, { onDelete: "cascade" }),
   warehouseId: integer("warehouse_id").references(() => warehousesTable.id),
+  warehouseZone: text("warehouse_zone"), // optional zone filter — only lines in this zone are included
   status: text("status").notNull().default("pending"), // pending | picking | picked | cancelled
   notes: text("notes"),
   createdByClerkId: text("created_by_clerk_id"),

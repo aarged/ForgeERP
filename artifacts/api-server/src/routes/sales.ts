@@ -22,6 +22,7 @@ import {
   inventoryMovementsTable,
   customersTable,
   warehousesTable,
+  warehouseLocationsTable,
   itemsTable,
   glAccountsTable,
   notificationsTable,
@@ -578,7 +579,8 @@ router.get("/sales/orders/:id", ...tenantUserMiddleware, async (req: Request, re
 
 const soLineSchema = z.object({
   lineNumber: z.number().int().optional(),
-  lineType: z.enum(["stock", "service", "charge", "comment"]).default("stock"),
+  lineType: z.enum(["stock", "service", "charge", "comment", "kit"]).default("stock"),
+  parentLineId: z.number().int().optional(), // for kit component lines — references the parent kit header line id
   itemId: z.number().int().optional(),
   itemCode: z.string().optional(),
   itemName: z.string().optional(),
@@ -599,6 +601,8 @@ router.post("/sales/orders", ...tenantWriteMiddleware, async (req: Request, res:
     customerName: z.string().optional(),
     customerEmail: z.string().email().optional(),
     customerRef: z.string().optional(),
+    salesRepId: z.string().optional(),
+    salesRepName: z.string().optional(),
     warehouseId: z.number().int().optional(),
     requestedDate: z.string().optional(),
     scheduledDate: z.string().optional(),
@@ -824,6 +828,7 @@ router.post("/sales/pick-slips", ...tenantWriteMiddleware, async (req: Request, 
   const schema = z.object({
     soId: z.number().int(),
     warehouseId: z.number().int().optional(),
+    warehouseZone: z.string().optional(), // e.g. "ZONE-A" — filters auto-generated lines to that zone
     notes: z.string().optional(),
     lines: z.array(z.object({
       soLineId: z.number().int(),
@@ -847,15 +852,36 @@ router.post("/sales/pick-slips", ...tenantWriteMiddleware, async (req: Request, 
   // Auto-generate lines from SO if not provided
   let pickLines = parsed.data.lines;
   if (pickLines.length === 0) {
-    const soLines = await withTenantDb(tenantId, (db) => db.select().from(soLinesTable).where(and(eq(soLinesTable.soId, parsed.data.soId), eq(soLinesTable.tenantId, tenantId))));
-    pickLines = soLines.filter((l) => l.lineType === "stock" && Number(l.quantity) > Number(l.despatched_qty)).map((l) => ({
+    const effectiveWarehouseId = parsed.data.warehouseId ?? so.warehouseId;
+    let soLines = await withTenantDb(tenantId, (db) => db.select().from(soLinesTable).where(and(eq(soLinesTable.soId, parsed.data.soId), eq(soLinesTable.tenantId, tenantId))));
+    const unfulfilled = soLines.filter((l) => l.lineType === "stock" && Number(l.quantity) > Number(l.despatched_qty));
+
+    // If a zone is specified, resolve location IDs in that zone and filter lines by their allocated location
+    if (parsed.data.warehouseZone && effectiveWarehouseId) {
+      const zoneLocations = await withTenantDb(tenantId, (db) =>
+        db.select({ id: warehouseLocationsTable.id }).from(warehouseLocationsTable)
+          .where(and(eq(warehouseLocationsTable.tenantId, tenantId), eq(warehouseLocationsTable.warehouseId, effectiveWarehouseId),
+            ilike(warehouseLocationsTable.code, `${parsed.data.warehouseZone!}%`))));
+      const zoneLocationIds = new Set(zoneLocations.map((loc) => loc.id));
+      // Filter to lines that have a stock allocation in the given zone
+      const allocations = await withTenantDb(tenantId, (db) =>
+        db.select({ soLineId: soAllocationsTable.soLineId, locationId: soAllocationsTable.locationId })
+          .from(soAllocationsTable)
+          .where(and(eq(soAllocationsTable.soId, parsed.data.soId), eq(soAllocationsTable.tenantId, tenantId), eq(soAllocationsTable.isReleased, false))));
+      const lineIdsInZone = new Set(allocations.filter((a) => a.locationId != null && zoneLocationIds.has(a.locationId)).map((a) => a.soLineId));
+      soLines = unfulfilled.filter((l) => lineIdsInZone.has(l.id));
+    } else {
+      soLines = unfulfilled;
+    }
+
+    pickLines = soLines.map((l) => ({
       soLineId: l.id, itemId: l.itemId ?? undefined, itemCode: l.itemCode ?? undefined, itemName: l.itemName ?? undefined,
       requiredQty: Number(l.quantity) - Number(l.despatched_qty),
     }));
   }
 
   const [slip] = await withTenantDb(tenantId, (db) =>
-    db.insert(pickSlipsTable).values({ tenantId, soId: parsed.data.soId, code: "PS-TEMP", status: "pending", warehouseId: parsed.data.warehouseId ?? so.warehouseId ?? undefined, notes: parsed.data.notes, createdByClerkId: clerkUserId } as typeof pickSlipsTable.$inferInsert).returning());
+    db.insert(pickSlipsTable).values({ tenantId, soId: parsed.data.soId, code: "PS-TEMP", status: "pending", warehouseId: parsed.data.warehouseId ?? so.warehouseId ?? undefined, warehouseZone: parsed.data.warehouseZone ?? undefined, notes: parsed.data.notes, createdByClerkId: clerkUserId } as typeof pickSlipsTable.$inferInsert).returning());
   const slipId = slip!.id;
   await withTenantDb(tenantId, (db) => db.update(pickSlipsTable).set({ code: genCode("PS", slipId) }).where(eq(pickSlipsTable.id, slipId)));
   if (pickLines.length > 0) {
@@ -1883,6 +1909,76 @@ router.get("/sales/reports/customer-statement", ...tenantUserMiddleware, async (
   const totalBilled = invoices.reduce((s, i) => s + Number(i.total ?? 0), 0);
   const totalPaid = invoices.filter((i) => i.status === "paid").reduce((s, i) => s + Number(i.total ?? 0), 0);
   res.json({ customerId: Number(customerId), invoices, totalBilled, totalPaid, balance: totalBilled - totalPaid });
+});
+
+/** Sales analysis by sales rep: total orders, revenue, and invoiced amount grouped by salesRepName */
+router.get("/sales/reports/by-rep", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      salesRepId: salesOrdersTable.salesRepId,
+      salesRepName: salesOrdersTable.salesRepName,
+      orderCount: sql<string>`count(distinct ${salesOrdersTable.id})`,
+      totalOrders: sql<string>`coalesce(sum(${salesOrdersTable.total}), 0)`,
+    })
+    .from(salesOrdersTable)
+    .where(and(
+      eq(salesOrdersTable.tenantId, tenantId),
+      isNull(salesOrdersTable.deletedAt),
+      sql`${salesOrdersTable.status} NOT IN ('cancelled')`,
+      fromDate ? sql`${salesOrdersTable.createdAt}::date >= ${fromDate}` : undefined,
+      toDate ? sql`${salesOrdersTable.createdAt}::date <= ${toDate}` : undefined,
+    ))
+    .groupBy(salesOrdersTable.salesRepId, salesOrdersTable.salesRepName)
+    .orderBy(sql`sum(${salesOrdersTable.total}) desc`));
+  // Merge un-assigned rep rows under a single "Unassigned" entry
+  const unassigned = rows.filter((r) => !r.salesRepName);
+  const assigned = rows.filter((r) => !!r.salesRepName);
+  const result = [
+    ...assigned.map((r) => ({ salesRepId: r.salesRepId, salesRepName: r.salesRepName ?? "Unknown", orderCount: Number(r.orderCount), totalOrders: Number(r.totalOrders) })),
+    ...(unassigned.length > 0 ? [{ salesRepId: null, salesRepName: "Unassigned", orderCount: unassigned.reduce((s, r) => s + Number(r.orderCount), 0), totalOrders: unassigned.reduce((s, r) => s + Number(r.totalOrders), 0) }] : []),
+  ];
+  res.json(result);
+});
+
+/** Alternative item suggestions: items in the same category with available stock */
+router.get("/sales/alternatives", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { itemId, warehouseId } = req.query as Record<string, string>;
+  if (!itemId) { res.status(400).json({ error: "itemId is required" }); return; }
+  // Look up the reference item's category
+  const [item] = await withTenantDb(tenantId, (db) =>
+    db.select({ category: itemsTable.category, code: itemsTable.code })
+      .from(itemsTable)
+      .where(and(eq(itemsTable.id, Number(itemId)), eq(itemsTable.tenantId, tenantId)))
+      .limit(1));
+  if (!item) { res.status(404).json({ error: "Item not found" }); return; }
+
+  // Find alternative items in the same category that have available ATP
+  const alternatives = await withTenantDb(tenantId, (db) =>
+    db.select({
+      id: itemsTable.id, code: itemsTable.code, name: itemsTable.name,
+      qtyOnHand: sql<string>`coalesce(sum(${inventoryStockTable.qtyOnHand}), 0)`,
+      qtyAvailable: sql<string>`coalesce(sum(${inventoryStockTable.qtyOnHand} - ${inventoryStockTable.qtyReserved}), 0)`,
+    })
+    .from(itemsTable)
+    .leftJoin(inventoryStockTable, and(
+      eq(inventoryStockTable.itemId, itemsTable.id),
+      eq(inventoryStockTable.tenantId, tenantId),
+      warehouseId ? eq(inventoryStockTable.warehouseId, Number(warehouseId)) : sql`1=1`,
+    ))
+    .where(and(
+      eq(itemsTable.tenantId, tenantId),
+      isNull(itemsTable.deletedAt),
+      sql`${itemsTable.id} != ${Number(itemId)}`,
+      item.category ? eq(itemsTable.category, item.category) : sql`1=1`,
+    ))
+    .groupBy(itemsTable.id, itemsTable.code, itemsTable.name)
+    .having(sql`coalesce(sum(${inventoryStockTable.qtyOnHand} - ${inventoryStockTable.qtyReserved}), 0) > 0`)
+    .orderBy(sql`coalesce(sum(${inventoryStockTable.qtyOnHand} - ${inventoryStockTable.qtyReserved}), 0) desc`)
+    .limit(10));
+  res.json({ referenceItem: { id: Number(itemId), code: item.code }, alternatives: alternatives.map((a) => ({ ...a, qtyOnHand: Number(a.qtyOnHand), qtyAvailable: Number(a.qtyAvailable) })) });
 });
 
 export default router;
