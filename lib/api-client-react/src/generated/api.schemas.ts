@@ -775,6 +775,462 @@ export interface CompleteOnboardingInput {
   step5?: CompleteOnboardingInputStep5;
 }
 
+export interface MasterItem {
+  id?: number;
+  tenantId?: number;
+  code?: string;
+  name?: string;
+  description?: string | null;
+  itemType?: string;
+  trackingType?: string;
+  unitOfMeasure?: string | null;
+  packSize?: string | null;
+  barcode?: string | null;
+  unitCost?: string | null;
+  salesPrice?: string | null;
+  category?: string | null;
+  imageUrl?: string | null;
+  isActive?: boolean;
+  hasVariants?: boolean;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type ItemVariantAttributes = { [key: string]: unknown } | null;
+
+export interface ItemVariant {
+  id?: number;
+  itemId?: number;
+  variantCode?: string;
+  name?: string;
+  sku?: string | null;
+  barcode?: string | null;
+  attributes?: ItemVariantAttributes;
+  costAdjustment?: string | null;
+  priceAdjustment?: string | null;
+  isActive?: boolean;
+  createdAt?: string;
+}
+
+export interface ItemAttribute {
+  id?: number;
+  itemId?: number;
+  attrKey?: string;
+  attrValue?: string | null;
+}
+
+export interface ItemCrossReference {
+  id?: number;
+  itemId?: number;
+  refType?: string;
+  refCode?: string;
+  refDescription?: string | null;
+  supplierId?: number | null;
+}
+
+export type MasterItemDetailLocationsItem = { [key: string]: unknown };
+
+export type MasterItemDetail = MasterItem & {
+  variants?: ItemVariant[];
+  attributes?: ItemAttribute[];
+  locations?: MasterItemDetailLocationsItem[];
+  crossRefs?: ItemCrossReference[];
+};
+
+export interface ItemListResponse {
+  items?: MasterItem[];
+  hasMore?: boolean;
+}
+
+export type CreateItemBodyItemType =
+  (typeof CreateItemBodyItemType)[keyof typeof CreateItemBodyItemType];
+
+export const CreateItemBodyItemType = {
+  stock: "stock",
+  service: "service",
+  charge: "charge",
+} as const;
+
+export type CreateItemBodyTrackingType =
+  (typeof CreateItemBodyTrackingType)[keyof typeof CreateItemBodyTrackingType];
+
+export const CreateItemBodyTrackingType = {
+  none: "none",
+  lot: "lot",
+  serial: "serial",
+  batch: "batch",
+} as const;
+
+export interface CreateItemBody {
+  code: string;
+  name: string;
+  description?: string;
+  itemType?: CreateItemBodyItemType;
+  trackingType?: CreateItemBodyTrackingType;
+  unitOfMeasure?: string;
+  packSize?: number;
+  barcode?: string;
+  unitCost?: number;
+  salesPrice?: number;
+  category?: string;
+  imageUrl?: string;
+  isActive?: boolean;
+  hasVariants?: boolean;
+  notes?: string;
+}
+
+export type CreateItemVariantBodyAttributes = { [key: string]: unknown };
+
+export interface CreateItemVariantBody {
+  variantCode: string;
+  name: string;
+  sku?: string;
+  barcode?: string;
+  attributes?: CreateItemVariantBodyAttributes;
+  costAdjustment?: number;
+  priceAdjustment?: number;
+  isActive?: boolean;
+}
+
+export interface ItemAttributeInput {
+  attrKey: string;
+  attrValue?: string;
+}
+
+export type ItemCrossReferenceInputRefType =
+  (typeof ItemCrossReferenceInputRefType)[keyof typeof ItemCrossReferenceInputRefType];
+
+export const ItemCrossReferenceInputRefType = {
+  alternative: "alternative",
+  cross: "cross",
+  competitor: "competitor",
+} as const;
+
+export interface ItemCrossReferenceInput {
+  refType?: ItemCrossReferenceInputRefType;
+  refCode: string;
+  refDescription?: string;
+  supplierId?: number;
+}
+
+export type ImportItemsBodyItemsItem = {
+  code: string;
+  name: string;
+  description?: string;
+  unitOfMeasure?: string;
+  unitCost?: number;
+  salesPrice?: number;
+  category?: string;
+  itemType?: string;
+  barcode?: string;
+};
+
+export interface ImportItemsBody {
+  items: ImportItemsBodyItemsItem[];
+}
+
+export type BulkImportResultErrorsItem = {
+  row?: number;
+  code?: string;
+  error?: string;
+};
+
+export interface BulkImportResult {
+  created?: number;
+  updated?: number;
+  errors?: BulkImportResultErrorsItem[];
+}
+
+export interface MasterContact {
+  id?: number;
+  firstName?: string;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  role?: string | null;
+  isPrimary?: boolean;
+  createdAt?: string;
+}
+
+export interface MasterSupplier {
+  id?: number;
+  tenantId?: number;
+  code?: string;
+  name?: string;
+  legalName?: string | null;
+  taxId?: string | null;
+  abn?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  addressLine1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  paymentTerms?: string | null;
+  currency?: string;
+  pricingTier?: string | null;
+  creditLimit?: string | null;
+  onTimeDeliveryPct?: string | null;
+  fillRatePct?: string | null;
+  isActive?: boolean;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type MasterSupplierDetail = MasterSupplier & {
+  contacts?: MasterContact[];
+};
+
+export interface SupplierListResponse {
+  suppliers?: MasterSupplier[];
+  hasMore?: boolean;
+}
+
+export interface CreateSupplierBody {
+  code: string;
+  name: string;
+  legalName?: string;
+  taxId?: string;
+  abn?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  deliveryAddressLine1?: string;
+  deliveryCity?: string;
+  deliveryState?: string;
+  deliveryPostalCode?: string;
+  deliveryCountry?: string;
+  paymentTerms?: string;
+  currency?: string;
+  pricingTier?: string;
+  creditLimit?: number;
+  isActive?: boolean;
+  notes?: string;
+}
+
+export interface CreateContactBody {
+  firstName: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  isPrimary?: boolean;
+}
+
+export interface MasterCustomer {
+  id?: number;
+  tenantId?: number;
+  code?: string;
+  name?: string;
+  legalName?: string | null;
+  taxId?: string | null;
+  abn?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  billingAddressLine1?: string | null;
+  billingCity?: string | null;
+  billingState?: string | null;
+  billingPostalCode?: string | null;
+  billingCountry?: string | null;
+  shippingAddressLine1?: string | null;
+  shippingCity?: string | null;
+  creditLimit?: string | null;
+  paymentTerms?: string | null;
+  currency?: string;
+  pricingTier?: string | null;
+  isActive?: boolean;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type MasterCustomerDetail = MasterCustomer & {
+  contacts?: MasterContact[];
+};
+
+export interface CustomerListResponse {
+  customers?: MasterCustomer[];
+  hasMore?: boolean;
+}
+
+export interface CreateCustomerBody {
+  code: string;
+  name: string;
+  legalName?: string;
+  taxId?: string;
+  abn?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  billingAddressLine1?: string;
+  billingAddressLine2?: string;
+  billingCity?: string;
+  billingState?: string;
+  billingPostalCode?: string;
+  billingCountry?: string;
+  shippingAddressLine1?: string;
+  shippingAddressLine2?: string;
+  shippingCity?: string;
+  shippingState?: string;
+  shippingPostalCode?: string;
+  shippingCountry?: string;
+  creditLimit?: number;
+  paymentTerms?: string;
+  currency?: string;
+  pricingTier?: string;
+  isActive?: boolean;
+  notes?: string;
+}
+
+export interface MasterWarehouse {
+  id?: number;
+  tenantId?: number;
+  name?: string;
+  code?: string | null;
+  addressLine1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  isDefault?: string;
+  isActive?: boolean;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface WarehouseLocation {
+  id?: number;
+  warehouseId?: number;
+  parentId?: number | null;
+  code?: string;
+  name?: string;
+  locationType?: string;
+  description?: string | null;
+  isActive?: boolean;
+}
+
+export type MasterWarehouseDetail = MasterWarehouse & {
+  locations?: WarehouseLocation[];
+};
+
+export interface WarehouseListResponse {
+  warehouses?: MasterWarehouse[];
+  hasMore?: boolean;
+}
+
+export type CreateWarehouseBodyIsDefault =
+  (typeof CreateWarehouseBodyIsDefault)[keyof typeof CreateWarehouseBodyIsDefault];
+
+export const CreateWarehouseBodyIsDefault = {
+  true: "true",
+  false: "false",
+} as const;
+
+export interface CreateWarehouseBody {
+  name: string;
+  code?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  isDefault?: CreateWarehouseBodyIsDefault;
+  isActive?: boolean;
+  notes?: string;
+}
+
+export type CreateWarehouseLocationBodyLocationType =
+  (typeof CreateWarehouseLocationBodyLocationType)[keyof typeof CreateWarehouseLocationBodyLocationType];
+
+export const CreateWarehouseLocationBodyLocationType = {
+  zone: "zone",
+  aisle: "aisle",
+  bin: "bin",
+} as const;
+
+export interface CreateWarehouseLocationBody {
+  code: string;
+  name: string;
+  locationType?: CreateWarehouseLocationBodyLocationType;
+  parentId?: number;
+  description?: string;
+  isActive?: boolean;
+}
+
+export interface MasterGlAccount {
+  id?: number;
+  tenantId?: number;
+  parentId?: number | null;
+  code?: string;
+  name?: string;
+  accountType?: string;
+  description?: string | null;
+  taxCode?: string | null;
+  isPosting?: boolean;
+  isActive?: boolean;
+  glTemplate?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GlAccountListResponse {
+  accounts?: MasterGlAccount[];
+  hasMore?: boolean;
+}
+
+export type CreateGlAccountBodyAccountType =
+  (typeof CreateGlAccountBodyAccountType)[keyof typeof CreateGlAccountBodyAccountType];
+
+export const CreateGlAccountBodyAccountType = {
+  asset: "asset",
+  liability: "liability",
+  equity: "equity",
+  revenue: "revenue",
+  expense: "expense",
+} as const;
+
+export interface CreateGlAccountBody {
+  code: string;
+  name: string;
+  accountType: CreateGlAccountBodyAccountType;
+  description?: string;
+  taxCode?: string;
+  parentId?: number;
+  isPosting?: boolean;
+  isActive?: boolean;
+  glTemplate?: string;
+}
+
+export type GlTemplateImportBodyTemplate =
+  (typeof GlTemplateImportBodyTemplate)[keyof typeof GlTemplateImportBodyTemplate];
+
+export const GlTemplateImportBodyTemplate = {
+  standard: "standard",
+  manufacturing: "manufacturing",
+} as const;
+
+export interface GlTemplateImportBody {
+  template?: GlTemplateImportBodyTemplate;
+  clearExisting?: boolean;
+}
+
+export interface GlTemplateImportResult {
+  imported?: number;
+  template?: string;
+}
+
 export type UploadOnboardingCsvBodyCsvType =
   (typeof UploadOnboardingCsvBodyCsvType)[keyof typeof UploadOnboardingCsvBodyCsvType];
 
@@ -791,4 +1247,51 @@ export type UploadOnboardingCsvBody = {
 
 export type GetAdminAuditLogsParams = {
   tenantId?: number;
+};
+
+export type ListItemsParams = {
+  q?: string;
+  page?: number;
+  limit?: number;
+  sort?: string;
+  dir?: ListItemsDir;
+  category?: string;
+  itemType?: string;
+  activeOnly?: string;
+};
+
+export type ListItemsDir = (typeof ListItemsDir)[keyof typeof ListItemsDir];
+
+export const ListItemsDir = {
+  asc: "asc",
+  desc: "desc",
+} as const;
+
+export type ListSuppliersParams = {
+  q?: string;
+  page?: number;
+  limit?: number;
+  activeOnly?: string;
+};
+
+export type ListCustomersParams = {
+  q?: string;
+  page?: number;
+  limit?: number;
+  activeOnly?: string;
+};
+
+export type ListWarehousesParams = {
+  q?: string;
+  page?: number;
+  limit?: number;
+  activeOnly?: string;
+};
+
+export type ListGlAccountsParams = {
+  q?: string;
+  page?: number;
+  limit?: number;
+  accountType?: string;
+  activeOnly?: string;
 };

@@ -20,6 +20,7 @@ import Sales from "@/pages/sales";
 import Inventory from "@/pages/inventory";
 import Reports from "@/pages/reports";
 import SuperAdmin from "@/pages/super-admin";
+import MasterData from "@/pages/master-data";
 import NotFound from "@/pages/not-found";
 
 export const queryClient = new QueryClient();
@@ -262,6 +263,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/sign-up/*?" component={SignUpPage} />
           <Route path="/dashboard"><ProtectedRoute component={Dashboard} /></Route>
           <Route path="/settings"><ProtectedRoute component={Settings} /></Route>
+          <Route path="/master-data"><ProtectedRoute component={MasterData} /></Route>
           <Route path="/procurement"><ProtectedRoute component={Procurement} /></Route>
           <Route path="/sales"><ProtectedRoute component={Sales} /></Route>
           <Route path="/inventory"><ProtectedRoute component={Inventory} /></Route>

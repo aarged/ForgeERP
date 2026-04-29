@@ -4,6 +4,7 @@ import {
   BarChart3,
   ChevronDown,
   Command,
+  Database,
   LayoutDashboard,
   LogOut,
   Moon,
@@ -53,6 +54,7 @@ import { Button } from "@/components/ui/button";
 
 const COMMAND_ITEMS = [
   { label: "Go to Dashboard", href: "/dashboard" },
+  { label: "Go to Master Data", href: "/master-data" },
   { label: "Go to Procurement", href: "/procurement" },
   { label: "Go to Sales", href: "/sales" },
   { label: "Go to Inventory", href: "/inventory" },
@@ -146,6 +148,7 @@ function AppSidebar({
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["all"] },
+    { name: "Master Data", href: "/master-data", icon: Database, roles: ["super_admin", "tenant_admin", "accountant"] },
     { name: "Procurement", href: "/procurement", icon: ShoppingCart, roles: ["super_admin", "tenant_admin", "purchaser", "approver"] },
     { name: "Sales", href: "/sales", icon: Receipt, roles: ["super_admin", "tenant_admin", "approver"] },
     { name: "Inventory", href: "/inventory", icon: PackageSearch, roles: ["super_admin", "tenant_admin", "warehouse"] },

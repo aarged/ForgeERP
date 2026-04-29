@@ -33,11 +33,19 @@ A modern, multi-tenant SaaS ERP platform for mid-market businesses. Covers purch
 - `audit_logs` — Full audit trail for all actions
 - `roles`, `permissions`, `role_permissions` — RBAC tables
 - `onboarding_sessions` — Progress persistence for the 5-step wizard, keyed by clerkUserId (NOT tenantId — user has no tenant until complete)
-- `warehouses` — Per-tenant warehouse/location records (name, code, address, isDefault)
+- `warehouses` — Per-tenant warehouse/location records with full address; enhanced fields (code, isDefault, isActive, notes)
+- `warehouse_locations` — Sub-locations within warehouses (aisle/rack/bin, parentId for nesting, locationType)
 - `departments` — Per-tenant department records (name, code)
-- `items` — Inventory items/products per tenant (code, name, description, UOM, unitCost, category)
-- `suppliers` — Supplier master records per tenant (code, name, email, phone, paymentTerms, currency)
-- `customers` — Customer master records per tenant (code, name, email, phone, creditLimit, paymentTerms, currency)
+- `items` — Inventory items/products per tenant; enhanced (code, name, itemType, trackingType, packSize, barcode, unitCost, salesPrice, category, imageUrl, hasVariants, notes)
+- `item_variants` — Variants of items (size/color/etc.)
+- `item_attributes` — Free-form key-value attributes per item
+- `item_locations` — Item/variant inventory per warehouse location with qty, lot, serial, batch, expiry
+- `item_cross_references` — External barcodes/codes (e.g. EAN, UPC, supplier PN)
+- `suppliers` — Supplier master; enhanced (taxId, abn, legalName, website, delivery address, paymentTerms, currency, pricingTier, creditLimit, onTimeDeliveryPct, fillRatePct, notes)
+- `supplier_contacts` — Contacts per supplier (name, role, email, phone, isPrimary)
+- `customers` — Customer master; enhanced (taxId, abn, legalName, billing+shipping address, creditLimit, paymentTerms, currency, pricingTier, notes)
+- `customer_contacts` — Contacts per customer (name, role, email, phone, isPrimary)
+- `gl_accounts` — GL Chart of Accounts (code, name, accountType: asset/liability/equity/revenue/expense, parentId for tree, taxCode, isPosting, glTemplate)
 
 ## Database Roles & RLS
 

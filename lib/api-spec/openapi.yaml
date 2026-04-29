@@ -18,6 +18,8 @@ tags:
     description: Super-admin platform operations
   - name: onboarding
     description: Self-serve tenant onboarding for new sign-ups
+  - name: master-data
+    description: Master data management — items, suppliers, customers, warehouses, GL accounts
 paths:
   /healthz:
     get:
@@ -873,6 +875,941 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/items:
+    get:
+      operationId: listItems
+      tags: [master-data]
+      summary: List items
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: sort, in: query, schema: { type: string } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc] } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: itemType, in: query, schema: { type: string } }
+        - { name: activeOnly, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Item list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createItem
+      tags: [master-data]
+      summary: Create item
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateItemBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterItem"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/items/import:
+    post:
+      operationId: importItems
+      tags: [master-data]
+      summary: Bulk import items from CSV data
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportItemsBody"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkImportResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/items/{id}:
+    get:
+      operationId: getItem
+      tags: [master-data]
+      summary: Get item detail
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Item detail with variants, attributes, locations, cross-refs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterItemDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateItem
+      tags: [master-data]
+      summary: Update item
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateItemBody"
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterItem"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteItem
+      tags: [master-data]
+      summary: Soft-delete item
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/items/{id}/variants:
+    post:
+      operationId: createItemVariant
+      tags: [master-data]
+      summary: Add a variant to an item
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateItemVariantBody"
+      responses:
+        "201":
+          description: Created variant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemVariant"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/items/{itemId}/variants/{variantId}:
+    delete:
+      operationId: deleteItemVariant
+      tags: [master-data]
+      summary: Delete an item variant
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: integer } }
+        - { name: variantId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /master-data/items/{id}/attributes:
+    put:
+      operationId: setItemAttributes
+      tags: [master-data]
+      summary: Replace all attributes for an item
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/ItemAttributeInput"
+      responses:
+        "200":
+          description: Updated attributes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ItemAttribute"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/items/{id}/cross-references:
+    put:
+      operationId: setItemCrossReferences
+      tags: [master-data]
+      summary: Replace all cross-references for an item
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/ItemCrossReferenceInput"
+      responses:
+        "200":
+          description: Updated cross-references
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ItemCrossReference"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/suppliers:
+    get:
+      operationId: listSuppliers
+      tags: [master-data]
+      summary: List suppliers
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: activeOnly, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Supplier list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createSupplier
+      tags: [master-data]
+      summary: Create supplier
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupplierBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterSupplier"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/suppliers/{id}:
+    get:
+      operationId: getSupplier
+      tags: [master-data]
+      summary: Get supplier detail with contacts
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Supplier detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterSupplierDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateSupplier
+      tags: [master-data]
+      summary: Update supplier
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupplierBody"
+      responses:
+        "200":
+          description: Updated supplier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterSupplier"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteSupplier
+      tags: [master-data]
+      summary: Soft-delete supplier
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /master-data/suppliers/{id}/contacts:
+    post:
+      operationId: createSupplierContact
+      tags: [master-data]
+      summary: Add a contact to a supplier
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContactBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterContact"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/suppliers/{supplierId}/contacts/{contactId}:
+    patch:
+      operationId: updateSupplierContact
+      tags: [master-data]
+      summary: Update a supplier contact
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: supplierId, in: path, required: true, schema: { type: integer } }
+        - { name: contactId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContactBody"
+      responses:
+        "200":
+          description: Updated contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterContact"
+    delete:
+      operationId: deleteSupplierContact
+      tags: [master-data]
+      summary: Delete a supplier contact
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: supplierId, in: path, required: true, schema: { type: integer } }
+        - { name: contactId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /master-data/customers:
+    get:
+      operationId: listCustomers
+      tags: [master-data]
+      summary: List customers
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: activeOnly, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Customer list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createCustomer
+      tags: [master-data]
+      summary: Create customer
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomerBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterCustomer"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/customers/{id}:
+    get:
+      operationId: getCustomer
+      tags: [master-data]
+      summary: Get customer detail with contacts
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Customer detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterCustomerDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateCustomer
+      tags: [master-data]
+      summary: Update customer
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomerBody"
+      responses:
+        "200":
+          description: Updated customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterCustomer"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCustomer
+      tags: [master-data]
+      summary: Soft-delete customer
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /master-data/customers/{id}/contacts:
+    post:
+      operationId: createCustomerContact
+      tags: [master-data]
+      summary: Add a contact to a customer
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContactBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterContact"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/customers/{customerId}/contacts/{contactId}:
+    patch:
+      operationId: updateCustomerContact
+      tags: [master-data]
+      summary: Update a customer contact
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: customerId, in: path, required: true, schema: { type: integer } }
+        - { name: contactId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContactBody"
+      responses:
+        "200":
+          description: Updated contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterContact"
+    delete:
+      operationId: deleteCustomerContact
+      tags: [master-data]
+      summary: Delete a customer contact
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: customerId, in: path, required: true, schema: { type: integer } }
+        - { name: contactId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /master-data/warehouses:
+    get:
+      operationId: listWarehouses
+      tags: [master-data]
+      summary: List warehouses
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: activeOnly, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Warehouse list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WarehouseListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createWarehouse
+      tags: [master-data]
+      summary: Create warehouse
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWarehouseBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterWarehouse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/warehouses/{id}:
+    get:
+      operationId: getWarehouse
+      tags: [master-data]
+      summary: Get warehouse detail with locations
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Warehouse detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterWarehouseDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateWarehouse
+      tags: [master-data]
+      summary: Update warehouse
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWarehouseBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterWarehouse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteWarehouse
+      tags: [master-data]
+      summary: Soft-delete warehouse
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /master-data/warehouses/{id}/locations:
+    post:
+      operationId: createWarehouseLocation
+      tags: [master-data]
+      summary: Add a location to a warehouse
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWarehouseLocationBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WarehouseLocation"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/warehouses/{warehouseId}/locations/{locationId}:
+    patch:
+      operationId: updateWarehouseLocation
+      tags: [master-data]
+      summary: Update a warehouse location
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: warehouseId, in: path, required: true, schema: { type: integer } }
+        - { name: locationId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWarehouseLocationBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WarehouseLocation"
+    delete:
+      operationId: deleteWarehouseLocation
+      tags: [master-data]
+      summary: Delete a warehouse location
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: warehouseId, in: path, required: true, schema: { type: integer } }
+        - { name: locationId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /master-data/gl-accounts:
+    get:
+      operationId: listGlAccounts
+      tags: [master-data]
+      summary: List GL accounts
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 200 } }
+        - { name: accountType, in: query, schema: { type: string } }
+        - { name: activeOnly, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: GL account list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlAccountListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createGlAccount
+      tags: [master-data]
+      summary: Create GL account
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGlAccountBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterGlAccount"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/gl-accounts/{id}:
+    get:
+      operationId: getGlAccount
+      tags: [master-data]
+      summary: Get GL account
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: GL account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterGlAccount"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateGlAccount
+      tags: [master-data]
+      summary: Update GL account
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGlAccountBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterGlAccount"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteGlAccount
+      tags: [master-data]
+      summary: Soft-delete GL account
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /master-data/gl-accounts/import-template:
+    post:
+      operationId: importGlAccountTemplate
+      tags: [master-data]
+      summary: Import GL accounts from a standard template
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GlTemplateImportBody"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlTemplateImportResult"
+        "400":
+          description: Validation error
           content:
             application/json:
               schema:
@@ -1798,3 +2735,485 @@ components:
                 $ref: "#/components/schemas/OnboardingInvite"
       required:
         - step1
+
+    # ── Master Data — Items ────────────────────────────────────────────────────
+    MasterItem:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        itemType: { type: string }
+        trackingType: { type: string }
+        unitOfMeasure: { type: string, nullable: true }
+        packSize: { type: string, nullable: true }
+        barcode: { type: string, nullable: true }
+        unitCost: { type: string, nullable: true }
+        salesPrice: { type: string, nullable: true }
+        category: { type: string, nullable: true }
+        imageUrl: { type: string, nullable: true }
+        isActive: { type: boolean }
+        hasVariants: { type: boolean }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ItemVariant:
+      type: object
+      properties:
+        id: { type: integer }
+        itemId: { type: integer }
+        variantCode: { type: string }
+        name: { type: string }
+        sku: { type: string, nullable: true }
+        barcode: { type: string, nullable: true }
+        attributes: { type: object, nullable: true }
+        costAdjustment: { type: string, nullable: true }
+        priceAdjustment: { type: string, nullable: true }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    ItemAttribute:
+      type: object
+      properties:
+        id: { type: integer }
+        itemId: { type: integer }
+        attrKey: { type: string }
+        attrValue: { type: string, nullable: true }
+
+    ItemCrossReference:
+      type: object
+      properties:
+        id: { type: integer }
+        itemId: { type: integer }
+        refType: { type: string }
+        refCode: { type: string }
+        refDescription: { type: string, nullable: true }
+        supplierId: { type: integer, nullable: true }
+
+    MasterItemDetail:
+      allOf:
+        - $ref: "#/components/schemas/MasterItem"
+        - type: object
+          properties:
+            variants:
+              type: array
+              items:
+                $ref: "#/components/schemas/ItemVariant"
+            attributes:
+              type: array
+              items:
+                $ref: "#/components/schemas/ItemAttribute"
+            locations:
+              type: array
+              items:
+                type: object
+            crossRefs:
+              type: array
+              items:
+                $ref: "#/components/schemas/ItemCrossReference"
+
+    ItemListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MasterItem"
+        hasMore: { type: boolean }
+
+    CreateItemBody:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        description: { type: string }
+        itemType: { type: string, enum: [stock, service, charge] }
+        trackingType: { type: string, enum: [none, lot, serial, batch] }
+        unitOfMeasure: { type: string }
+        packSize: { type: number }
+        barcode: { type: string }
+        unitCost: { type: number }
+        salesPrice: { type: number }
+        category: { type: string }
+        imageUrl: { type: string }
+        isActive: { type: boolean }
+        hasVariants: { type: boolean }
+        notes: { type: string }
+
+    CreateItemVariantBody:
+      type: object
+      required: [variantCode, name]
+      properties:
+        variantCode: { type: string }
+        name: { type: string }
+        sku: { type: string }
+        barcode: { type: string }
+        attributes: { type: object }
+        costAdjustment: { type: number }
+        priceAdjustment: { type: number }
+        isActive: { type: boolean }
+
+    ItemAttributeInput:
+      type: object
+      required: [attrKey]
+      properties:
+        attrKey: { type: string }
+        attrValue: { type: string }
+
+    ItemCrossReferenceInput:
+      type: object
+      required: [refCode]
+      properties:
+        refType: { type: string, enum: [alternative, cross, competitor] }
+        refCode: { type: string }
+        refDescription: { type: string }
+        supplierId: { type: integer }
+
+    ImportItemsBody:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [code, name]
+            properties:
+              code: { type: string }
+              name: { type: string }
+              description: { type: string }
+              unitOfMeasure: { type: string }
+              unitCost: { type: number }
+              salesPrice: { type: number }
+              category: { type: string }
+              itemType: { type: string }
+              barcode: { type: string }
+
+    BulkImportResult:
+      type: object
+      properties:
+        created: { type: integer }
+        updated: { type: integer }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              code: { type: string }
+              error: { type: string }
+
+    # ── Master Data — Suppliers ────────────────────────────────────────────────
+    MasterContact:
+      type: object
+      properties:
+        id: { type: integer }
+        firstName: { type: string }
+        lastName: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        role: { type: string, nullable: true }
+        isPrimary: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    MasterSupplier:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        legalName: { type: string, nullable: true }
+        taxId: { type: string, nullable: true }
+        abn: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        addressLine1: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        state: { type: string, nullable: true }
+        postalCode: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        paymentTerms: { type: string, nullable: true }
+        currency: { type: string }
+        pricingTier: { type: string, nullable: true }
+        creditLimit: { type: string, nullable: true }
+        onTimeDeliveryPct: { type: string, nullable: true }
+        fillRatePct: { type: string, nullable: true }
+        isActive: { type: boolean }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    MasterSupplierDetail:
+      allOf:
+        - $ref: "#/components/schemas/MasterSupplier"
+        - type: object
+          properties:
+            contacts:
+              type: array
+              items:
+                $ref: "#/components/schemas/MasterContact"
+
+    SupplierListResponse:
+      type: object
+      properties:
+        suppliers:
+          type: array
+          items:
+            $ref: "#/components/schemas/MasterSupplier"
+        hasMore: { type: boolean }
+
+    CreateSupplierBody:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        legalName: { type: string }
+        taxId: { type: string }
+        abn: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        website: { type: string }
+        addressLine1: { type: string }
+        addressLine2: { type: string }
+        city: { type: string }
+        state: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+        deliveryAddressLine1: { type: string }
+        deliveryCity: { type: string }
+        deliveryState: { type: string }
+        deliveryPostalCode: { type: string }
+        deliveryCountry: { type: string }
+        paymentTerms: { type: string }
+        currency: { type: string }
+        pricingTier: { type: string }
+        creditLimit: { type: number }
+        isActive: { type: boolean }
+        notes: { type: string }
+
+    CreateContactBody:
+      type: object
+      required: [firstName]
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        role: { type: string }
+        isPrimary: { type: boolean }
+
+    # ── Master Data — Customers ────────────────────────────────────────────────
+    MasterCustomer:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        legalName: { type: string, nullable: true }
+        taxId: { type: string, nullable: true }
+        abn: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        billingAddressLine1: { type: string, nullable: true }
+        billingCity: { type: string, nullable: true }
+        billingState: { type: string, nullable: true }
+        billingPostalCode: { type: string, nullable: true }
+        billingCountry: { type: string, nullable: true }
+        shippingAddressLine1: { type: string, nullable: true }
+        shippingCity: { type: string, nullable: true }
+        creditLimit: { type: string, nullable: true }
+        paymentTerms: { type: string, nullable: true }
+        currency: { type: string }
+        pricingTier: { type: string, nullable: true }
+        isActive: { type: boolean }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    MasterCustomerDetail:
+      allOf:
+        - $ref: "#/components/schemas/MasterCustomer"
+        - type: object
+          properties:
+            contacts:
+              type: array
+              items:
+                $ref: "#/components/schemas/MasterContact"
+
+    CustomerListResponse:
+      type: object
+      properties:
+        customers:
+          type: array
+          items:
+            $ref: "#/components/schemas/MasterCustomer"
+        hasMore: { type: boolean }
+
+    CreateCustomerBody:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        legalName: { type: string }
+        taxId: { type: string }
+        abn: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        website: { type: string }
+        billingAddressLine1: { type: string }
+        billingAddressLine2: { type: string }
+        billingCity: { type: string }
+        billingState: { type: string }
+        billingPostalCode: { type: string }
+        billingCountry: { type: string }
+        shippingAddressLine1: { type: string }
+        shippingAddressLine2: { type: string }
+        shippingCity: { type: string }
+        shippingState: { type: string }
+        shippingPostalCode: { type: string }
+        shippingCountry: { type: string }
+        creditLimit: { type: number }
+        paymentTerms: { type: string }
+        currency: { type: string }
+        pricingTier: { type: string }
+        isActive: { type: boolean }
+        notes: { type: string }
+
+    # ── Master Data — Warehouses ──────────────────────────────────────────────
+    MasterWarehouse:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        name: { type: string }
+        code: { type: string, nullable: true }
+        addressLine1: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        state: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        isDefault: { type: string }
+        isActive: { type: boolean }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    WarehouseLocation:
+      type: object
+      properties:
+        id: { type: integer }
+        warehouseId: { type: integer }
+        parentId: { type: integer, nullable: true }
+        code: { type: string }
+        name: { type: string }
+        locationType: { type: string }
+        description: { type: string, nullable: true }
+        isActive: { type: boolean }
+
+    MasterWarehouseDetail:
+      allOf:
+        - $ref: "#/components/schemas/MasterWarehouse"
+        - type: object
+          properties:
+            locations:
+              type: array
+              items:
+                $ref: "#/components/schemas/WarehouseLocation"
+
+    WarehouseListResponse:
+      type: object
+      properties:
+        warehouses:
+          type: array
+          items:
+            $ref: "#/components/schemas/MasterWarehouse"
+        hasMore: { type: boolean }
+
+    CreateWarehouseBody:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        code: { type: string }
+        addressLine1: { type: string }
+        addressLine2: { type: string }
+        city: { type: string }
+        state: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+        isDefault: { type: string, enum: ["true", "false"] }
+        isActive: { type: boolean }
+        notes: { type: string }
+
+    CreateWarehouseLocationBody:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        locationType: { type: string, enum: [zone, aisle, bin] }
+        parentId: { type: integer }
+        description: { type: string }
+        isActive: { type: boolean }
+
+    # ── Master Data — GL Accounts ─────────────────────────────────────────────
+    MasterGlAccount:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        parentId: { type: integer, nullable: true }
+        code: { type: string }
+        name: { type: string }
+        accountType: { type: string }
+        description: { type: string, nullable: true }
+        taxCode: { type: string, nullable: true }
+        isPosting: { type: boolean }
+        isActive: { type: boolean }
+        glTemplate: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    GlAccountListResponse:
+      type: object
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/MasterGlAccount"
+        hasMore: { type: boolean }
+
+    CreateGlAccountBody:
+      type: object
+      required: [code, name, accountType]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        accountType: { type: string, enum: [asset, liability, equity, revenue, expense] }
+        description: { type: string }
+        taxCode: { type: string }
+        parentId: { type: integer }
+        isPosting: { type: boolean }
+        isActive: { type: boolean }
+        glTemplate: { type: string }
+
+    GlTemplateImportBody:
+      type: object
+      properties:
+        template: { type: string, enum: [standard, manufacturing] }
+        clearExisting: { type: boolean }
+
+    GlTemplateImportResult:
+      type: object
+      properties:
+        imported: { type: integer }
+        template: { type: string }
