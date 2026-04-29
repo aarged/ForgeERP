@@ -74,8 +74,8 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
         db.select({ count: sql<number>`count(*)` }).from(despatchesTable)
           .where(and(eq(despatchesTable.tenantId, tenantId), eq(despatchesTable.status, "draft")))),
       // Low stock via raw SQL (reorder_point lives in item_locations)
-      withTenantDb(tenantId, async (db) =>
-        db.execute(sql`
+      withTenantDb(tenantId, async (db) => {
+        const qr = await db.execute(sql`
           SELECT COUNT(*) AS count FROM (
             SELECT DISTINCT s.item_id FROM inventory_stock s
             JOIN item_locations il ON il.item_id = s.item_id AND il.warehouse_id = s.warehouse_id AND il.tenant_id = ${tenantId}
@@ -83,8 +83,9 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
               AND il.reorder_point IS NOT NULL AND il.reorder_point > 0
               AND s.qty_on_hand::numeric <= il.reorder_point::numeric
           ) sub
-        `) as unknown as [{ count: string }]
-      ),
+        `);
+        return qr.rows as unknown as [{ count: string }];
+      }),
       withTenantDb(tenantId, (db) =>
         db.select({ count: sql<number>`count(*)` }).from(cycleCountTasksTable)
           .where(and(eq(cycleCountTasksTable.tenantId, tenantId), sql`status NOT IN ('completed','cancelled')`))),
@@ -186,11 +187,11 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
         db.select({ count: sql<number>`count(*)` }).from(glPostingsTable)
           .where(and(eq(glPostingsTable.tenantId, tenantId), eq(glPostingsTable.status, "draft")))),
       withTenantDb(tenantId, async (db) => {
-        const rows = await db.execute(sql`
+        const qr = await db.execute(sql`
           SELECT COALESCE(SUM(total_debit),0) AS "totalDebit", COALESCE(SUM(total_credit),0) AS "totalCredit"
           FROM gl_postings WHERE tenant_id = ${tenantId} AND status = 'posted'
-        `) as unknown as Array<{ totalDebit: string; totalCredit: string }>;
-        return rows[0];
+        `);
+        return (qr.rows as unknown as Array<{ totalDebit: string; totalCredit: string }>)[0];
       }),
       withTenantDb(tenantId, (db) =>
         db.select({ count: sql<number>`count(*)`, total: sql<string>`coalesce(sum(total),0)` }).from(customerInvoicesTable)
@@ -231,8 +232,8 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
     withTenantDb(tenantId, (db) =>
       db.select({ count: sql<number>`count(*)`, total: sql<string>`coalesce(sum(total),0)` }).from(customerInvoicesTable)
         .where(and(eq(customerInvoicesTable.tenantId, tenantId), isNull(customerInvoicesTable.deletedAt), gte(customerInvoicesTable.createdAt, startOfMonth())))),
-    withTenantDb(tenantId, async (db) =>
-      db.execute(sql`
+    withTenantDb(tenantId, async (db) => {
+      const qr = await db.execute(sql`
         SELECT COUNT(*) AS count FROM (
           SELECT DISTINCT s.item_id FROM inventory_stock s
           JOIN item_locations il ON il.item_id = s.item_id AND il.warehouse_id = s.warehouse_id AND il.tenant_id = ${tenantId}
@@ -240,8 +241,9 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
             AND il.reorder_point IS NOT NULL AND il.reorder_point > 0
             AND s.qty_on_hand::numeric <= il.reorder_point::numeric
         ) sub
-      `) as unknown as [{ count: string }]
-    ),
+      `);
+      return qr.rows as unknown as [{ count: string }];
+    }),
     withTenantDb(tenantId, (db) =>
       db.select({ count: sql<number>`count(*)` }).from(purchaseOrdersTable)
         .where(and(eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt), eq(purchaseOrdersTable.status, "pending_approval")))),

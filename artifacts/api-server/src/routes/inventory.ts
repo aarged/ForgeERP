@@ -2161,7 +2161,7 @@ router.get("/inventory/reports/stock-valuation", ...tenantUserMiddleware, async 
   const { warehouseId, itemId, groupBy = "item" } = req.query as Record<string, string>;
 
   type StockValRow = { itemId: number; itemCode: string; itemName: string; warehouseId: number; warehouseName: string; qtyOnHand: number; averageCost: number; totalValue: number; };
-  const rows = await withTenantDb(tenantId, async (db) =>
+  const qrSV = await withTenantDb(tenantId, (db) =>
     db.execute(sql`
       SELECT
         s.item_id AS "itemId", i.code AS "itemCode", i.name AS "itemName",
@@ -2177,8 +2177,9 @@ router.get("/inventory/reports/stock-valuation", ...tenantUserMiddleware, async 
         ${itemId ? sql`AND s.item_id = ${Number(itemId)}` : sql``}
       GROUP BY s.item_id, i.code, i.name, s.warehouse_id, w.name
       ORDER BY "totalValue" DESC
-    `) as unknown as StockValRow[]
-  ) as StockValRow[];
+    `)
+  );
+  const rows = qrSV.rows as unknown as StockValRow[];
 
   const grandTotal = rows.reduce((sum, r) => sum + Number(r.totalValue ?? 0), 0);
   res.json({
@@ -2257,7 +2258,7 @@ router.get("/inventory/reports/slow-moving", ...tenantUserMiddleware, async (req
   cutoff.setDate(cutoff.getDate() - Number(days));
 
   type SlowMoveRow = { itemId: number; itemCode: string; itemName: string; warehouseId: number; warehouseName: string; qtyOnHand: number; totalValue: number; lastMovementAt: Date | null; daysSinceMovement: number; };
-  const rows = await withTenantDb(tenantId, async (db) =>
+  const qrSM = await withTenantDb(tenantId, (db) =>
     db.execute(sql`
       SELECT
         s.item_id AS "itemId", i.code AS "itemCode", i.name AS "itemName",
@@ -2275,8 +2276,9 @@ router.get("/inventory/reports/slow-moving", ...tenantUserMiddleware, async (req
         ${warehouseId ? sql`AND s.warehouse_id = ${Number(warehouseId)}` : sql``}
       ORDER BY "daysSinceMovement" DESC
       LIMIT 500
-    `) as unknown as SlowMoveRow[]
-  ) as SlowMoveRow[];
+    `)
+  );
+  const rows = qrSM.rows as unknown as SlowMoveRow[];
 
   res.json({
     cutoffDays: Number(days),
@@ -2296,7 +2298,7 @@ router.get("/inventory/reports/stocktake-variance", ...tenantUserMiddleware, asy
   const { stocktakeRunId, warehouseId } = req.query as Record<string, string>;
 
   type StocktakeVarianceRow = { runId: number; runCode: string; itemCode: string; itemName: string; qtyExpected: number; qtyActual: number; variance: number; varianceValue: number; };
-  const rows = await withTenantDb(tenantId, async (db) =>
+  const qrVar = await withTenantDb(tenantId, (db) =>
     db.execute(sql`
       SELECT
         sr.id AS "runId", sr.code AS "runCode",
@@ -2313,8 +2315,9 @@ router.get("/inventory/reports/stocktake-variance", ...tenantUserMiddleware, asy
         ${warehouseId ? sql`AND sr.warehouse_id = ${Number(warehouseId)}` : sql``}
       ORDER BY ABS(sl.actual_qty::numeric - sl.expected_qty::numeric) DESC
       LIMIT 1000
-    `) as unknown as StocktakeVarianceRow[]
-  ) as StocktakeVarianceRow[];
+    `)
+  );
+  const rows = qrVar.rows as unknown as StocktakeVarianceRow[];
 
   const totalVarianceValue = rows.reduce((s, r) => s + Number(r.varianceValue ?? 0), 0);
   res.json({
@@ -2336,7 +2339,7 @@ router.get("/inventory/reports/stock-valuation/export/csv", ...tenantUserMiddlew
   const { warehouseId, itemId } = req.query as Record<string, string>;
 
   type CsvStockRow = { itemCode: string; itemName: string; warehouseName: string; qtyOnHand: number; averageCost: number; totalValue: number };
-  const rows = await withTenantDb(tenantId, async (db) =>
+  const qrCSV = await withTenantDb(tenantId, (db) =>
     db.execute(sql`
       SELECT i.code AS "itemCode", i.name AS "itemName", w.name AS "warehouseName",
              SUM(s.qty_on_hand::numeric) AS "qtyOnHand",
@@ -2349,8 +2352,9 @@ router.get("/inventory/reports/stock-valuation/export/csv", ...tenantUserMiddlew
         ${warehouseId ? sql`AND s.warehouse_id = ${Number(warehouseId)}` : sql``}
         ${itemId ? sql`AND s.item_id = ${Number(itemId)}` : sql``}
       GROUP BY i.code, i.name, w.name ORDER BY "totalValue" DESC
-    `) as unknown as CsvStockRow[]
-  ) as CsvStockRow[];
+    `)
+  );
+  const rows = qrCSV.rows as unknown as CsvStockRow[];
 
   const lines = ["Item Code,Item Name,Warehouse,Qty On Hand,Average Cost,Total Value"];
   for (const r of rows) {
@@ -2368,7 +2372,7 @@ router.get("/inventory/reports/stock-valuation/export/pdf", ...tenantUserMiddlew
   const { warehouseId, itemId } = req.query as Record<string, string>;
 
   type CsvStockRow = { itemCode: string; itemName: string; warehouseName: string; qtyOnHand: number; averageCost: number; totalValue: number };
-  const rows = await withTenantDb(tenantId, async (db) =>
+  const qrPDF = await withTenantDb(tenantId, (db) =>
     db.execute(sql`
       SELECT i.code AS "itemCode", i.name AS "itemName", w.name AS "warehouseName",
              SUM(s.qty_on_hand::numeric) AS "qtyOnHand",
@@ -2381,8 +2385,9 @@ router.get("/inventory/reports/stock-valuation/export/pdf", ...tenantUserMiddlew
         ${warehouseId ? sql`AND s.warehouse_id = ${Number(warehouseId)}` : sql``}
         ${itemId ? sql`AND s.item_id = ${Number(itemId)}` : sql``}
       GROUP BY i.code, i.name, w.name ORDER BY "totalValue" DESC
-    `) as unknown as CsvStockRow[]
-  ) as CsvStockRow[];
+    `)
+  );
+  const rows = qrPDF.rows as unknown as CsvStockRow[];
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");
@@ -2506,7 +2511,7 @@ router.get("/inventory/reports/slow-moving/export/csv", ...tenantUserMiddleware,
   cutoff.setDate(cutoff.getDate() - Number(days));
 
   type SlowRow = { itemCode: string; itemName: string; warehouseName: string; qtyOnHand: number; totalValue: number; daysSinceMovement: number };
-  const rows = await withTenantDb(tenantId, async (db) =>
+  const qrSlowCsv = await withTenantDb(tenantId, (db) =>
     db.execute(sql`
       SELECT i.code AS "itemCode", i.name AS "itemName", w.name AS "warehouseName",
              s.qty_on_hand::numeric AS "qtyOnHand",
@@ -2519,8 +2524,9 @@ router.get("/inventory/reports/slow-moving/export/csv", ...tenantUserMiddleware,
         AND (s.last_movement_at IS NULL OR s.last_movement_at < ${cutoff})
         ${warehouseId ? sql`AND s.warehouse_id = ${Number(warehouseId)}` : sql``}
       ORDER BY "daysSinceMovement" DESC LIMIT 500
-    `) as unknown as SlowRow[]
-  ) as SlowRow[];
+    `)
+  );
+  const rows = qrSlowCsv.rows as unknown as SlowRow[];
 
   const lines = ["Item Code,Item Name,Warehouse,Qty On Hand,Total Value,Days Since Movement"];
   for (const r of rows) {
@@ -2539,7 +2545,7 @@ router.get("/inventory/reports/slow-moving/export/pdf", ...tenantUserMiddleware,
   cutoff.setDate(cutoff.getDate() - Number(days));
 
   type SlowRow = { itemCode: string; itemName: string; warehouseName: string; qtyOnHand: number; totalValue: number; daysSinceMovement: number };
-  const rows = await withTenantDb(tenantId, async (db) =>
+  const qrSlowPdf = await withTenantDb(tenantId, (db) =>
     db.execute(sql`
       SELECT i.code AS "itemCode", i.name AS "itemName", w.name AS "warehouseName",
              s.qty_on_hand::numeric AS "qtyOnHand",
@@ -2552,8 +2558,9 @@ router.get("/inventory/reports/slow-moving/export/pdf", ...tenantUserMiddleware,
         AND (s.last_movement_at IS NULL OR s.last_movement_at < ${cutoff})
         ${warehouseId ? sql`AND s.warehouse_id = ${Number(warehouseId)}` : sql``}
       ORDER BY "daysSinceMovement" DESC LIMIT 500
-    `) as unknown as SlowRow[]
-  ) as SlowRow[];
+    `)
+  );
+  const rows = qrSlowPdf.rows as unknown as SlowRow[];
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");
@@ -2587,7 +2594,7 @@ router.get("/inventory/reports/stocktake-variance/export/csv", ...tenantUserMidd
   const { stocktakeRunId, warehouseId } = req.query as Record<string, string>;
 
   type VarRow = { runCode: string; itemCode: string; itemName: string; qtyExpected: number; qtyActual: number; variance: number; varianceValue: number };
-  const rows = await withTenantDb(tenantId, async (db) =>
+  const qrVarCsv = await withTenantDb(tenantId, (db) =>
     db.execute(sql`
       SELECT sr.code AS "runCode", sl.item_code AS "itemCode", sl.item_name AS "itemName",
              sl.expected_qty::numeric AS "qtyExpected", sl.actual_qty::numeric AS "qtyActual",
@@ -2599,8 +2606,9 @@ router.get("/inventory/reports/stocktake-variance/export/csv", ...tenantUserMidd
         ${stocktakeRunId ? sql`AND sr.id = ${Number(stocktakeRunId)}` : sql``}
         ${warehouseId ? sql`AND sr.warehouse_id = ${Number(warehouseId)}` : sql``}
       ORDER BY ABS(sl.actual_qty::numeric - sl.expected_qty::numeric) DESC LIMIT 1000
-    `) as unknown as VarRow[]
-  ) as VarRow[];
+    `)
+  );
+  const rows = qrVarCsv.rows as unknown as VarRow[];
 
   const lines = ["Run Code,Item Code,Item Name,Expected Qty,Actual Qty,Variance,Variance Value"];
   for (const r of rows) {
@@ -2617,7 +2625,7 @@ router.get("/inventory/reports/stocktake-variance/export/pdf", ...tenantUserMidd
   const { stocktakeRunId, warehouseId } = req.query as Record<string, string>;
 
   type VarRow = { runCode: string; itemCode: string; itemName: string; qtyExpected: number; qtyActual: number; variance: number; varianceValue: number };
-  const rows = await withTenantDb(tenantId, async (db) =>
+  const qrVarPdf = await withTenantDb(tenantId, (db) =>
     db.execute(sql`
       SELECT sr.code AS "runCode", sl.item_code AS "itemCode", sl.item_name AS "itemName",
              sl.expected_qty::numeric AS "qtyExpected", sl.actual_qty::numeric AS "qtyActual",
@@ -2629,8 +2637,9 @@ router.get("/inventory/reports/stocktake-variance/export/pdf", ...tenantUserMidd
         ${stocktakeRunId ? sql`AND sr.id = ${Number(stocktakeRunId)}` : sql``}
         ${warehouseId ? sql`AND sr.warehouse_id = ${Number(warehouseId)}` : sql``}
       ORDER BY ABS(sl.actual_qty::numeric - sl.expected_qty::numeric) DESC LIMIT 1000
-    `) as unknown as VarRow[]
-  ) as VarRow[];
+    `)
+  );
+  const rows = qrVarPdf.rows as unknown as VarRow[];
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");

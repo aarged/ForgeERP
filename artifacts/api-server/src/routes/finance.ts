@@ -362,7 +362,7 @@ router.get("/finance/trial-balance", ...tenantUserMiddleware, async (req: Reques
     // Opening balance = sum of all movements BEFORE fromDate
     withTenantDb(tenantId, async (db) => {
       if (!fromDate) return [] as MovSummary;
-      const rows = await db.execute(sql`
+      const qr = await db.execute(sql`
         SELECT line->>'accountCode' AS "accountCode",
                SUM((line->>'debit')::numeric) AS "totalDebit",
                SUM((line->>'credit')::numeric) AS "totalCredit"
@@ -371,12 +371,12 @@ router.get("/finance/trial-balance", ...tenantUserMiddleware, async (req: Reques
           AND ${glPostingsTable.status} = 'posted'
           AND ${glPostingsTable.createdAt} < ${new Date(fromDate)}
         GROUP BY line->>'accountCode'
-      `) as unknown as MovSummary;
-      return rows;
+      `);
+      return qr.rows as unknown as MovSummary;
     }),
     // Period movements
     withTenantDb(tenantId, async (db) => {
-      const rows = await db.execute(sql`
+      const qr = await db.execute(sql`
         SELECT line->>'accountCode' AS "accountCode",
                SUM((line->>'debit')::numeric) AS "totalDebit",
                SUM((line->>'credit')::numeric) AS "totalCredit"
@@ -386,8 +386,8 @@ router.get("/finance/trial-balance", ...tenantUserMiddleware, async (req: Reques
           ${fromDate ? sql`AND ${glPostingsTable.createdAt} >= ${new Date(fromDate)}` : sql``}
           ${toDate ? sql`AND ${glPostingsTable.createdAt} <= ${new Date(toDate)}` : sql``}
         GROUP BY line->>'accountCode'
-      `) as unknown as MovSummary;
-      return rows;
+      `);
+      return qr.rows as unknown as MovSummary;
     }),
   ]);
 
@@ -445,7 +445,7 @@ router.get("/finance/trial-balance/pdf", ...tenantUserMiddleware, async (req: Re
     ),
     withTenantDb(tenantId, async (db) => {
       if (!fromDate) return [] as PdfMovSummary;
-      const rows = await db.execute(sql`
+      const qr = await db.execute(sql`
         SELECT line->>'accountCode' AS "accountCode",
                SUM((line->>'debit')::numeric) AS "totalDebit",
                SUM((line->>'credit')::numeric) AS "totalCredit"
@@ -453,11 +453,11 @@ router.get("/finance/trial-balance/pdf", ...tenantUserMiddleware, async (req: Re
         WHERE ${glPostingsTable.tenantId} = ${tenantId} AND ${glPostingsTable.status} = 'posted'
           AND ${glPostingsTable.createdAt} < ${new Date(fromDate)}
         GROUP BY line->>'accountCode'
-      `) as unknown as PdfMovSummary;
-      return rows;
+      `);
+      return qr.rows as unknown as PdfMovSummary;
     }),
     withTenantDb(tenantId, async (db) => {
-      const rows = await db.execute(sql`
+      const qr = await db.execute(sql`
         SELECT line->>'accountCode' AS "accountCode",
                SUM((line->>'debit')::numeric) AS "totalDebit",
                SUM((line->>'credit')::numeric) AS "totalCredit"
@@ -466,8 +466,8 @@ router.get("/finance/trial-balance/pdf", ...tenantUserMiddleware, async (req: Re
           ${fromDate ? sql`AND ${glPostingsTable.createdAt} >= ${new Date(fromDate)}` : sql``}
           ${toDate ? sql`AND ${glPostingsTable.createdAt} <= ${new Date(toDate)}` : sql``}
         GROUP BY line->>'accountCode'
-      `) as unknown as PdfMovSummary;
-      return rows;
+      `);
+      return qr.rows as unknown as PdfMovSummary;
     }),
   ]);
 
@@ -556,8 +556,8 @@ router.get("/finance/account-movements", ...tenantUserMiddleware, async (req: Re
   const lim = Math.min(500, Math.max(1, Number(limit)));
 
   type MovementRow = { postingId: number; postingCode: string; entityType: string; postedAt: Date | null; createdAt: Date; debit: number; credit: number; description: string; balance: number; };
-  const rows = await withTenantDb(tenantId, async (db) => {
-    return db.execute(sql`
+  const qrMov = await withTenantDb(tenantId, (db) =>
+    db.execute(sql`
       SELECT
         p.id AS "postingId",
         p.code AS "postingCode",
@@ -575,8 +575,9 @@ router.get("/finance/account-movements", ...tenantUserMiddleware, async (req: Re
         ${toDate ? sql`AND p.created_at <= ${new Date(toDate)}` : sql``}
       ORDER BY p.created_at ASC
       LIMIT ${lim} OFFSET ${(pg - 1) * lim}
-    `) as unknown as MovementRow[];
-  }) as MovementRow[];
+    `)
+  );
+  const rows = qrMov.rows as unknown as MovementRow[];
 
   let runningBalance = 0;
   const withBalance = rows.map(r => {
@@ -607,7 +608,7 @@ router.get("/finance/trial-balance/export/csv", ...tenantUserMiddleware, async (
     ),
     withTenantDb(tenantId, async (db) => {
       if (!fromDate) return [] as CsvMovSummary;
-      const rows = await db.execute(sql`
+      const qr = await db.execute(sql`
         SELECT line->>'accountCode' AS "accountCode",
                SUM((line->>'debit')::numeric) AS "totalDebit",
                SUM((line->>'credit')::numeric) AS "totalCredit"
@@ -615,11 +616,11 @@ router.get("/finance/trial-balance/export/csv", ...tenantUserMiddleware, async (
         WHERE ${glPostingsTable.tenantId} = ${tenantId} AND ${glPostingsTable.status} = 'posted'
           AND ${glPostingsTable.createdAt} < ${new Date(fromDate)}
         GROUP BY line->>'accountCode'
-      `) as unknown as CsvMovSummary;
-      return rows;
+      `);
+      return qr.rows as unknown as CsvMovSummary;
     }),
     withTenantDb(tenantId, async (db) => {
-      const rows = await db.execute(sql`
+      const qr = await db.execute(sql`
         SELECT
           line->>'accountCode' AS "accountCode",
           SUM((line->>'debit')::numeric) AS "totalDebit",
@@ -630,8 +631,8 @@ router.get("/finance/trial-balance/export/csv", ...tenantUserMiddleware, async (
           ${fromDate ? sql`AND ${glPostingsTable.createdAt} >= ${new Date(fromDate)}` : sql``}
           ${toDate ? sql`AND ${glPostingsTable.createdAt} <= ${new Date(toDate)}` : sql``}
         GROUP BY line->>'accountCode'
-      `) as unknown as CsvMovSummary;
-      return rows;
+      `);
+      return qr.rows as unknown as CsvMovSummary;
     }),
   ]);
 
