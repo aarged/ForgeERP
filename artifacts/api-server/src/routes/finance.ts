@@ -20,8 +20,9 @@ import { z } from "zod";
 
 const router: IRouter = Router();
 
-const tenantUserMiddleware = [requireAuth, tenantContext];
-const tenantWriteMiddleware = [requireAuth, tenantContext, requireRole("admin", "accountant", "manager")];
+const tenantReadMiddleware = [requireAuth, tenantContext, requireRole("accountant", "tenant_admin", "super_admin")];
+const tenantWriteMiddleware = [requireAuth, tenantContext, requireRole("accountant", "tenant_admin", "super_admin")];
+const tenantUserMiddleware = tenantReadMiddleware;
 
 // ── GL Journal ─────────────────────────────────────────────────────────────────
 
@@ -188,7 +189,7 @@ router.post("/finance/journals", ...tenantWriteMiddleware, async (req: Request, 
 
   // Journals above the approval threshold require manager/admin approval before posting
   const APPROVAL_THRESHOLD = Number(process.env["MANUAL_JOURNAL_APPROVAL_THRESHOLD"] ?? 10_000);
-  const requiresApproval = totalDebit > APPROVAL_THRESHOLD && !["admin", "super_admin"].includes(userRole);
+  const requiresApproval = totalDebit > APPROVAL_THRESHOLD && !["tenant_admin", "super_admin"].includes(userRole);
   const postingDate = d.postingDate ? new Date(d.postingDate) : new Date();
   const result = await withTenantDb(tenantId, async (db) => {
     const [posting] = await db.insert(glPostingsTable).values({
@@ -271,7 +272,7 @@ router.post("/finance/journals/:id/approve", ...tenantWriteMiddleware, async (re
   const id = Number(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  if (!["admin", "super_admin", "accountant", "manager"].includes(userRole)) {
+  if (!["accountant", "tenant_admin", "super_admin"].includes(userRole)) {
     res.status(403).json({ error: "Insufficient permissions to approve journals" });
     return;
   }
