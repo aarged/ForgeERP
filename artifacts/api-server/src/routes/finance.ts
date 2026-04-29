@@ -159,6 +159,7 @@ router.get("/finance/journals/:id", ...tenantUserMiddleware, async (req: Request
 const manualJournalSchema = z.object({
   memo: z.string().min(1, "Memo is required"),
   postingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD").optional(),
+  attachmentUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")),
   lines: z.array(z.object({
     accountCode: z.string().min(1),
     accountName: z.string().min(1),
@@ -203,6 +204,7 @@ router.post("/finance/journals", ...tenantWriteMiddleware, async (req: Request, 
       lines: d.lines as unknown as typeof glPostingsTable.$inferInsert["lines"],
       totalDebit: String(totalDebit),
       totalCredit: String(totalCredit),
+      attachmentUrl: d.attachmentUrl || null,
     } as typeof glPostingsTable.$inferInsert).returning();
 
     const code = `MJE-${String(posting.id).padStart(6, "0")}`;

@@ -1,11 +1,13 @@
 import React, { useState } from "react";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useForm, useFieldArray } from "react-hook-form";
 import {
   useGetFinanceJournals,
   getGetFinanceJournalsQueryKey,
   usePostFinanceJournals,
   usePostFinanceJournalsIdReverse,
+  useApproveFinanceJournal,
+  getExportFinanceJournalsXlsxUrl,
   useGetFinanceTrialBalance,
   getGetFinanceTrialBalanceQueryKey,
   useGetFinanceAccountMovements,
@@ -47,7 +49,7 @@ import { Plus, Search, Eye, Download, Undo2, ChevronDown, ChevronRight, FileText
 // ── Local DTOs ────────────────────────────────────────────────────────────────
 
 interface JournalLine { accountCode: string; accountName: string; debit: number; credit: number; description?: string; }
-interface FormValues { memo: string; postingDate: string; lines: JournalLine[]; }
+interface FormValues { memo: string; postingDate: string; attachmentUrl?: string; lines: JournalLine[]; }
 interface TrialBalanceAccount { accountId: number; accountCode: string; accountName: string; accountType: string | null; openingBalance: number; periodDebit: number; periodCredit: number; closingBalance: number; }
 interface AccountMovement { postingId: number; postingCode: string; entityType: string; postedAt: string | null; createdAt: string; debit: number; credit: number; description: string; balance: number; }
 
@@ -102,18 +104,13 @@ function JournalTab() {
   const { data: glAccounts } = useListGlAccounts({ limit: 500 });
   const postMut = usePostFinanceJournals();
   const reverseMut = usePostFinanceJournalsIdReverse();
-  const approveMut = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`/api/finance/journals/${id}/approve`, { method: "POST" });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as { error?: string }).error ?? "Approval failed"); }
-      return res.json();
-    },
-  });
+  const approveMut = useApproveFinanceJournal();
 
   const form = useForm<FormValues>({
     defaultValues: {
       memo: "",
       postingDate: new Date().toISOString().split("T")[0],
+      attachmentUrl: "",
       lines: [
         { accountCode: "", accountName: "", debit: 0, credit: 0, description: "" },
         { accountCode: "", accountName: "", debit: 0, credit: 0, description: "" }
@@ -136,6 +133,7 @@ function JournalTab() {
       const result = await postMut.mutateAsync({ data: { 
         memo: vals.memo, 
         postingDate: vals.postingDate,
+        attachmentUrl: vals.attachmentUrl || undefined,
         lines: vals.lines.filter((l) => l.accountCode) 
       }});
       const r = result as { requiresApproval?: boolean; approvalThreshold?: number };
@@ -167,7 +165,7 @@ function JournalTab() {
 
   async function onApprove(id: number) {
     try {
-      await approveMut.mutateAsync(id);
+      await approveMut.mutateAsync({ id });
       toast({ title: "Journal approved and posted" });
       qc.invalidateQueries({ queryKey: getGetFinanceJournalsQueryKey({}) });
     } catch (e) {
@@ -208,11 +206,12 @@ function JournalTab() {
             window.open(`/api/finance/journals/export/csv?${params.toString()}`, "_blank");
           }}><Download className="h-4 w-4 mr-2" />CSV</Button>
           <Button variant="outline" onClick={() => {
-            const params = new URLSearchParams();
-            if (status !== "all") params.set("status", status);
-            if (fromDate) params.set("fromDate", fromDate);
-            if (toDate) params.set("toDate", toDate);
-            window.open(`/api/finance/journals/export/xlsx?${params.toString()}`, "_blank");
+            const xlsxUrl = getExportFinanceJournalsXlsxUrl({
+              ...(status !== "all" ? { status } : {}),
+              ...(fromDate ? { fromDate } : {}),
+              ...(toDate ? { toDate } : {}),
+            });
+            window.open(xlsxUrl, "_blank");
           }}><FileText className="h-4 w-4 mr-2" />Excel</Button>
           <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4 mr-2" />Manual Entry</Button>
         </div>
@@ -315,6 +314,11 @@ function JournalTab() {
                 <Label>Memo *</Label>
                 <Input {...form.register("memo", { required: true })} placeholder="Reason for journal..." />
               </div>
+            </div>
+
+            <div>
+              <Label>Attachment URL <span className="text-muted-foreground text-xs">(optional — link to supporting document)</span></Label>
+              <Input {...form.register("attachmentUrl")} type="url" placeholder="https://docs.example.com/invoice-123.pdf" />
             </div>
 
             <div className="space-y-2 mt-4">

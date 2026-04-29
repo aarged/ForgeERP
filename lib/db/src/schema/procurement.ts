@@ -300,6 +300,7 @@ export const glPostingsTable = pgTable("gl_postings", {
   totalDebit: numeric("total_debit", { precision: 18, scale: 2 }).notNull().default("0"),
   totalCredit: numeric("total_credit", { precision: 18, scale: 2 }).notNull().default("0"),
   reversedByPostingId: integer("reversed_by_posting_id"),
+  attachmentUrl: text("attachment_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

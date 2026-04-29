@@ -3297,6 +3297,72 @@ paths:
                     outstandingQty: { type: number }
                     outstandingPct: { type: integer }
 
+  /procurement/reports/grn:
+    get:
+      operationId: reportGrn
+      summary: Goods received note summary report
+      tags: [Procurement]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+        - { in: query, name: supplierId, schema: { type: integer } }
+      responses:
+        "200":
+          description: GRN report rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    grnCode: { type: string }
+                    poCode: { type: string }
+                    supplierName: { type: string }
+                    status: { type: string }
+                    receivedAt: { type: string, nullable: true }
+                    receivedByEmail: { type: string, nullable: true }
+                    totalReceivedQty: { type: number }
+                    totalValue: { type: number }
+                    lineCount: { type: integer }
+
+  /procurement/reports/grn/export/csv:
+    get:
+      operationId: exportGrnCsv
+      summary: Export GRN report as CSV
+      tags: [Procurement]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /procurement/reports/grn/export/pdf:
+    get:
+      operationId: exportGrnPdf
+      summary: Export GRN report as PDF
+      tags: [Procurement]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
   # ── Sales ──────────────────────────────────────────────────────────────────
 
   /sales/atp:
@@ -4198,6 +4264,108 @@ paths:
               schema:
                 type: array
                 items: { type: object }
+
+  /sales/reports/backorders/export/csv:
+    get:
+      operationId: exportBackordersCsv
+      summary: Export backorder report as CSV
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /sales/reports/backorders/export/pdf:
+    get:
+      operationId: exportBackordersPdf
+      summary: Export backorder report as PDF
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
+  /sales/reports/invoice-aging:
+    get:
+      operationId: reportInvoiceAging
+      summary: Invoice aging report grouped into overdue buckets
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: customerId, schema: { type: integer } }
+      responses:
+        "200":
+          description: Invoice aging with summary buckets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        code: { type: string }
+                        customerName: { type: string, nullable: true }
+                        invoiceDate: { type: string, nullable: true }
+                        dueDate: { type: string, nullable: true }
+                        total: { type: number }
+                        paidAmount: { type: number }
+                        balance: { type: number }
+                        daysOverdue: { type: number, nullable: true }
+                        agingBucket: { type: string }
+                  summary:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        count: { type: integer }
+                        total: { type: number }
+
+  /sales/reports/invoice-aging/export/csv:
+    get:
+      operationId: exportInvoiceAgingCsv
+      summary: Export invoice aging report as CSV
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: customerId, schema: { type: integer } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /sales/reports/invoice-aging/export/pdf:
+    get:
+      operationId: exportInvoiceAgingPdf
+      summary: Export invoice aging report as PDF
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: customerId, schema: { type: integer } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
 
   /sales/reports/outstanding-invoices:
     get:
@@ -5483,6 +5651,7 @@ paths:
               properties:
                 memo: { type: string }
                 postingDate: { type: string }
+                attachmentUrl: { type: string, nullable: true }
                 lines:
                   type: array
                   items:
@@ -5537,6 +5706,45 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GlPosting" }
+
+  /finance/journals/{id}/approve:
+    post:
+      operationId: approveFinanceJournal
+      tags: [Finance]
+      summary: Approve a draft GL journal posting (admin/accountant only)
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Approved GL posting
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GlPosting" }
+        "400": { description: Not in draft status }
+        "403": { description: Insufficient role }
+        "404": { description: Posting not found }
+
+  /finance/journals/export/xlsx:
+    get:
+      operationId: exportFinanceJournalsXlsx
+      tags: [Finance]
+      summary: Export GL journal entries as Excel workbook
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+        - { in: query, name: entityType, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: accountCode, schema: { type: string } }
+      responses:
+        "200":
+          description: Excel workbook
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
 
   /finance/trial-balance:
     get:
@@ -7867,6 +8075,7 @@ components:
         lines: { type: object }
         totalDebit: { type: string }
         totalCredit: { type: string }
+        attachmentUrl: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
 
     GlPostingList:

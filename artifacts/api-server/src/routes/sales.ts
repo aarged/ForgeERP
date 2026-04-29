@@ -38,6 +38,7 @@ import { writeAuditLog } from "../lib/audit";
 import { sendEmail } from "../lib/email";
 import type { Request, Response } from "express";
 import { z } from "zod";
+import PDFDocument from "pdfkit";
 
 const router: IRouter = Router();
 
@@ -2093,6 +2094,121 @@ router.get("/sales/reports/invoice-aging/export/csv", ...tenantUserMiddleware, a
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", `attachment; filename="invoice-aging.csv"`);
   res.send(lines.join("\r\n"));
+});
+
+/**
+ * GET /sales/reports/invoice-aging/export/pdf
+ * Export invoice aging report as PDF.
+ */
+router.get("/sales/reports/invoice-aging/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { customerId } = req.query as Record<string, string>;
+
+  const qr = await withTenantDb(tenantId, (db) =>
+    db.execute(sql`
+      SELECT ci.code, ci.customer_name AS "customerName", ci.due_date AS "dueDate",
+             (ci.total::numeric - ci.paid_amount::numeric) AS "balance",
+             CASE
+               WHEN ci.due_date IS NULL OR ci.due_date::date >= CURRENT_DATE THEN 'Current'
+               WHEN CURRENT_DATE - ci.due_date::date <= 30 THEN '1-30 Days'
+               WHEN CURRENT_DATE - ci.due_date::date <= 60 THEN '31-60 Days'
+               WHEN CURRENT_DATE - ci.due_date::date <= 90 THEN '61-90 Days'
+               ELSE '90+ Days'
+             END AS "agingBucket"
+      FROM customer_invoices ci
+      WHERE ci.tenant_id = ${tenantId} AND ci.deleted_at IS NULL
+        AND ci.status IN ('sent','draft') AND (ci.total::numeric - ci.paid_amount::numeric) > 0
+        ${customerId ? sql`AND ci.customer_id = ${Number(customerId)}` : sql``}
+      ORDER BY ci.due_date ASC NULLS LAST LIMIT 2000
+    `)
+  );
+  const rows = qr.rows as Array<{ code: string; customerName: string | null; dueDate: string | null; balance: number; agingBucket: string }>;
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="invoice-aging.pdf"`);
+  doc.pipe(res);
+
+  doc.fontSize(16).font("Helvetica-Bold").text("Invoice Aging Report", { align: "center" });
+  doc.fontSize(9).font("Helvetica").text(`Generated: ${new Date().toLocaleDateString()}`, { align: "center" });
+  doc.moveDown();
+
+  const colX = [40, 130, 230, 300, 380, 460];
+  doc.fontSize(8).font("Helvetica-Bold");
+  doc.text("Invoice", colX[0], doc.y, { continued: true })
+     .text("Customer", colX[1], undefined, { continued: true })
+     .text("Due Date", colX[2], undefined, { continued: true })
+     .text("Balance", colX[3], undefined, { continued: true })
+     .text("Bucket", colX[4]);
+  doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
+  doc.moveDown(0.3);
+
+  doc.font("Helvetica").fontSize(7);
+  for (const r of rows) {
+    const y = doc.y;
+    if (y > 750) { doc.addPage(); }
+    doc.text(r.code ?? "", colX[0], doc.y, { continued: true })
+       .text(r.customerName ?? "", colX[1], undefined, { continued: true })
+       .text(r.dueDate ? new Date(r.dueDate).toLocaleDateString() : "", colX[2], undefined, { continued: true })
+       .text(Number(r.balance).toFixed(2), colX[3], undefined, { continued: true })
+       .text(r.agingBucket, colX[4]);
+  }
+  doc.end();
+});
+
+/**
+ * GET /sales/reports/backorders/export/pdf
+ * Export backorder report as PDF.
+ */
+router.get("/sales/reports/backorders/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      soId: soLinesTable.soId,
+      soLineId: soLinesTable.id,
+      itemCode: soLinesTable.itemCode,
+      itemName: soLinesTable.itemName,
+      qty: soLinesTable.quantity,
+      despatched: soLinesTable.despatched_qty,
+      backorderQty: sql<string>`${soLinesTable.quantity} - ${soLinesTable.despatched_qty}`,
+    })
+      .from(soLinesTable)
+      .where(and(eq(soLinesTable.tenantId, tenantId), eq(soLinesTable.lineType, "stock"), sql`${soLinesTable.despatched_qty} < ${soLinesTable.quantity}`))
+      .orderBy(soLinesTable.soId)
+      .limit(2000)
+  );
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="backorders.pdf"`);
+  doc.pipe(res);
+
+  doc.fontSize(16).font("Helvetica-Bold").text("Backorder Report", { align: "center" });
+  doc.fontSize(9).font("Helvetica").text(`Generated: ${new Date().toLocaleDateString()}`, { align: "center" });
+  doc.moveDown();
+
+  const colX = [40, 100, 160, 280, 360, 430, 500];
+  doc.fontSize(8).font("Helvetica-Bold");
+  doc.text("SO ID", colX[0], doc.y, { continued: true })
+     .text("Line", colX[1], undefined, { continued: true })
+     .text("Item", colX[2], undefined, { continued: true })
+     .text("Ordered", colX[3], undefined, { continued: true })
+     .text("Despatched", colX[4], undefined, { continued: true })
+     .text("Backorder", colX[5]);
+  doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
+  doc.moveDown(0.3);
+
+  doc.font("Helvetica").fontSize(7);
+  for (const r of rows) {
+    if (doc.y > 750) { doc.addPage(); }
+    doc.text(String(r.soId), colX[0], doc.y, { continued: true })
+       .text(String(r.soLineId), colX[1], undefined, { continued: true })
+       .text(String(r.itemCode ?? ""), colX[2], undefined, { continued: true })
+       .text(String(r.qty), colX[3], undefined, { continued: true })
+       .text(String(r.despatched), colX[4], undefined, { continued: true })
+       .text(Number(r.backorderQty).toFixed(2), colX[5]);
+  }
+  doc.end();
 });
 
 /**

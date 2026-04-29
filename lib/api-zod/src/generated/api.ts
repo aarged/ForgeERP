@@ -3899,6 +3899,7 @@ export const ListGlPostingsResponse = zod.object({
         lines: zod.object({}).passthrough().optional(),
         totalDebit: zod.string().optional(),
         totalCredit: zod.string().optional(),
+        attachmentUrl: zod.string().nullish(),
         createdAt: zod.coerce.date().optional(),
       }),
     )
@@ -4120,6 +4121,57 @@ export const ReportGoodsInTransitResponseItem = zod.object({
 export const ReportGoodsInTransitResponse = zod.array(
   ReportGoodsInTransitResponseItem,
 );
+
+/**
+ * @summary Goods received note summary report
+ */
+export const ReportGrnQueryParams = zod.object({
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+  supplierId: zod.coerce.number().optional(),
+});
+
+export const ReportGrnHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportGrnResponseItem = zod.object({
+  id: zod.number().optional(),
+  grnCode: zod.string().optional(),
+  poCode: zod.string().optional(),
+  supplierName: zod.string().optional(),
+  status: zod.string().optional(),
+  receivedAt: zod.string().nullish(),
+  receivedByEmail: zod.string().nullish(),
+  totalReceivedQty: zod.number().optional(),
+  totalValue: zod.number().optional(),
+  lineCount: zod.number().optional(),
+});
+export const ReportGrnResponse = zod.array(ReportGrnResponseItem);
+
+/**
+ * @summary Export GRN report as CSV
+ */
+export const ExportGrnCsvQueryParams = zod.object({
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+});
+
+export const ExportGrnCsvHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Export GRN report as PDF
+ */
+export const ExportGrnPdfQueryParams = zod.object({
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+});
+
+export const ExportGrnPdfHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
 
 /**
  * @summary Available-to-promise quantity for an item
@@ -5840,6 +5892,81 @@ export const ReportBackordersResponseItem = zod.object({}).passthrough();
 export const ReportBackordersResponse = zod.array(ReportBackordersResponseItem);
 
 /**
+ * @summary Export backorder report as CSV
+ */
+export const ExportBackordersCsvHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Export backorder report as PDF
+ */
+export const ExportBackordersPdfHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Invoice aging report grouped into overdue buckets
+ */
+export const ReportInvoiceAgingQueryParams = zod.object({
+  customerId: zod.coerce.number().optional(),
+});
+
+export const ReportInvoiceAgingHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportInvoiceAgingResponse = zod.object({
+  invoices: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        customerName: zod.string().nullish(),
+        invoiceDate: zod.string().nullish(),
+        dueDate: zod.string().nullish(),
+        total: zod.number().optional(),
+        paidAmount: zod.number().optional(),
+        balance: zod.number().optional(),
+        daysOverdue: zod.number().nullish(),
+        agingBucket: zod.string().optional(),
+      }),
+    )
+    .optional(),
+  summary: zod
+    .record(
+      zod.string(),
+      zod.object({
+        count: zod.number().optional(),
+        total: zod.number().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Export invoice aging report as CSV
+ */
+export const ExportInvoiceAgingCsvQueryParams = zod.object({
+  customerId: zod.coerce.number().optional(),
+});
+
+export const ExportInvoiceAgingCsvHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Export invoice aging report as PDF
+ */
+export const ExportInvoiceAgingPdfQueryParams = zod.object({
+  customerId: zod.coerce.number().optional(),
+});
+
+export const ExportInvoiceAgingPdfHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
  * @summary Outstanding invoices report
  */
 export const ReportOutstandingInvoicesHeader = zod.object({
@@ -7278,6 +7405,7 @@ export const GetFinanceJournalsResponse = zod.object({
         lines: zod.object({}).passthrough().optional(),
         totalDebit: zod.string().optional(),
         totalCredit: zod.string().optional(),
+        attachmentUrl: zod.string().nullish(),
         createdAt: zod.coerce.date().optional(),
       }),
     )
@@ -7298,6 +7426,7 @@ export const PostFinanceJournalsHeader = zod.object({
 export const PostFinanceJournalsBody = zod.object({
   memo: zod.string(),
   postingDate: zod.string().optional(),
+  attachmentUrl: zod.string().nullish(),
   lines: zod.array(
     zod.object({
       accountCode: zod.string(),
@@ -7334,6 +7463,7 @@ export const GetFinanceJournalsIdResponse = zod.object({
   lines: zod.object({}).passthrough().optional(),
   totalDebit: zod.string().optional(),
   totalCredit: zod.string().optional(),
+  attachmentUrl: zod.string().nullish(),
   createdAt: zod.coerce.date().optional(),
 });
 
@@ -7350,6 +7480,50 @@ export const PostFinanceJournalsIdReverseHeader = zod.object({
 
 export const PostFinanceJournalsIdReverseBody = zod.object({
   memo: zod.string().optional(),
+});
+
+/**
+ * @summary Approve a draft GL journal posting (admin/accountant only)
+ */
+export const ApproveFinanceJournalParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ApproveFinanceJournalHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const ApproveFinanceJournalResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  entityType: zod.string().optional(),
+  entityId: zod.number().optional(),
+  status: zod.string().optional(),
+  postedByClerkId: zod.string().nullish(),
+  postedByEmail: zod.string().nullish(),
+  postedAt: zod.coerce.date().nullish(),
+  notes: zod.string().nullish(),
+  lines: zod.object({}).passthrough().optional(),
+  totalDebit: zod.string().optional(),
+  totalCredit: zod.string().optional(),
+  attachmentUrl: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Export GL journal entries as Excel workbook
+ */
+export const ExportFinanceJournalsXlsxQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+  entityType: zod.coerce.string().optional(),
+  status: zod.coerce.string().optional(),
+  accountCode: zod.coerce.string().optional(),
+});
+
+export const ExportFinanceJournalsXlsxHeader = zod.object({
+  "x-tenant-id": zod.string(),
 });
 
 /**

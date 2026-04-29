@@ -2982,6 +2982,65 @@ router.get("/procurement/reports/grn", ...tenantUserMiddleware, async (req: Requ
 });
 
 /**
+ * GET /procurement/reports/grn/export/pdf
+ * Export GRN summary as PDF.
+ */
+router.get("/procurement/reports/grn/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { from, to } = req.query as Record<string, string>;
+
+  const qr = await withTenantDb(tenantId, (db) =>
+    db.execute(sql`
+      SELECT gr.code AS "grnCode", po.code AS "poCode", po.supplier_name AS "supplierName",
+             gr.received_at AS "receivedAt", gr.received_by_email AS "receivedByEmail",
+             COALESCE(SUM(rl.received_qty::numeric), 0) AS "totalReceivedQty",
+             COALESCE(SUM(rl.received_qty::numeric * COALESCE(rl.unit_cost::numeric, 0)), 0) AS "totalValue"
+      FROM po_receipts gr
+      JOIN purchase_orders po ON po.id = gr.po_id AND po.tenant_id = ${tenantId}
+      LEFT JOIN receipt_lines rl ON rl.receipt_id = gr.id AND rl.tenant_id = ${tenantId}
+      WHERE gr.tenant_id = ${tenantId} AND gr.status = 'confirmed'
+        ${from ? sql`AND gr.received_at >= ${new Date(from)}` : sql``}
+        ${to ? sql`AND gr.received_at <= ${new Date(to)}` : sql``}
+      GROUP BY gr.id, gr.code, po.code, po.supplier_name, gr.received_at, gr.received_by_email
+      ORDER BY gr.received_at DESC NULLS LAST LIMIT 2000
+    `)
+  );
+  const rows = qr.rows as Array<{ grnCode: string; poCode: string; supplierName: string; receivedAt: string | null; receivedByEmail: string | null; totalReceivedQty: number; totalValue: number }>;
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="grn-report.pdf"`);
+  doc.pipe(res);
+
+  doc.fontSize(16).font("Helvetica-Bold").text("Goods Received Note Report", { align: "center" });
+  doc.fontSize(9).font("Helvetica").text(`Generated: ${new Date().toLocaleDateString()}`, { align: "center" });
+  doc.moveDown();
+
+  const colX = [40, 110, 180, 310, 390, 470];
+  doc.fontSize(8).font("Helvetica-Bold");
+  doc.text("GRN Code", colX[0], doc.y, { continued: true })
+     .text("PO Code", colX[1], undefined, { continued: true })
+     .text("Supplier", colX[2], undefined, { continued: true })
+     .text("Received At", colX[3], undefined, { continued: true })
+     .text("Qty", colX[4], undefined, { continued: true })
+     .text("Value", colX[5]);
+  doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
+  doc.moveDown(0.3);
+
+  doc.font("Helvetica").fontSize(7);
+  for (const r of rows) {
+    if (doc.y > 750) { doc.addPage(); }
+    doc.text(r.grnCode, colX[0], doc.y, { continued: true })
+       .text(r.poCode, colX[1], undefined, { continued: true })
+       .text(r.supplierName, colX[2], undefined, { continued: true })
+       .text(r.receivedAt ? new Date(r.receivedAt).toLocaleDateString() : "", colX[3], undefined, { continued: true })
+       .text(Number(r.totalReceivedQty).toFixed(2), colX[4], undefined, { continued: true })
+       .text(Number(r.totalValue).toFixed(2), colX[5]);
+  }
+  doc.end();
+});
+
+/**
  * GET /procurement/reports/grn/export/csv
  * Export GRN summary as CSV.
  */

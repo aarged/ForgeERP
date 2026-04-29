@@ -1833,6 +1833,7 @@ export interface GlPosting {
   lines?: GlPostingLines;
   totalDebit?: string;
   totalCredit?: string;
+  attachmentUrl?: string | null;
   createdAt?: string;
 }
 
@@ -2947,6 +2948,35 @@ export type ReportGoodsInTransit200Item = {
   outstandingPct?: number;
 };
 
+export type ReportGrnParams = {
+  from?: string;
+  to?: string;
+  supplierId?: number;
+};
+
+export type ReportGrn200Item = {
+  id?: number;
+  grnCode?: string;
+  poCode?: string;
+  supplierName?: string;
+  status?: string;
+  receivedAt?: string | null;
+  receivedByEmail?: string | null;
+  totalReceivedQty?: number;
+  totalValue?: number;
+  lineCount?: number;
+};
+
+export type ExportGrnCsvParams = {
+  from?: string;
+  to?: string;
+};
+
+export type ExportGrnPdfParams = {
+  from?: string;
+  to?: string;
+};
+
 export type GetAtpParams = {
   itemId: number;
   warehouseId?: number;
@@ -3069,6 +3099,43 @@ export type ReportSalesSummaryParams = {
 };
 
 export type ReportBackorders200Item = { [key: string]: unknown };
+
+export type ReportInvoiceAgingParams = {
+  customerId?: number;
+};
+
+export type ReportInvoiceAging200InvoicesItem = {
+  id?: number;
+  code?: string;
+  customerName?: string | null;
+  invoiceDate?: string | null;
+  dueDate?: string | null;
+  total?: number;
+  paidAmount?: number;
+  balance?: number;
+  daysOverdue?: number | null;
+  agingBucket?: string;
+};
+
+export type ReportInvoiceAging200Summary = {
+  [key: string]: {
+    count?: number;
+    total?: number;
+  };
+};
+
+export type ReportInvoiceAging200 = {
+  invoices?: ReportInvoiceAging200InvoicesItem[];
+  summary?: ReportInvoiceAging200Summary;
+};
+
+export type ExportInvoiceAgingCsvParams = {
+  customerId?: number;
+};
+
+export type ExportInvoiceAgingPdfParams = {
+  customerId?: number;
+};
 
 export type ReportSalesByItemParams = {
   fromDate?: string;
@@ -3742,11 +3809,20 @@ export type PostFinanceJournalsBodyLinesItem = {
 export type PostFinanceJournalsBody = {
   memo: string;
   postingDate?: string;
+  attachmentUrl?: string | null;
   lines: PostFinanceJournalsBodyLinesItem[];
 };
 
 export type PostFinanceJournalsIdReverseBody = {
   memo?: string;
+};
+
+export type ExportFinanceJournalsXlsxParams = {
+  fromDate?: string;
+  toDate?: string;
+  entityType?: string;
+  status?: string;
+  accountCode?: string;
 };
 
 export type GetFinanceTrialBalanceParams = {

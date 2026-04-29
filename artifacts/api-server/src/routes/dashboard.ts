@@ -120,13 +120,13 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
         db.select({ count: sql<number>`count(*)` }).from(approvalDecisionsTable)
           .where(and(eq(approvalDecisionsTable.tenantId, tenantId), eq(approvalDecisionsTable.decision, "approved"), gte(approvalDecisionsTable.decidedAt, startOfMonth())))),
       withTenantDb(tenantId, async (db) => {
-        const rows = await db.execute(sql`
+        const qr = await db.execute(sql`
           SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (ad.decided_at - po.created_at)) / 3600), 0) AS avg_hours
           FROM approval_decisions ad
           JOIN purchase_orders po ON po.id = ad.entity_id AND ad.entity_type = 'purchase_order' AND po.tenant_id = ${tenantId}
           WHERE ad.tenant_id = ${tenantId} AND ad.decided_at >= ${startOfMonth()}
-        `) as unknown as Array<{ avg_hours: string }>;
-        return Number(rows[0]?.avg_hours ?? 0);
+        `);
+        return Number((qr.rows[0] as { avg_hours: string } | undefined)?.avg_hours ?? 0);
       }),
       withTenantDb(tenantId, async (db) => {
         const [pos, reqs] = await Promise.all([
@@ -137,11 +137,22 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
         ]);
         return Number(pos[0]?.total ?? 0) + Number(reqs[0]?.total ?? 0);
       }),
-      withTenantDb(tenantId, (db) =>
-        db.select({ id: approvalDecisionsTable.id, entityType: approvalDecisionsTable.entityType, entityId: approvalDecisionsTable.entityId, decision: approvalDecisionsTable.decision, approverEmail: approvalDecisionsTable.approverEmail, comment: approvalDecisionsTable.comment, decidedAt: approvalDecisionsTable.decidedAt })
-          .from(approvalDecisionsTable)
-          .where(and(eq(approvalDecisionsTable.tenantId, tenantId)))
-          .orderBy(desc(approvalDecisionsTable.decidedAt)).limit(10)),
+      withTenantDb(tenantId, async (db) => {
+        const qr = await db.execute(sql`
+          SELECT
+            ad.id, ad.entity_type AS "entityType", ad.entity_id AS "entityId",
+            ad.decision, ad.approver_email AS "approverEmail", ad.decided_at AS "decidedAt",
+            COALESCE(po.code, pr.code) AS "code",
+            COALESCE(po.total::numeric, pr.total_estimated::numeric, 0) AS "amount"
+          FROM approval_decisions ad
+          LEFT JOIN purchase_orders po ON po.id = ad.entity_id AND ad.entity_type = 'purchase_order' AND po.tenant_id = ${tenantId}
+          LEFT JOIN purchase_requisitions pr ON pr.id = ad.entity_id AND ad.entity_type = 'purchase_requisition' AND pr.tenant_id = ${tenantId}
+          WHERE ad.tenant_id = ${tenantId}
+          ORDER BY ad.decided_at DESC
+          LIMIT 10
+        `);
+        return qr.rows as Array<{ entityType: string; entityId: number; decision: string; approverEmail: string | null; decidedAt: string; code: string | null; amount: number }>;
+      }),
     ]);
     const pending = [...pendingPos.map(p => ({ ...p, entityType: "purchase_order" })), ...pendingReqs.map(r => ({ ...r, entityType: "purchase_requisition" }))];
     res.json({
@@ -151,9 +162,15 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
         approvedMtd: Number(approvedMtdRows[0]?.count ?? 0),
         avgTurnaroundHours: Math.round(avgTurnaround * 10) / 10,
         valuePending: valuePendingRows,
+        recentDecisions: recentDecisions.map(d => ({
+          code: d.code ?? `#${d.entityId}`,
+          type: d.entityType,
+          amount: Number(d.amount ?? 0),
+          decision: d.decision,
+          decidedAt: d.decidedAt,
+        })),
       },
       pendingApprovalList: pending.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-      recentDecisions,
     });
     return;
   }

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { 
   useGetInventoryReportsStockValuation,
   useGetInventoryReportsMovementHistory,
@@ -13,6 +12,16 @@ import {
   useReportSalesByItem,
   useReportBackorders,
   useReportGoodsInTransit,
+  useReportGrn,
+  getReportGrnQueryKey,
+  getExportGrnCsvUrl,
+  getExportGrnPdfUrl,
+  useReportInvoiceAging,
+  getReportInvoiceAgingQueryKey,
+  getExportInvoiceAgingCsvUrl,
+  getExportInvoiceAgingPdfUrl,
+  getExportBackordersCsvUrl,
+  getExportBackordersPdfUrl,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -465,19 +474,15 @@ function GrnTab() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  const params = new URLSearchParams();
-  if (fromDate) params.set("from", fromDate);
-  if (toDate) params.set("to", toDate);
-  const queryString = params.toString();
+  const grnParams = {
+    ...(fromDate ? { from: fromDate } : {}),
+    ...(toDate ? { to: toDate } : {}),
+  };
 
-  const { data: rows = [], isLoading } = useQuery<GrnRow[]>({
-    queryKey: ["grn-report", fromDate, toDate],
-    queryFn: async () => {
-      const res = await fetch(`/api/procurement/reports/grn${queryString ? `?${queryString}` : ""}`);
-      if (!res.ok) throw new Error("Failed to load GRN report");
-      return res.json() as Promise<GrnRow[]>;
-    },
+  const { data, isLoading } = useReportGrn(grnParams, {
+    query: { queryKey: getReportGrnQueryKey(grnParams) },
   });
+  const rows = (data as unknown as GrnRow[] | undefined) ?? [];
 
   return (
     <div className="space-y-4">
@@ -488,9 +493,14 @@ function GrnTab() {
           <Label className="whitespace-nowrap">To</Label>
           <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
-        <Button variant="outline" onClick={() => exportCsv(`/api/procurement/reports/grn/export/csv${queryString ? `?${queryString}` : ""}`)}>
-          <Download className="h-4 w-4 mr-2" />Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => exportCsv(getExportGrnCsvUrl(grnParams))}>
+            <Download className="h-4 w-4 mr-2" />CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportCsv(getExportGrnPdfUrl(grnParams))}>
+            <Download className="h-4 w-4 mr-2" />PDF
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-md border">
@@ -688,9 +698,12 @@ function BackordersTab() {
   const totalBackorder = rows.reduce((s, r) => s + Number(r.backorderQty ?? 0), 0);
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={() => exportCsv("/api/sales/reports/backorders/export/csv")}>
-          <Download className="h-4 w-4 mr-2" />Export CSV
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => exportCsv(getExportBackordersCsvUrl())}>
+          <Download className="h-4 w-4 mr-2" />CSV
+        </Button>
+        <Button variant="outline" onClick={() => exportCsv(getExportBackordersPdfUrl())}>
+          <Download className="h-4 w-4 mr-2" />PDF
         </Button>
       </div>
       <div className="rounded-md border">
@@ -745,23 +758,22 @@ const AGING_BUCKETS: { key: string; label: string; color: string }[] = [
 ];
 
 function InvoiceAgingTab() {
-  const { data, isLoading } = useQuery<InvoiceAgingResponse>({
-    queryKey: ["invoice-aging"],
-    queryFn: async () => {
-      const res = await fetch("/api/sales/reports/invoice-aging");
-      if (!res.ok) throw new Error("Failed to load aging report");
-      return res.json() as Promise<InvoiceAgingResponse>;
-    },
+  const { data, isLoading } = useReportInvoiceAging({}, {
+    query: { queryKey: getReportInvoiceAgingQueryKey({}) },
   });
 
-  const invoices = data?.invoices ?? [];
-  const summary = data?.summary ?? {};
+  const agingData = data as unknown as InvoiceAgingResponse | undefined;
+  const invoices = agingData?.invoices ?? [];
+  const summary = agingData?.summary ?? {};
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={() => exportCsv("/api/sales/reports/invoice-aging/export/csv")}>
-          <Download className="h-4 w-4 mr-2" />Export CSV
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => exportCsv(getExportInvoiceAgingCsvUrl({}))}>
+          <Download className="h-4 w-4 mr-2" />CSV
+        </Button>
+        <Button variant="outline" onClick={() => exportCsv(getExportInvoiceAgingPdfUrl({}))}>
+          <Download className="h-4 w-4 mr-2" />PDF
         </Button>
       </div>
 
