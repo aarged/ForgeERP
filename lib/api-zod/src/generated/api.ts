@@ -1930,3 +1930,40 @@ export const ImportGlAccountTemplateResponse = zod.object({
   imported: zod.number().optional(),
   template: zod.string().optional(),
 });
+
+/**
+ * @summary Get audit trail for a master data record
+ */
+export const getMasterDataAuditTrailQueryLimitDefault = 50;
+
+export const GetMasterDataAuditTrailQueryParams = zod.object({
+  entityType: zod.enum([
+    "item",
+    "supplier",
+    "customer",
+    "warehouse",
+    "gl_account",
+  ]),
+  entityId: zod.coerce.string(),
+  limit: zod.coerce.number().default(getMasterDataAuditTrailQueryLimitDefault),
+});
+
+export const GetMasterDataAuditTrailResponse = zod.object({
+  entries: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        actorClerkId: zod.string().nullish(),
+        actorEmail: zod.string().nullish(),
+        action: zod.string().optional(),
+        entityType: zod.string().nullish(),
+        entityId: zod.string().nullish(),
+        oldValues: zod.unknown().nullish(),
+        newValues: zod.unknown().nullish(),
+        ipAddress: zod.string().nullish(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+});

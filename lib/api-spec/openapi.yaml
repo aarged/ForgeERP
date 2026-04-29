@@ -1815,6 +1815,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /master-data/audit-trail:
+    get:
+      operationId: getMasterDataAuditTrail
+      tags: [master-data]
+      summary: Get audit trail for a master data record
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: entityType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [item, supplier, customer, warehouse, gl_account]
+        - name: entityId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Audit trail entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditTrailResponse"
+        "400":
+          description: Missing parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     clerkAuth:
@@ -3217,3 +3255,26 @@ components:
       properties:
         imported: { type: integer }
         template: { type: string }
+
+    AuditTrailEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        actorClerkId: { type: string, nullable: true }
+        actorEmail: { type: string, nullable: true }
+        action: { type: string }
+        entityType: { type: string, nullable: true }
+        entityId: { type: string, nullable: true }
+        oldValues: { nullable: true }
+        newValues: { nullable: true }
+        ipAddress: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AuditTrailResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditTrailEntry"

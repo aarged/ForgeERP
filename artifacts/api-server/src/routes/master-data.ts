@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, ilike, or, isNull, desc, asc, sql, count } from "drizzle-orm";
+import type { AnyColumn } from "drizzle-orm";
 import {
   itemsTable,
   itemVariantsTable,
@@ -13,7 +14,11 @@ import {
   warehousesTable,
   warehouseLocationsTable,
   glAccountsTable,
+  auditLogsTable,
+  adminPool,
 } from "@workspace/db";
+import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
+import * as schema from "@workspace/db/schema";
 import { withTenantDb } from "@workspace/db/rls";
 import { requireAuth } from "../middlewares/requireAuth";
 import {
@@ -25,6 +30,8 @@ import { writeAuditLog } from "../lib/audit";
 import { logger } from "../lib/logger";
 import type { Request, Response } from "express";
 import { z } from "zod";
+
+const adminDb = drizzlePg(adminPool, { schema });
 
 const router: IRouter = Router();
 
@@ -79,11 +86,21 @@ router.get(
   ...tenantUserMiddleware,
   async (req: Request, res: Response): Promise<void> => {
     const { tenantId } = req as TenantRequest;
-    const { limit, offset, sortDir } = parsePagination(req.query);
+    const { limit, offset, sortField, sortDir } = parsePagination(req.query);
     const search = parseSearch(req.query);
     const category = req.query.category ? String(req.query.category) : undefined;
     const itemType = req.query.itemType ? String(req.query.itemType) : undefined;
     const activeOnly = req.query.activeOnly !== "false";
+
+    const itemsSortCols: Record<string, AnyColumn> = {
+      code: itemsTable.code,
+      name: itemsTable.name,
+      category: itemsTable.category,
+      unitCost: itemsTable.unitCost,
+      salesPrice: itemsTable.salesPrice,
+      createdAt: itemsTable.createdAt,
+    };
+    const sortCol = itemsSortCols[sortField] ?? itemsTable.name;
 
     const rows = await withTenantDb(tenantId, (db) => {
       let q = db
@@ -110,8 +127,8 @@ router.get(
         .offset(offset);
 
       return sortDir === "asc"
-        ? q.orderBy(asc(itemsTable.name))
-        : q.orderBy(desc(itemsTable.name));
+        ? q.orderBy(asc(sortCol))
+        : q.orderBy(desc(sortCol));
     });
 
     const hasMore = rows.length > limit;
@@ -1265,6 +1282,41 @@ router.post(
 
     await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "gl_account.template_imported", entityType: "gl_account", entityId: tenantId, newValues: { template, count: accounts.length } });
     res.json({ imported: Object.keys(codeToId).length, template });
+  },
+);
+
+// ════════════════════════════════════════════════════════════════════════════
+//  AUDIT TRAIL
+// ════════════════════════════════════════════════════════════════════════════
+
+router.get(
+  "/master-data/audit-trail",
+  ...tenantUserMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId } = req as TenantRequest;
+    const entityType = req.query.entityType ? String(req.query.entityType) : undefined;
+    const entityId = req.query.entityId ? String(req.query.entityId) : undefined;
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+
+    if (!entityType || !entityId) {
+      res.status(400).json({ error: "entityType and entityId are required" });
+      return;
+    }
+
+    const entries = await adminDb
+      .select()
+      .from(auditLogsTable)
+      .where(
+        and(
+          eq(auditLogsTable.tenantId, tenantId),
+          eq(auditLogsTable.entityType, entityType),
+          eq(auditLogsTable.entityId, entityId),
+        ),
+      )
+      .orderBy(desc(auditLogsTable.createdAt))
+      .limit(limit);
+
+    res.json({ entries });
   },
 );
 

@@ -1231,6 +1231,24 @@ export interface GlTemplateImportResult {
   template?: string;
 }
 
+export interface AuditTrailEntry {
+  id?: number;
+  tenantId?: number;
+  actorClerkId?: string | null;
+  actorEmail?: string | null;
+  action?: string;
+  entityType?: string | null;
+  entityId?: string | null;
+  oldValues?: unknown | null;
+  newValues?: unknown | null;
+  ipAddress?: string | null;
+  createdAt?: string;
+}
+
+export interface AuditTrailResponse {
+  entries?: AuditTrailEntry[];
+}
+
 export type UploadOnboardingCsvBodyCsvType =
   (typeof UploadOnboardingCsvBodyCsvType)[keyof typeof UploadOnboardingCsvBodyCsvType];
 
@@ -1295,3 +1313,20 @@ export type ListGlAccountsParams = {
   accountType?: string;
   activeOnly?: string;
 };
+
+export type GetMasterDataAuditTrailParams = {
+  entityType: GetMasterDataAuditTrailEntityType;
+  entityId: string;
+  limit?: number;
+};
+
+export type GetMasterDataAuditTrailEntityType =
+  (typeof GetMasterDataAuditTrailEntityType)[keyof typeof GetMasterDataAuditTrailEntityType];
+
+export const GetMasterDataAuditTrailEntityType = {
+  item: "item",
+  supplier: "supplier",
+  customer: "customer",
+  warehouse: "warehouse",
+  gl_account: "gl_account",
+} as const;

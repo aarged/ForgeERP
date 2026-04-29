@@ -23,6 +23,7 @@ import type {
   AdminTenantDetail,
   AdminTenantMember,
   AuditLog,
+  AuditTrailResponse,
   BulkImportResult,
   CompleteOnboardingInput,
   CreateContactBody,
@@ -40,6 +41,7 @@ import type {
   CustomerListResponse,
   ErrorResponse,
   GetAdminAuditLogsParams,
+  GetMasterDataAuditTrailParams,
   GlAccountListResponse,
   GlTemplateImportBody,
   GlTemplateImportResult,
@@ -5752,3 +5754,106 @@ export const useImportGlAccountTemplate = <
 > => {
   return useMutation(getImportGlAccountTemplateMutationOptions(options));
 };
+
+/**
+ * @summary Get audit trail for a master data record
+ */
+export const getGetMasterDataAuditTrailUrl = (
+  params: GetMasterDataAuditTrailParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/master-data/audit-trail?${stringifiedParams}`
+    : `/api/master-data/audit-trail`;
+};
+
+export const getMasterDataAuditTrail = async (
+  params: GetMasterDataAuditTrailParams,
+  options?: RequestInit,
+): Promise<AuditTrailResponse> => {
+  return customFetch<AuditTrailResponse>(
+    getGetMasterDataAuditTrailUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetMasterDataAuditTrailQueryKey = (
+  params?: GetMasterDataAuditTrailParams,
+) => {
+  return [`/api/master-data/audit-trail`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetMasterDataAuditTrailQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMasterDataAuditTrail>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetMasterDataAuditTrailParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMasterDataAuditTrail>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetMasterDataAuditTrailQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMasterDataAuditTrail>>
+  > = ({ signal }) =>
+    getMasterDataAuditTrail(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMasterDataAuditTrail>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMasterDataAuditTrailQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMasterDataAuditTrail>>
+>;
+export type GetMasterDataAuditTrailQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get audit trail for a master data record
+ */
+
+export function useGetMasterDataAuditTrail<
+  TData = Awaited<ReturnType<typeof getMasterDataAuditTrail>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetMasterDataAuditTrailParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMasterDataAuditTrail>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMasterDataAuditTrailQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
