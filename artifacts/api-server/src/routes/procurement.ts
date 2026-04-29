@@ -21,6 +21,7 @@ import {
   glAccountsTable,
   notificationsTable,
   tenantMembershipsTable,
+  backordersTable,
 } from "@workspace/db";
 import { withTenantDb, type TenantDb } from "@workspace/db/rls";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -2277,6 +2278,35 @@ router.post("/procurement/receipts/:id/confirm", ...tenantWriteMiddleware, async
 
     return { confirmed, backorderId };
   });
+
+  // Auto-release open sales backorders for items that just arrived via this PO receipt
+  try {
+    const receiptLines = await withTenantDb(tenantId, (db) =>
+      db.select({ itemId: receiptLinesTable.itemId, receivedQty: receiptLinesTable.receivedQty })
+        .from(receiptLinesTable)
+        .where(and(eq(receiptLinesTable.receiptId, id), eq(receiptLinesTable.tenantId, tenantId))));
+    const arrivedItemIds = [...new Set(receiptLines.filter((l) => l.itemId && Number(l.receivedQty) > 0).map((l) => l.itemId!))];
+    if (arrivedItemIds.length > 0) {
+      const openBackorders = await withTenantDb(tenantId, (db) =>
+        db.select().from(backordersTable)
+          .where(and(
+            eq(backordersTable.tenantId, tenantId),
+            eq(backordersTable.status, "open"),
+            isNull(backordersTable.deletedAt),
+            inArray(backordersTable.itemId, arrivedItemIds),
+          )));
+      for (const bo of openBackorders) {
+        const backorderQty = Number(bo.backorderQty);
+        if (backorderQty <= 0) continue;
+        const newReleasedQty = Number(bo.releasedQty) + backorderQty;
+        const newStatus = "released";
+        await withTenantDb(tenantId, (db) =>
+          db.update(backordersTable)
+            .set({ status: newStatus, releasedQty: newReleasedQty.toFixed(4), backorderQty: "0", releasedAt: new Date(), releasedByClerkId: clerkUserId, notes: (bo.notes ? bo.notes + "; " : "") + `Auto-released on PO receipt #${id}` })
+            .where(and(eq(backordersTable.id, bo.id), eq(backordersTable.tenantId, tenantId))));
+      }
+    }
+  } catch { /* non-blocking — backorder release failures must not roll back the confirmed receipt */ }
 
   // Audit logs outside the transaction (non-blocking; failure won't corrupt business state)
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_receipt.confirmed", entityType: "po_receipt", entityId: String(id) });

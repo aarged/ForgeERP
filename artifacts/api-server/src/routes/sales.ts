@@ -1405,8 +1405,11 @@ router.post("/sales/invoices", ...tenantWriteMiddleware, async (req: Request, re
     return invoiceId;
   });
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "invoice.created", entityType: "customer_invoice", entityId: String(result), newValues: { soId: parsed.data.soId } });
-  // Post GL: Dr AR / Cr Revenue + Cr Tax Liability
-  await withTenantDb(tenantId, (db) => createInvoiceGlPosting(db, tenantId, result, clerkUserId, userEmail));
+  // Post GL: Dr AR / Cr Revenue + Cr Tax Liability; persist glPostingId back to invoice for traceability
+  const posting = await withTenantDb(tenantId, (db) => createInvoiceGlPosting(db, tenantId, result, clerkUserId, userEmail));
+  if (posting?.id) {
+    await withTenantDb(tenantId, (db) => db.update(customerInvoicesTable).set({ glPostingId: posting.id }).where(eq(customerInvoicesTable.id, result)));
+  }
   const full = (await withTenantDb(tenantId, (db) => db.select().from(customerInvoicesTable).where(eq(customerInvoicesTable.id, result)).limit(1)))[0];
   const fullLines = await withTenantDb(tenantId, (db) => db.select().from(customerInvoiceLinesTable).where(eq(customerInvoiceLinesTable.invoiceId, result)));
   res.status(201).json({ ...full, lines: fullLines });
@@ -1465,6 +1468,26 @@ router.delete("/sales/invoices/:id", ...tenantWriteMiddleware, async (req: Reque
     // Recalculate SO status after reversals
     if (invoice.soId) {
       await recalcSoStatus(db, tenantId, invoice.soId);
+    }
+
+    // Reverse the original GL posting (Dr Revenue+Tax / Cr AR) to keep ledger balanced
+    if (invoice.glPostingId) {
+      const [origPosting] = await db.select().from(glPostingsTable)
+        .where(and(eq(glPostingsTable.id, invoice.glPostingId), eq(glPostingsTable.tenantId, tenantId))).limit(1);
+      if (origPosting && origPosting.lines) {
+        const origLines = origPosting.lines as Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }>;
+        const reversalLines = origLines.map((l) => ({ ...l, debit: l.credit, credit: l.debit, description: `VOID: ${l.description}` }));
+        const totalDebit = reversalLines.reduce((s, l) => s + Number(l.debit), 0);
+        const totalCredit = reversalLines.reduce((s, l) => s + Number(l.credit), 0);
+        await db.insert(glPostingsTable).values({
+          tenantId, code: `GL-VOID-INV-${Date.now()}`, entityType: "customer_invoice", entityId: id,
+          status: "posted", postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined, postedAt: new Date(),
+          lines: reversalLines, totalDebit: totalDebit.toFixed(2), totalCredit: totalCredit.toFixed(2),
+        } as typeof glPostingsTable.$inferInsert);
+        // Mark original posting as voided
+        await db.update(glPostingsTable).set({ status: "voided" } as Partial<typeof glPostingsTable.$inferInsert>)
+          .where(eq(glPostingsTable.id, invoice.glPostingId));
+      }
     }
   });
 
