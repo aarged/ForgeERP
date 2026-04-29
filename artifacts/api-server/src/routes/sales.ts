@@ -198,40 +198,82 @@ async function releaseAllocations(db: TenantDb, tenantId: number, soId: number) 
   }
 }
 
-/** Post despatch GL: Dr AR / Cr Revenue + Dr COGS / Cr Inventory */
+/**
+ * Post despatch GL: Dr COGS / Cr Inventory (inventory movement only).
+ * Revenue/AR recognition is deferred to invoice creation to correctly handle
+ * service items that may be invoiced without a physical despatch.
+ */
 async function createDespatchGlPosting(db: TenantDb, tenantId: number, despatchId: number, postedByClerkId: string, postedByEmail?: string) {
   const despatch = (await db.select().from(despatchesTable).where(and(eq(despatchesTable.id, despatchId), eq(despatchesTable.tenantId, tenantId))).limit(1))[0];
   if (!despatch) return null;
   const lines = await db.select().from(despatchLinesTable).where(and(eq(despatchLinesTable.despatchId, despatchId), eq(despatchLinesTable.tenantId, tenantId)));
 
-  const arAccount = await resolveGlAccount(tenantId, db, "1100", "Accounts Receivable");
-  const revenueAccount = await resolveGlAccount(tenantId, db, "4000", "Sales Revenue");
   const cogsAccount = await resolveGlAccount(tenantId, db, "5000", "Cost of Goods Sold");
   const inventoryAccount = await resolveGlAccount(tenantId, db, "1300", "Inventory");
 
-  let totalRevenue = 0; let totalCogs = 0;
+  let totalCogs = 0;
   const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
 
   for (const line of lines) {
     if (Number(line.quantity) <= 0) continue;
-    const lineRevenue = Number(line.quantity) * Number(line.unitPrice ?? 0);
     const lineCogs = Number(line.quantity) * Number(line.unitCost ?? 0);
-    totalRevenue += lineRevenue;
+    if (lineCogs <= 0) continue;
     totalCogs += lineCogs;
-    glLines.push({ ...revenueAccount, debit: 0, credit: lineRevenue, description: `Revenue: ${line.itemCode ?? line.itemName ?? "item"}` });
-    if (lineCogs > 0) {
-      glLines.push({ ...cogsAccount, debit: lineCogs, credit: 0, description: `COGS: ${line.itemCode ?? line.itemName ?? "item"}` });
-      glLines.push({ ...inventoryAccount, debit: 0, credit: lineCogs, description: `Inventory out: ${line.itemCode ?? line.itemName ?? "item"}` });
+    glLines.push({ ...cogsAccount, debit: lineCogs, credit: 0, description: `COGS: ${line.itemCode ?? line.itemName ?? "item"}` });
+    glLines.push({ ...inventoryAccount, debit: 0, credit: lineCogs, description: `Inventory out: ${line.itemCode ?? line.itemName ?? "item"}` });
+  }
+  if (totalCogs === 0) return null;
+
+  const [posting] = await db.insert(glPostingsTable).values({
+    tenantId, code: `GL-DSP-${Date.now()}`, entityType: "so_despatch", entityId: despatchId,
+    status: "posted", postedByClerkId, postedByEmail: postedByEmail ?? undefined, postedAt: new Date(),
+    lines: glLines, totalDebit: totalCogs.toFixed(2), totalCredit: totalCogs.toFixed(2),
+  } as typeof glPostingsTable.$inferInsert).returning();
+  return posting;
+}
+
+/**
+ * Post invoice GL: Dr AR / Cr Revenue + Cr Tax Liability (if any).
+ * Handles both stock-item lines (despatched first) and service/charge lines
+ * (invoiced directly without despatch).
+ */
+async function createInvoiceGlPosting(db: TenantDb, tenantId: number, invoiceId: number, postedByClerkId: string, postedByEmail?: string) {
+  const invoice = (await db.select().from(customerInvoicesTable).where(and(eq(customerInvoicesTable.id, invoiceId), eq(customerInvoicesTable.tenantId, tenantId))).limit(1))[0];
+  if (!invoice) return null;
+  const lines = await db.select().from(customerInvoiceLinesTable).where(and(eq(customerInvoiceLinesTable.invoiceId, invoiceId), eq(customerInvoiceLinesTable.tenantId, tenantId)));
+
+  const arAccount = await resolveGlAccount(tenantId, db, "1100", "Accounts Receivable");
+  const revenueAccount = await resolveGlAccount(tenantId, db, "4000", "Sales Revenue");
+  const taxLiabilityAccount = await resolveGlAccount(tenantId, db, "2200", "GST/Tax Collected");
+
+  let totalRevenue = 0; let totalTax = 0;
+  const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
+
+  for (const line of lines) {
+    const qty = Number(line.quantity ?? 0);
+    if (qty <= 0) continue;
+    const unitPrice = Number(line.unitPrice ?? 0);
+    const discountFactor = 1 - Number(line.discountPct ?? 0) / 100;
+    const taxRate = Number(line.taxPct ?? 0) / 100;
+    const lineBase = qty * unitPrice * discountFactor;
+    const lineTax = lineBase * taxRate;
+    totalRevenue += lineBase;
+    totalTax += lineTax;
+    glLines.push({ ...revenueAccount, debit: 0, credit: lineBase, description: `Revenue: ${line.itemCode ?? line.description ?? line.itemName ?? "item"}` });
+    if (lineTax > 0) {
+      glLines.push({ ...taxLiabilityAccount, debit: 0, credit: lineTax, description: `Tax: ${line.itemCode ?? line.description ?? line.itemName ?? "item"}` });
     }
   }
   if (totalRevenue === 0) return null;
-  glLines.unshift({ ...arAccount, debit: totalRevenue, credit: 0, description: `AR for despatch ${despatchId}` });
+
+  const totalAr = totalRevenue + totalTax;
+  glLines.unshift({ ...arAccount, debit: totalAr, credit: 0, description: `AR for invoice ${invoice.code ?? invoiceId}` });
 
   const totalDebit = glLines.reduce((s, l) => s + l.debit, 0);
   const totalCredit = glLines.reduce((s, l) => s + l.credit, 0);
 
   const [posting] = await db.insert(glPostingsTable).values({
-    tenantId, code: `GL-SO-${Date.now()}`, entityType: "so_despatch", entityId: despatchId,
+    tenantId, code: `GL-INV-${Date.now()}`, entityType: "customer_invoice", entityId: invoiceId,
     status: "posted", postedByClerkId, postedByEmail: postedByEmail ?? undefined, postedAt: new Date(),
     lines: glLines, totalDebit: totalDebit.toFixed(2), totalCredit: totalCredit.toFixed(2),
   } as typeof glPostingsTable.$inferInsert).returning();
@@ -1295,6 +1337,8 @@ router.post("/sales/invoices", ...tenantWriteMiddleware, async (req: Request, re
     return invoiceId;
   });
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "invoice.created", entityType: "customer_invoice", entityId: String(result), newValues: { soId: parsed.data.soId } });
+  // Post GL: Dr AR / Cr Revenue + Cr Tax Liability
+  await withTenantDb(tenantId, (db) => createInvoiceGlPosting(db, tenantId, result, clerkUserId, userEmail));
   const full = (await withTenantDb(tenantId, (db) => db.select().from(customerInvoicesTable).where(eq(customerInvoicesTable.id, result)).limit(1)))[0];
   const fullLines = await withTenantDb(tenantId, (db) => db.select().from(customerInvoiceLinesTable).where(eq(customerInvoiceLinesTable.invoiceId, result)));
   res.status(201).json({ ...full, lines: fullLines });
