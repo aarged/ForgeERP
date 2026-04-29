@@ -74,6 +74,10 @@ Connection URLs:
 - `GET /api/admin/tenants/:id/invoices` — List Stripe invoices for tenant
 - `GET /api/admin/audit-logs` — Global audit log
 
+### Onboarding (signed-in users without a tenant)
+- `POST /api/onboarding/create-tenant` — Creates a tenant for the current Clerk user, makes them `tenant_admin`, marks `onboardingCompletedAt`, and dispatches teammate invites via Clerk's Invitations API (real, branded email + tokenized accept link). Each invite is also persisted as a pending membership (clerkId = `pending:<email>`, isActive = "false") so admins can resend later. Per-invite delivery failures are logged and reported in the response (`invites[]`, `invitesSent`, `invitesAttempted`) but do not roll back tenant creation. Idempotent: returns 200 + `alreadyOnboarded: true` if the user already has a membership. Backfills `tenantId` into Clerk publicMetadata.
+- **Acceptance path**: `GET /api/auth/me` lazily claims any pending invites for the calling user. When an invitee finishes signing up via the Clerk invitation link, their first `/auth/me` call matches the `pending:<email>` placeholder to their real Clerk id, flips the membership to active, writes a `tenant.invite_accepted` audit log, and backfills their Clerk `publicMetadata.tenantId`.
+
 ### Stripe
 - `POST /api/webhooks/stripe` — Stripe webhook handler (raw body, before express.json)
 
@@ -98,6 +102,8 @@ Stripe is optional — all code is guarded by `isStripeConfigured()`. Set `STRIP
 - `/settings` — User profile settings (protected)
 - `/procurement`, `/sales`, `/inventory`, `/finance` — Module placeholders (protected)
 - `/super-admin` — Super admin dashboard: KPI bar, tenant table w/ search/filter, create tenant dialog, tenant detail sheet with Stripe invoices, row actions (suspend/unsuspend/plan change/delete)
+- `/pending` — Shown when a signed-in user has no tenant; CTA to start onboarding
+- `/onboarding` — 4-step self-serve wizard (Company → Plan → Invite → Review). Creates tenant + tenant_admin membership. Redirects to `/dashboard` when the user already has a tenant.
 
 ## Important Zod Notes
 
@@ -109,7 +115,7 @@ Stripe is optional — all code is guarded by `isStripeConfigured()`. Set `STRIP
 
 - [x] Task 1: Foundation, Auth & App Shell
 - [x] Task 2: Super-Admin Dashboard & Tenant Management
-- [ ] Task 3: Tenant Onboarding Wizard
+- [x] Task 3: Tenant Onboarding Wizard
 - [ ] Task 4: Master Data Management
 - [ ] Task 5: Procurement & Purchase Orders Module
 - [ ] Task 6: Sales Orders Module

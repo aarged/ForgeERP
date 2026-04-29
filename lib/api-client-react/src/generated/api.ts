@@ -29,6 +29,8 @@ import type {
   GetAdminAuditLogsParams,
   HealthStatus,
   InvoiceList,
+  OnboardingResult,
+  OnboardingTenantInput,
   StripeSyncResult,
   SubscriptionResult,
   Tenant,
@@ -1189,6 +1191,95 @@ export function useGetTenantInvoices<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Creates a new tenant for the authenticated user, makes them the tenant_admin, marks onboarding complete, and optionally records invitations for additional teammates. If the user already has an active membership, returns the existing tenant unchanged.
+
+ * @summary Create a tenant via the self-serve onboarding wizard
+ */
+export const getCreateOnboardingTenantUrl = () => {
+  return `/api/onboarding/create-tenant`;
+};
+
+export const createOnboardingTenant = async (
+  onboardingTenantInput: OnboardingTenantInput,
+  options?: RequestInit,
+): Promise<OnboardingResult> => {
+  return customFetch<OnboardingResult>(getCreateOnboardingTenantUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(onboardingTenantInput),
+  });
+};
+
+export const getCreateOnboardingTenantMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createOnboardingTenant>>,
+    TError,
+    { data: BodyType<OnboardingTenantInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createOnboardingTenant>>,
+  TError,
+  { data: BodyType<OnboardingTenantInput> },
+  TContext
+> => {
+  const mutationKey = ["createOnboardingTenant"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createOnboardingTenant>>,
+    { data: BodyType<OnboardingTenantInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createOnboardingTenant(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateOnboardingTenantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createOnboardingTenant>>
+>;
+export type CreateOnboardingTenantMutationBody =
+  BodyType<OnboardingTenantInput>;
+export type CreateOnboardingTenantMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a tenant via the self-serve onboarding wizard
+ */
+export const useCreateOnboardingTenant = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createOnboardingTenant>>,
+    TError,
+    { data: BodyType<OnboardingTenantInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createOnboardingTenant>>,
+  TError,
+  { data: BodyType<OnboardingTenantInput> },
+  TContext
+> => {
+  return useMutation(getCreateOnboardingTenantMutationOptions(options));
+};
 
 /**
  * Returns up to 100 most recent audit log entries, optionally filtered by tenant

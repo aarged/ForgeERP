@@ -16,6 +16,8 @@ tags:
     description: Tenant management
   - name: admin
     description: Super-admin platform operations
+  - name: onboarding
+    description: Self-serve tenant onboarding for new sign-ups
 paths:
   /healthz:
     get:
@@ -482,6 +484,50 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /onboarding/create-tenant:
+    post:
+      operationId: createOnboardingTenant
+      tags: [onboarding]
+      summary: Create a tenant via the self-serve onboarding wizard
+      description: >
+        Creates a new tenant for the authenticated user, makes them the
+        tenant_admin, marks onboarding complete, and optionally records
+        invitations for additional teammates. If the user already has an
+        active membership, returns the existing tenant unchanged.
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingTenantInput"
+      responses:
+        "201":
+          description: Tenant created and onboarding completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingResult"
+        "200":
+          description: User already had a tenant; returns existing one
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
           content:
             application/json:
               schema:
@@ -966,3 +1012,109 @@ components:
         - id
         - action
         - createdAt
+
+    OnboardingInvite:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [tenant_admin, purchaser, warehouse, approver, accountant, viewer]
+      required:
+        - email
+        - role
+
+    OnboardingTenantInput:
+      type: object
+      properties:
+        companyName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        industryType:
+          type: string
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        timezone:
+          type: string
+        planTier:
+          type: string
+          enum: [starter, growth, enterprise]
+        invites:
+          type: array
+          maxItems: 25
+          items:
+            $ref: "#/components/schemas/OnboardingInvite"
+      required:
+        - companyName
+
+    OnboardingInviteResult:
+      type: object
+      description: Per-invite dispatch outcome from the onboarding wizard.
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [tenant_admin, purchaser, warehouse, approver, accountant, viewer]
+        delivered:
+          type: boolean
+          description: True if the email was successfully handed off to Clerk's invitation API.
+        reason:
+          type: string
+          description: Failure reason when delivered is false.
+        clerkInvitationId:
+          type: string
+          description: Clerk invitation id, if delivery succeeded.
+      required:
+        - email
+        - role
+        - delivered
+
+    OnboardingResult:
+      type: object
+      properties:
+        tenantId:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        planTier:
+          type: string
+          enum: [starter, growth, enterprise]
+        status:
+          type: string
+          enum: [active, suspended, trial, pending]
+        role:
+          type: string
+        onboardingCompletedAt:
+          type: string
+        invitesSent:
+          type: integer
+          description: Number of invitations successfully dispatched via Clerk
+        invitesAttempted:
+          type: integer
+          description: Number of invitations attempted (may differ from invitesSent on partial failure)
+        invites:
+          type: array
+          description: Per-invite dispatch results
+          items:
+            $ref: "#/components/schemas/OnboardingInviteResult"
+        alreadyOnboarded:
+          type: boolean
+          description: True when the user already had a tenant; no new tenant was created
+      required:
+        - tenantId
+        - slug
+        - name
+        - planTier
+        - status
+        - role
+        - invitesSent
+        - alreadyOnboarded

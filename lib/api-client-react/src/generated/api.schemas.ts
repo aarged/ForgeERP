@@ -388,6 +388,113 @@ export interface AuditLog {
   createdAt: string;
 }
 
+export type OnboardingInviteRole =
+  (typeof OnboardingInviteRole)[keyof typeof OnboardingInviteRole];
+
+export const OnboardingInviteRole = {
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+export interface OnboardingInvite {
+  email: string;
+  role: OnboardingInviteRole;
+}
+
+export type OnboardingTenantInputPlanTier =
+  (typeof OnboardingTenantInputPlanTier)[keyof typeof OnboardingTenantInputPlanTier];
+
+export const OnboardingTenantInputPlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+export interface OnboardingTenantInput {
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  companyName: string;
+  industryType?: string;
+  /**
+   * @minLength 3
+   * @maxLength 3
+   */
+  currency?: string;
+  timezone?: string;
+  planTier?: OnboardingTenantInputPlanTier;
+  /** @maxItems 25 */
+  invites?: OnboardingInvite[];
+}
+
+export type OnboardingInviteResultRole =
+  (typeof OnboardingInviteResultRole)[keyof typeof OnboardingInviteResultRole];
+
+export const OnboardingInviteResultRole = {
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+/**
+ * Per-invite dispatch outcome from the onboarding wizard.
+ */
+export interface OnboardingInviteResult {
+  email: string;
+  role: OnboardingInviteResultRole;
+  /** True if the email was successfully handed off to Clerk's invitation API. */
+  delivered: boolean;
+  /** Failure reason when delivered is false. */
+  reason?: string;
+  /** Clerk invitation id, if delivery succeeded. */
+  clerkInvitationId?: string;
+}
+
+export type OnboardingResultPlanTier =
+  (typeof OnboardingResultPlanTier)[keyof typeof OnboardingResultPlanTier];
+
+export const OnboardingResultPlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+export type OnboardingResultStatus =
+  (typeof OnboardingResultStatus)[keyof typeof OnboardingResultStatus];
+
+export const OnboardingResultStatus = {
+  active: "active",
+  suspended: "suspended",
+  trial: "trial",
+  pending: "pending",
+} as const;
+
+export interface OnboardingResult {
+  tenantId: number;
+  slug: string;
+  name: string;
+  planTier: OnboardingResultPlanTier;
+  status: OnboardingResultStatus;
+  role: string;
+  onboardingCompletedAt?: string;
+  /** Number of invitations successfully dispatched via Clerk */
+  invitesSent: number;
+  /** Number of invitations attempted (may differ from invitesSent on partial failure) */
+  invitesAttempted?: number;
+  /** Per-invite dispatch results */
+  invites?: OnboardingInviteResult[];
+  /** True when the user already had a tenant; no new tenant was created */
+  alreadyOnboarded: boolean;
+}
+
 export type GetAdminAuditLogsParams = {
   tenantId?: number;
 };

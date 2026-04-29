@@ -307,6 +307,104 @@ export const GetTenantInvoicesResponse = zod.object({
 });
 
 /**
+ * Creates a new tenant for the authenticated user, makes them the tenant_admin, marks onboarding complete, and optionally records invitations for additional teammates. If the user already has an active membership, returns the existing tenant unchanged.
+
+ * @summary Create a tenant via the self-serve onboarding wizard
+ */
+export const createOnboardingTenantBodyCompanyNameMax = 200;
+
+export const createOnboardingTenantBodyCurrencyMin = 3;
+export const createOnboardingTenantBodyCurrencyMax = 3;
+
+export const createOnboardingTenantBodyInvitesMax = 25;
+
+export const CreateOnboardingTenantBody = zod.object({
+  companyName: zod
+    .string()
+    .min(1)
+    .max(createOnboardingTenantBodyCompanyNameMax),
+  industryType: zod.string().optional(),
+  currency: zod
+    .string()
+    .min(createOnboardingTenantBodyCurrencyMin)
+    .max(createOnboardingTenantBodyCurrencyMax)
+    .optional(),
+  timezone: zod.string().optional(),
+  planTier: zod.enum(["starter", "growth", "enterprise"]).optional(),
+  invites: zod
+    .array(
+      zod.object({
+        email: zod.string().email(),
+        role: zod.enum([
+          "tenant_admin",
+          "purchaser",
+          "warehouse",
+          "approver",
+          "accountant",
+          "viewer",
+        ]),
+      }),
+    )
+    .max(createOnboardingTenantBodyInvitesMax)
+    .optional(),
+});
+
+export const CreateOnboardingTenantResponse = zod.object({
+  tenantId: zod.number(),
+  slug: zod.string(),
+  name: zod.string(),
+  planTier: zod.enum(["starter", "growth", "enterprise"]),
+  status: zod.enum(["active", "suspended", "trial", "pending"]),
+  role: zod.string(),
+  onboardingCompletedAt: zod.string().optional(),
+  invitesSent: zod
+    .number()
+    .describe("Number of invitations successfully dispatched via Clerk"),
+  invitesAttempted: zod
+    .number()
+    .optional()
+    .describe(
+      "Number of invitations attempted (may differ from invitesSent on partial failure)",
+    ),
+  invites: zod
+    .array(
+      zod
+        .object({
+          email: zod.string().email(),
+          role: zod.enum([
+            "tenant_admin",
+            "purchaser",
+            "warehouse",
+            "approver",
+            "accountant",
+            "viewer",
+          ]),
+          delivered: zod
+            .boolean()
+            .describe(
+              "True if the email was successfully handed off to Clerk's invitation API.",
+            ),
+          reason: zod
+            .string()
+            .optional()
+            .describe("Failure reason when delivered is false."),
+          clerkInvitationId: zod
+            .string()
+            .optional()
+            .describe("Clerk invitation id, if delivery succeeded."),
+        })
+        .describe("Per-invite dispatch outcome from the onboarding wizard."),
+    )
+    .optional()
+    .describe("Per-invite dispatch results"),
+  alreadyOnboarded: zod
+    .boolean()
+    .describe(
+      "True when the user already had a tenant; no new tenant was created",
+    ),
+});
+
+/**
  * Returns up to 100 most recent audit log entries, optionally filtered by tenant
  * @summary Get audit logs
  */

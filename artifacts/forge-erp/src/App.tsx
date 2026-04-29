@@ -12,6 +12,7 @@ import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-cli
 import { AppShell } from "@/components/layout/app-shell";
 import LandingPage from "@/pages/landing";
 import PendingPage from "@/pages/pending";
+import OnboardingPage from "@/pages/onboarding";
 import Dashboard from "@/pages/dashboard";
 import Settings from "@/pages/settings";
 import Procurement from "@/pages/procurement";
@@ -150,6 +151,32 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 }
 
 /**
+ * OnboardingRoute is for signed-in users who do not yet have a tenant
+ * membership. Users that already belong to a tenant are redirected to
+ * /dashboard so they don't accidentally re-onboard.
+ */
+function OnboardingRoute({ component: Component }: { component: React.ComponentType }) {
+  const { data: currentUser, isLoading } = useGetCurrentUser({
+    query: { queryKey: getGetCurrentUserQueryKey() },
+  });
+
+  return (
+    <>
+      <Show when="signed-out">
+        <Redirect to="/" />
+      </Show>
+      <Show when="signed-in">
+        {isLoading ? null : currentUser?.role ? (
+          <Redirect to="/dashboard" />
+        ) : (
+          <Component />
+        )}
+      </Show>
+    </>
+  );
+}
+
+/**
  * SuperAdminRoute only renders for users with the `super_admin` role.
  * All other signed-in users are redirected to /dashboard.
  */
@@ -240,6 +267,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/inventory"><ProtectedRoute component={Inventory} /></Route>
           <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
           <Route path="/super-admin"><SuperAdminRoute component={SuperAdmin} /></Route>
+          <Route path="/onboarding"><OnboardingRoute component={OnboardingPage} /></Route>
           <Route path="/pending"><PendingPage /></Route>
           <Route component={NotFound} />
         </Switch>
