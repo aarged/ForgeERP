@@ -909,12 +909,11 @@ function TenantRowActions({
 
   const isSuspended = tenant.status === "suspended";
 
-  const nextPlan =
-    tenant.planTier === "starter"
-      ? "growth"
-      : tenant.planTier === "growth"
-        ? "enterprise"
-        : "starter";
+  const allPlans: Array<"starter" | "growth" | "enterprise"> = [
+    "starter",
+    "growth",
+    "enterprise",
+  ];
 
   return (
     <>
@@ -924,7 +923,7 @@ function TenantRowActions({
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuContent align="end" className="w-52">
           <DropdownMenuItem onClick={onViewDetail}>
             <Building2 className="mr-2 h-4 w-4" />
             View details
@@ -947,12 +946,23 @@ function TenantRowActions({
               </>
             )}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setConfirm({ kind: "plan", plan: nextPlan as typeof nextPlan & ("starter" | "growth" | "enterprise") })}
-          >
-            <ArrowUpDown className="mr-2 h-4 w-4" />
-            Switch to {nextPlan}
-          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+            Change plan
+          </div>
+          {allPlans.map((p) => (
+            <DropdownMenuItem
+              key={p}
+              disabled={p === tenant.planTier}
+              onClick={() => setConfirm({ kind: "plan", plan: p })}
+            >
+              <ArrowUpDown className="mr-2 h-4 w-4" />
+              <span className="capitalize">{p}</span>
+              {p === tenant.planTier && (
+                <span className="ml-auto text-xs text-muted-foreground">current</span>
+              )}
+            </DropdownMenuItem>
+          ))}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
