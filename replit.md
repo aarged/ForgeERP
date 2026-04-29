@@ -32,6 +32,12 @@ A modern, multi-tenant SaaS ERP platform for mid-market businesses. Covers purch
 - `users` — User profile cache
 - `audit_logs` — Full audit trail for all actions
 - `roles`, `permissions`, `role_permissions` — RBAC tables
+- `onboarding_sessions` — Progress persistence for the 5-step wizard, keyed by clerkUserId (NOT tenantId — user has no tenant until complete)
+- `warehouses` — Per-tenant warehouse/location records (name, code, address, isDefault)
+- `departments` — Per-tenant department records (name, code)
+- `items` — Inventory items/products per tenant (code, name, description, UOM, unitCost, category)
+- `suppliers` — Supplier master records per tenant (code, name, email, phone, paymentTerms, currency)
+- `customers` — Customer master records per tenant (code, name, email, phone, creditLimit, paymentTerms, currency)
 
 ## Database Roles & RLS
 
@@ -77,7 +83,14 @@ Connection URLs:
 - `GET /api/admin/audit-logs` — Global audit log
 
 ### Onboarding (signed-in users without a tenant)
-- `POST /api/onboarding/create-tenant` — Creates a tenant for the current Clerk user, makes them `tenant_admin`, marks `onboardingCompletedAt`, and dispatches teammate invites via Clerk's Invitations API (real, branded email + tokenized accept link). Each invite is also persisted as a pending membership (clerkId = `pending:<email>`, isActive = "false") so admins can resend later. Per-invite delivery failures are logged and reported in the response (`invites[]`, `invitesSent`, `invitesAttempted`) but do not roll back tenant creation. Idempotent: returns 200 + `alreadyOnboarded: true` if the user already has a membership. Backfills `tenantId` into Clerk publicMetadata.
+- `GET /api/onboarding/session` — Get current user's onboarding session progress (keyed by clerkUserId, persisted in `onboarding_sessions` table)
+- `PUT /api/onboarding/session` — Save/update onboarding session progress (currentStep + data JSON)
+- `POST /api/onboarding/validate-abn` — Validate a tax ID/ABN format for AU/US/UK
+- `POST /api/onboarding/upload-csv` — Multipart CSV upload for items/suppliers/customers (multer)
+- `POST /api/onboarding/load-sample` — Return built-in sample data (items/suppliers/customers)
+- `POST /api/onboarding/setup-payment` — Create Stripe SetupIntent for card collection (503 if Stripe not configured)
+- `POST /api/onboarding/complete` — Full tenant creation with warehouses/departments/master data bulk insert/invites. Creates tenant with status="active".
+- `POST /api/onboarding/create-tenant` — Legacy backward-compat endpoint. Creates a tenant for the current Clerk user, makes them `tenant_admin`, marks `onboardingCompletedAt`, and dispatches teammate invites via Clerk's Invitations API (real, branded email + tokenized accept link). Each invite is also persisted as a pending membership (clerkId = `pending:<email>`, isActive = "false") so admins can resend later. Per-invite delivery failures are logged and reported in the response (`invites[]`, `invitesSent`, `invitesAttempted`) but do not roll back tenant creation. Idempotent: returns 200 + `alreadyOnboarded: true` if the user already has a membership. Backfills `tenantId` into Clerk publicMetadata.
 - **Acceptance path**: `GET /api/auth/me` lazily claims any pending invites for the calling user. When an invitee finishes signing up via the Clerk invitation link, their first `/auth/me` call matches the `pending:<email>` placeholder to their real Clerk id, flips the membership to active, writes a `tenant.invite_accepted` audit log, and backfills their Clerk `publicMetadata.tenantId`.
 
 ### Stripe
@@ -105,7 +118,7 @@ Stripe is optional — all code is guarded by `isStripeConfigured()`. Set `STRIP
 - `/procurement`, `/sales`, `/inventory`, `/finance` — Module placeholders (protected)
 - `/super-admin` — Super admin dashboard: KPI bar, tenant table w/ search/filter, create tenant dialog, tenant detail sheet with Stripe invoices, row actions (suspend/unsuspend/plan change/delete)
 - `/pending` — Shown when a signed-in user has no tenant; CTA to start onboarding
-- `/onboarding` — 4-step self-serve wizard (Company → Plan → Invite → Review). Creates tenant + tenant_admin membership. Redirects to `/dashboard` when the user already has a tenant.
+- `/onboarding` — 5-step self-serve wizard (Company Details → Company Structure → Master Data Import → Plan & Payment → Team Setup). Features: progress persistence via session API, ABN/tax ID validation, CSV import with template download, sample data loading, Stripe Elements (graceful fallback), warehouse/department setup with GL template, up to 25 team invites, Quick Start Tour on completion. Redirects to `/dashboard` when the user already has a tenant.
 
 ## Important Zod Notes
 

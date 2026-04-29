@@ -422,6 +422,282 @@ export const CreateOnboardingTenantResponse = zod.object({
 });
 
 /**
+ * @summary Get the current user's onboarding session progress
+ */
+export const getOnboardingSessionResponseCurrentStepMax = 5;
+
+export const GetOnboardingSessionResponse = zod.object({
+  currentStep: zod
+    .number()
+    .min(1)
+    .max(getOnboardingSessionResponseCurrentStepMax),
+  data: zod.record(zod.string(), zod.unknown()),
+  completedAt: zod.coerce.date().nullish(),
+});
+
+/**
+ * @summary Save or update the current user's onboarding session progress
+ */
+export const updateOnboardingSessionBodyCurrentStepMax = 5;
+
+export const UpdateOnboardingSessionBody = zod.object({
+  currentStep: zod
+    .number()
+    .min(1)
+    .max(updateOnboardingSessionBodyCurrentStepMax)
+    .optional(),
+  data: zod.record(zod.string(), zod.unknown()).optional(),
+});
+
+export const updateOnboardingSessionResponseCurrentStepMax = 5;
+
+export const UpdateOnboardingSessionResponse = zod.object({
+  currentStep: zod
+    .number()
+    .min(1)
+    .max(updateOnboardingSessionResponseCurrentStepMax),
+  data: zod.record(zod.string(), zod.unknown()),
+  completedAt: zod.coerce.date().nullish(),
+});
+
+/**
+ * @summary Validate a tax ID / ABN format
+ */
+export const ValidateTaxIdBody = zod.object({
+  taxId: zod.string(),
+  country: zod.string().optional(),
+});
+
+export const ValidateTaxIdResponse = zod.object({
+  valid: zod.boolean(),
+  message: zod.string(),
+  taxId: zod.string(),
+});
+
+/**
+ * @summary Upload and parse a CSV file for master data import
+ */
+export const UploadOnboardingCsvBody = zod.object({
+  file: zod.instanceof(File).optional(),
+  csvType: zod.enum(["items", "suppliers", "customers"]).optional(),
+});
+
+export const UploadOnboardingCsvResponse = zod.object({
+  csvType: zod.enum(["items", "suppliers", "customers"]),
+  rows: zod.array(zod.record(zod.string(), zod.string())),
+  rowCount: zod.number(),
+  errors: zod.array(zod.string()),
+  hasErrors: zod.boolean(),
+});
+
+/**
+ * @summary Load built-in sample data for master data import
+ */
+export const LoadSampleDataResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      code: zod.string(),
+      name: zod.string(),
+      description: zod.string().optional(),
+      unitOfMeasure: zod.string().optional(),
+      unitCost: zod.string().optional(),
+      category: zod.string().optional(),
+    }),
+  ),
+  suppliers: zod.array(
+    zod.object({
+      code: zod.string(),
+      name: zod.string(),
+      email: zod.string().optional(),
+      phone: zod.string().optional(),
+      contactName: zod.string().optional(),
+      paymentTerms: zod.string().optional(),
+      currency: zod.string().optional(),
+    }),
+  ),
+  customers: zod.array(
+    zod.object({
+      code: zod.string(),
+      name: zod.string(),
+      email: zod.string().optional(),
+      phone: zod.string().optional(),
+      contactName: zod.string().optional(),
+      creditLimit: zod.string().optional(),
+      paymentTerms: zod.string().optional(),
+      currency: zod.string().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Create a Stripe SetupIntent for collecting payment details
+ */
+export const SetupPaymentIntentResponse = zod.object({
+  clientSecret: zod.string().nullable(),
+});
+
+/**
+ * @summary Complete onboarding — creates tenant, warehouses, departments, imports master data, sends invites
+ */
+export const completeOnboardingBodyStep1CompanyNameMax = 200;
+
+export const completeOnboardingBodyStep1FiscalYearStartMax = 12;
+
+export const completeOnboardingBodyStep1CurrencyMin = 3;
+export const completeOnboardingBodyStep1CurrencyMax = 3;
+
+export const completeOnboardingBodyStep5InvitesMax = 25;
+
+export const CompleteOnboardingBody = zod.object({
+  step1: zod.object({
+    companyName: zod
+      .string()
+      .min(1)
+      .max(completeOnboardingBodyStep1CompanyNameMax),
+    tradingName: zod.string().optional(),
+    legalName: zod.string().optional(),
+    taxId: zod.string().optional(),
+    phone: zod.string().optional(),
+    email: zod.string().email().optional(),
+    website: zod.string().optional(),
+    addressLine1: zod.string().optional(),
+    addressLine2: zod.string().optional(),
+    city: zod.string().optional(),
+    state: zod.string().optional(),
+    postalCode: zod.string().optional(),
+    country: zod.string().optional(),
+    fiscalYearStart: zod
+      .number()
+      .min(1)
+      .max(completeOnboardingBodyStep1FiscalYearStartMax)
+      .optional(),
+    currency: zod
+      .string()
+      .min(completeOnboardingBodyStep1CurrencyMin)
+      .max(completeOnboardingBodyStep1CurrencyMax)
+      .optional(),
+    timezone: zod.string().optional(),
+    industryType: zod.string().optional(),
+  }),
+  step2: zod
+    .object({
+      warehouses: zod
+        .array(
+          zod.object({
+            name: zod.string().min(1),
+            code: zod.string().optional(),
+            addressLine1: zod.string().optional(),
+            addressLine2: zod.string().optional(),
+            city: zod.string().optional(),
+            state: zod.string().optional(),
+            postalCode: zod.string().optional(),
+            country: zod.string().optional(),
+            isDefault: zod.boolean().optional(),
+          }),
+        )
+        .optional(),
+      departments: zod
+        .array(
+          zod.object({
+            name: zod.string().min(1),
+            code: zod.string().optional(),
+          }),
+        )
+        .optional(),
+      glTemplate: zod.enum(["simple", "standard", "advanced"]).optional(),
+    })
+    .optional(),
+  step3: zod
+    .object({
+      items: zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+      suppliers: zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+      customers: zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+    })
+    .optional(),
+  step4: zod
+    .object({
+      planTier: zod.enum(["starter", "growth", "enterprise"]).optional(),
+      stripePaymentMethodId: zod.string().optional(),
+    })
+    .optional(),
+  step5: zod
+    .object({
+      invites: zod
+        .array(
+          zod.object({
+            email: zod.string().email(),
+            role: zod.enum([
+              "tenant_admin",
+              "purchaser",
+              "warehouse",
+              "approver",
+              "accountant",
+              "viewer",
+            ]),
+          }),
+        )
+        .max(completeOnboardingBodyStep5InvitesMax)
+        .optional(),
+    })
+    .optional(),
+});
+
+export const CompleteOnboardingResponse = zod.object({
+  tenantId: zod.number(),
+  slug: zod.string(),
+  name: zod.string(),
+  planTier: zod.enum(["starter", "growth", "enterprise"]),
+  status: zod.enum(["active", "suspended", "trial", "pending"]),
+  role: zod.string(),
+  onboardingCompletedAt: zod.string().optional(),
+  invitesSent: zod
+    .number()
+    .describe("Number of invitations successfully dispatched via Clerk"),
+  invitesAttempted: zod
+    .number()
+    .optional()
+    .describe(
+      "Number of invitations attempted (may differ from invitesSent on partial failure)",
+    ),
+  invites: zod
+    .array(
+      zod
+        .object({
+          email: zod.string().email(),
+          role: zod.enum([
+            "tenant_admin",
+            "purchaser",
+            "warehouse",
+            "approver",
+            "accountant",
+            "viewer",
+          ]),
+          delivered: zod
+            .boolean()
+            .describe(
+              "True if the email was successfully handed off to Clerk's invitation API.",
+            ),
+          reason: zod
+            .string()
+            .optional()
+            .describe("Failure reason when delivered is false."),
+          clerkInvitationId: zod
+            .string()
+            .optional()
+            .describe("Clerk invitation id, if delivery succeeded."),
+        })
+        .describe("Per-invite dispatch outcome from the onboarding wizard."),
+    )
+    .optional()
+    .describe("Per-invite dispatch results"),
+  alreadyOnboarded: zod
+    .boolean()
+    .describe(
+      "True when the user already had a tenant; no new tenant was created",
+    ),
+});
+
+/**
  * @summary List members of a tenant
  */
 export const ListAdminTenantMembersParams = zod.object({

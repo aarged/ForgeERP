@@ -23,15 +23,21 @@ import type {
   AdminTenantDetail,
   AdminTenantMember,
   AuditLog,
+  CompleteOnboardingInput,
   CreateSubscriptionBody,
   CreateTenantBody,
+  CsvUploadResult,
   CurrentUser,
   ErrorResponse,
   GetAdminAuditLogsParams,
   HealthStatus,
   InvoiceList,
   OnboardingResult,
+  OnboardingSession,
+  OnboardingSessionUpdate,
   OnboardingTenantInput,
+  SampleDataResult,
+  SetupPaymentResult,
   StripeSyncResult,
   SubscriptionResult,
   Tenant,
@@ -39,6 +45,9 @@ import type {
   UpdateMemberBody,
   UpdateTenantBody,
   UpdateUserBody,
+  UploadOnboardingCsvBody,
+  ValidateTaxIdInput,
+  ValidateTaxIdResult,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -1281,6 +1290,595 @@ export const useCreateOnboardingTenant = <
   TContext
 > => {
   return useMutation(getCreateOnboardingTenantMutationOptions(options));
+};
+
+/**
+ * @summary Get the current user's onboarding session progress
+ */
+export const getGetOnboardingSessionUrl = () => {
+  return `/api/onboarding/session`;
+};
+
+export const getOnboardingSession = async (
+  options?: RequestInit,
+): Promise<OnboardingSession> => {
+  return customFetch<OnboardingSession>(getGetOnboardingSessionUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetOnboardingSessionQueryKey = () => {
+  return [`/api/onboarding/session`] as const;
+};
+
+export const getGetOnboardingSessionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getOnboardingSession>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getOnboardingSession>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetOnboardingSessionQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getOnboardingSession>>
+  > = ({ signal }) => getOnboardingSession({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getOnboardingSession>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetOnboardingSessionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getOnboardingSession>>
+>;
+export type GetOnboardingSessionQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get the current user's onboarding session progress
+ */
+
+export function useGetOnboardingSession<
+  TData = Awaited<ReturnType<typeof getOnboardingSession>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getOnboardingSession>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetOnboardingSessionQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save or update the current user's onboarding session progress
+ */
+export const getUpdateOnboardingSessionUrl = () => {
+  return `/api/onboarding/session`;
+};
+
+export const updateOnboardingSession = async (
+  onboardingSessionUpdate: OnboardingSessionUpdate,
+  options?: RequestInit,
+): Promise<OnboardingSession> => {
+  return customFetch<OnboardingSession>(getUpdateOnboardingSessionUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(onboardingSessionUpdate),
+  });
+};
+
+export const getUpdateOnboardingSessionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateOnboardingSession>>,
+    TError,
+    { data: BodyType<OnboardingSessionUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateOnboardingSession>>,
+  TError,
+  { data: BodyType<OnboardingSessionUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateOnboardingSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateOnboardingSession>>,
+    { data: BodyType<OnboardingSessionUpdate> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return updateOnboardingSession(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateOnboardingSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateOnboardingSession>>
+>;
+export type UpdateOnboardingSessionMutationBody =
+  BodyType<OnboardingSessionUpdate>;
+export type UpdateOnboardingSessionMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Save or update the current user's onboarding session progress
+ */
+export const useUpdateOnboardingSession = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateOnboardingSession>>,
+    TError,
+    { data: BodyType<OnboardingSessionUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateOnboardingSession>>,
+  TError,
+  { data: BodyType<OnboardingSessionUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateOnboardingSessionMutationOptions(options));
+};
+
+/**
+ * @summary Validate a tax ID / ABN format
+ */
+export const getValidateTaxIdUrl = () => {
+  return `/api/onboarding/validate-abn`;
+};
+
+export const validateTaxId = async (
+  validateTaxIdInput: ValidateTaxIdInput,
+  options?: RequestInit,
+): Promise<ValidateTaxIdResult> => {
+  return customFetch<ValidateTaxIdResult>(getValidateTaxIdUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(validateTaxIdInput),
+  });
+};
+
+export const getValidateTaxIdMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof validateTaxId>>,
+    TError,
+    { data: BodyType<ValidateTaxIdInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof validateTaxId>>,
+  TError,
+  { data: BodyType<ValidateTaxIdInput> },
+  TContext
+> => {
+  const mutationKey = ["validateTaxId"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof validateTaxId>>,
+    { data: BodyType<ValidateTaxIdInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return validateTaxId(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ValidateTaxIdMutationResult = NonNullable<
+  Awaited<ReturnType<typeof validateTaxId>>
+>;
+export type ValidateTaxIdMutationBody = BodyType<ValidateTaxIdInput>;
+export type ValidateTaxIdMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Validate a tax ID / ABN format
+ */
+export const useValidateTaxId = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof validateTaxId>>,
+    TError,
+    { data: BodyType<ValidateTaxIdInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof validateTaxId>>,
+  TError,
+  { data: BodyType<ValidateTaxIdInput> },
+  TContext
+> => {
+  return useMutation(getValidateTaxIdMutationOptions(options));
+};
+
+/**
+ * @summary Upload and parse a CSV file for master data import
+ */
+export const getUploadOnboardingCsvUrl = () => {
+  return `/api/onboarding/upload-csv`;
+};
+
+export const uploadOnboardingCsv = async (
+  uploadOnboardingCsvBody: UploadOnboardingCsvBody,
+  options?: RequestInit,
+): Promise<CsvUploadResult> => {
+  const formData = new FormData();
+  if (uploadOnboardingCsvBody.file !== undefined) {
+    formData.append(`file`, uploadOnboardingCsvBody.file);
+  }
+  if (uploadOnboardingCsvBody.csvType !== undefined) {
+    formData.append(`csvType`, uploadOnboardingCsvBody.csvType);
+  }
+
+  return customFetch<CsvUploadResult>(getUploadOnboardingCsvUrl(), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getUploadOnboardingCsvMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadOnboardingCsv>>,
+    TError,
+    { data: BodyType<UploadOnboardingCsvBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadOnboardingCsv>>,
+  TError,
+  { data: BodyType<UploadOnboardingCsvBody> },
+  TContext
+> => {
+  const mutationKey = ["uploadOnboardingCsv"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadOnboardingCsv>>,
+    { data: BodyType<UploadOnboardingCsvBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return uploadOnboardingCsv(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadOnboardingCsvMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadOnboardingCsv>>
+>;
+export type UploadOnboardingCsvMutationBody = BodyType<UploadOnboardingCsvBody>;
+export type UploadOnboardingCsvMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Upload and parse a CSV file for master data import
+ */
+export const useUploadOnboardingCsv = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadOnboardingCsv>>,
+    TError,
+    { data: BodyType<UploadOnboardingCsvBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadOnboardingCsv>>,
+  TError,
+  { data: BodyType<UploadOnboardingCsvBody> },
+  TContext
+> => {
+  return useMutation(getUploadOnboardingCsvMutationOptions(options));
+};
+
+/**
+ * @summary Load built-in sample data for master data import
+ */
+export const getLoadSampleDataUrl = () => {
+  return `/api/onboarding/load-sample`;
+};
+
+export const loadSampleData = async (
+  options?: RequestInit,
+): Promise<SampleDataResult> => {
+  return customFetch<SampleDataResult>(getLoadSampleDataUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getLoadSampleDataMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof loadSampleData>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof loadSampleData>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["loadSampleData"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof loadSampleData>>,
+    void
+  > = () => {
+    return loadSampleData(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LoadSampleDataMutationResult = NonNullable<
+  Awaited<ReturnType<typeof loadSampleData>>
+>;
+
+export type LoadSampleDataMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Load built-in sample data for master data import
+ */
+export const useLoadSampleData = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof loadSampleData>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof loadSampleData>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getLoadSampleDataMutationOptions(options));
+};
+
+/**
+ * @summary Create a Stripe SetupIntent for collecting payment details
+ */
+export const getSetupPaymentIntentUrl = () => {
+  return `/api/onboarding/setup-payment`;
+};
+
+export const setupPaymentIntent = async (
+  options?: RequestInit,
+): Promise<SetupPaymentResult> => {
+  return customFetch<SetupPaymentResult>(getSetupPaymentIntentUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getSetupPaymentIntentMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setupPaymentIntent>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setupPaymentIntent>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["setupPaymentIntent"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setupPaymentIntent>>,
+    void
+  > = () => {
+    return setupPaymentIntent(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetupPaymentIntentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setupPaymentIntent>>
+>;
+
+export type SetupPaymentIntentMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a Stripe SetupIntent for collecting payment details
+ */
+export const useSetupPaymentIntent = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setupPaymentIntent>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof setupPaymentIntent>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getSetupPaymentIntentMutationOptions(options));
+};
+
+/**
+ * @summary Complete onboarding — creates tenant, warehouses, departments, imports master data, sends invites
+ */
+export const getCompleteOnboardingUrl = () => {
+  return `/api/onboarding/complete`;
+};
+
+export const completeOnboarding = async (
+  completeOnboardingInput: CompleteOnboardingInput,
+  options?: RequestInit,
+): Promise<OnboardingResult> => {
+  return customFetch<OnboardingResult>(getCompleteOnboardingUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(completeOnboardingInput),
+  });
+};
+
+export const getCompleteOnboardingMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeOnboarding>>,
+    TError,
+    { data: BodyType<CompleteOnboardingInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof completeOnboarding>>,
+  TError,
+  { data: BodyType<CompleteOnboardingInput> },
+  TContext
+> => {
+  const mutationKey = ["completeOnboarding"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof completeOnboarding>>,
+    { data: BodyType<CompleteOnboardingInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return completeOnboarding(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CompleteOnboardingMutationResult = NonNullable<
+  Awaited<ReturnType<typeof completeOnboarding>>
+>;
+export type CompleteOnboardingMutationBody = BodyType<CompleteOnboardingInput>;
+export type CompleteOnboardingMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Complete onboarding — creates tenant, warehouses, departments, imports master data, sends invites
+ */
+export const useCompleteOnboarding = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeOnboarding>>,
+    TError,
+    { data: BodyType<CompleteOnboardingInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof completeOnboarding>>,
+  TError,
+  { data: BodyType<CompleteOnboardingInput> },
+  TContext
+> => {
+  return useMutation(getCompleteOnboardingMutationOptions(options));
 };
 
 /**

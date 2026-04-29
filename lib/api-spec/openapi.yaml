@@ -533,6 +533,218 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /onboarding/session:
+    get:
+      operationId: getOnboardingSession
+      tags: [onboarding]
+      summary: Get the current user's onboarding session progress
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Session progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingSession"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateOnboardingSession
+      tags: [onboarding]
+      summary: Save or update the current user's onboarding session progress
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingSessionUpdate"
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingSession"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /onboarding/validate-abn:
+    post:
+      operationId: validateTaxId
+      tags: [onboarding]
+      summary: Validate a tax ID / ABN format
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateTaxIdInput"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateTaxIdResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /onboarding/upload-csv:
+    post:
+      operationId: uploadOnboardingCsv
+      tags: [onboarding]
+      summary: Upload and parse a CSV file for master data import
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                csvType:
+                  type: string
+                  enum: [items, suppliers, customers]
+      responses:
+        "200":
+          description: Parsed CSV rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsvUploadResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /onboarding/load-sample:
+    post:
+      operationId: loadSampleData
+      tags: [onboarding]
+      summary: Load built-in sample data for master data import
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Sample data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SampleDataResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /onboarding/setup-payment:
+    post:
+      operationId: setupPaymentIntent
+      tags: [onboarding]
+      summary: Create a Stripe SetupIntent for collecting payment details
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Stripe client secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupPaymentResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Stripe not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /onboarding/complete:
+    post:
+      operationId: completeOnboarding
+      tags: [onboarding]
+      summary: Complete onboarding — creates tenant, warehouses, departments, imports master data, sends invites
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteOnboardingInput"
+      responses:
+        "201":
+          description: Onboarding complete, tenant created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingResult"
+        "200":
+          description: User already had a tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/tenants/{id}/members:
     get:
       operationId: listAdminTenantMembers
@@ -1277,3 +1489,312 @@ components:
         - role
         - invitesSent
         - alreadyOnboarded
+
+    OnboardingSession:
+      type: object
+      properties:
+        currentStep:
+          type: integer
+          minimum: 1
+          maximum: 5
+        data:
+          type: object
+          additionalProperties: true
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+      required:
+        - currentStep
+        - data
+
+    OnboardingSessionUpdate:
+      type: object
+      properties:
+        currentStep:
+          type: integer
+          minimum: 1
+          maximum: 5
+        data:
+          type: object
+          additionalProperties: true
+
+    ValidateTaxIdInput:
+      type: object
+      properties:
+        taxId:
+          type: string
+        country:
+          type: string
+      required:
+        - taxId
+
+    ValidateTaxIdResult:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        message:
+          type: string
+        taxId:
+          type: string
+      required:
+        - valid
+        - message
+        - taxId
+
+    CsvUploadResult:
+      type: object
+      properties:
+        csvType:
+          type: string
+          enum: [items, suppliers, customers]
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+        rowCount:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+        hasErrors:
+          type: boolean
+      required:
+        - csvType
+        - rows
+        - rowCount
+        - errors
+        - hasErrors
+
+    SampleDataItem:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        unitOfMeasure:
+          type: string
+        unitCost:
+          type: string
+        category:
+          type: string
+      required:
+        - code
+        - name
+
+    SampleDataSupplier:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        contactName:
+          type: string
+        paymentTerms:
+          type: string
+        currency:
+          type: string
+      required:
+        - code
+        - name
+
+    SampleDataCustomer:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        contactName:
+          type: string
+        creditLimit:
+          type: string
+        paymentTerms:
+          type: string
+        currency:
+          type: string
+      required:
+        - code
+        - name
+
+    SampleDataResult:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SampleDataItem"
+        suppliers:
+          type: array
+          items:
+            $ref: "#/components/schemas/SampleDataSupplier"
+        customers:
+          type: array
+          items:
+            $ref: "#/components/schemas/SampleDataCustomer"
+      required:
+        - items
+        - suppliers
+        - customers
+
+    SetupPaymentResult:
+      type: object
+      properties:
+        clientSecret:
+          type: ["string", "null"]
+      required:
+        - clientSecret
+
+    WarehouseInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        code:
+          type: string
+        addressLine1:
+          type: string
+        addressLine2:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+        isDefault:
+          type: boolean
+      required:
+        - name
+
+    DepartmentInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        code:
+          type: string
+      required:
+        - name
+
+    CompleteOnboardingStep1:
+      type: object
+      properties:
+        companyName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tradingName:
+          type: string
+        legalName:
+          type: string
+        taxId:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        website:
+          type: string
+        addressLine1:
+          type: string
+        addressLine2:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+        fiscalYearStart:
+          type: integer
+          minimum: 1
+          maximum: 12
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        timezone:
+          type: string
+        industryType:
+          type: string
+      required:
+        - companyName
+
+    CompleteOnboardingInput:
+      type: object
+      properties:
+        step1:
+          $ref: "#/components/schemas/CompleteOnboardingStep1"
+        step2:
+          type: object
+          properties:
+            warehouses:
+              type: array
+              items:
+                $ref: "#/components/schemas/WarehouseInput"
+            departments:
+              type: array
+              items:
+                $ref: "#/components/schemas/DepartmentInput"
+            glTemplate:
+              type: string
+              enum: [simple, standard, advanced]
+        step3:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            suppliers:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            customers:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+        step4:
+          type: object
+          properties:
+            planTier:
+              type: string
+              enum: [starter, growth, enterprise]
+            stripePaymentMethodId:
+              type: string
+        step5:
+          type: object
+          properties:
+            invites:
+              type: array
+              maxItems: 25
+              items:
+                $ref: "#/components/schemas/OnboardingInvite"
+      required:
+        - step1

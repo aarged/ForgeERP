@@ -571,6 +571,224 @@ export interface OnboardingResult {
   alreadyOnboarded: boolean;
 }
 
+export type OnboardingSessionData = { [key: string]: unknown };
+
+export interface OnboardingSession {
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  currentStep: number;
+  data: OnboardingSessionData;
+  /** @nullable */
+  completedAt?: string | null;
+}
+
+export type OnboardingSessionUpdateData = { [key: string]: unknown };
+
+export interface OnboardingSessionUpdate {
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  currentStep?: number;
+  data?: OnboardingSessionUpdateData;
+}
+
+export interface ValidateTaxIdInput {
+  taxId: string;
+  country?: string;
+}
+
+export interface ValidateTaxIdResult {
+  valid: boolean;
+  message: string;
+  taxId: string;
+}
+
+export type CsvUploadResultCsvType =
+  (typeof CsvUploadResultCsvType)[keyof typeof CsvUploadResultCsvType];
+
+export const CsvUploadResultCsvType = {
+  items: "items",
+  suppliers: "suppliers",
+  customers: "customers",
+} as const;
+
+export type CsvUploadResultRowsItem = { [key: string]: string };
+
+export interface CsvUploadResult {
+  csvType: CsvUploadResultCsvType;
+  rows: CsvUploadResultRowsItem[];
+  rowCount: number;
+  errors: string[];
+  hasErrors: boolean;
+}
+
+export interface SampleDataItem {
+  code: string;
+  name: string;
+  description?: string;
+  unitOfMeasure?: string;
+  unitCost?: string;
+  category?: string;
+}
+
+export interface SampleDataSupplier {
+  code: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  contactName?: string;
+  paymentTerms?: string;
+  currency?: string;
+}
+
+export interface SampleDataCustomer {
+  code: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  contactName?: string;
+  creditLimit?: string;
+  paymentTerms?: string;
+  currency?: string;
+}
+
+export interface SampleDataResult {
+  items: SampleDataItem[];
+  suppliers: SampleDataSupplier[];
+  customers: SampleDataCustomer[];
+}
+
+export interface SetupPaymentResult {
+  /** @nullable */
+  clientSecret: string | null;
+}
+
+export interface WarehouseInput {
+  /** @minLength 1 */
+  name: string;
+  code?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  isDefault?: boolean;
+}
+
+export interface DepartmentInput {
+  /** @minLength 1 */
+  name: string;
+  code?: string;
+}
+
+export interface CompleteOnboardingStep1 {
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  companyName: string;
+  tradingName?: string;
+  legalName?: string;
+  taxId?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  /**
+   * @minimum 1
+   * @maximum 12
+   */
+  fiscalYearStart?: number;
+  /**
+   * @minLength 3
+   * @maxLength 3
+   */
+  currency?: string;
+  timezone?: string;
+  industryType?: string;
+}
+
+export type CompleteOnboardingInputStep2GlTemplate =
+  (typeof CompleteOnboardingInputStep2GlTemplate)[keyof typeof CompleteOnboardingInputStep2GlTemplate];
+
+export const CompleteOnboardingInputStep2GlTemplate = {
+  simple: "simple",
+  standard: "standard",
+  advanced: "advanced",
+} as const;
+
+export type CompleteOnboardingInputStep2 = {
+  warehouses?: WarehouseInput[];
+  departments?: DepartmentInput[];
+  glTemplate?: CompleteOnboardingInputStep2GlTemplate;
+};
+
+export type CompleteOnboardingInputStep3ItemsItem = { [key: string]: unknown };
+
+export type CompleteOnboardingInputStep3SuppliersItem = {
+  [key: string]: unknown;
+};
+
+export type CompleteOnboardingInputStep3CustomersItem = {
+  [key: string]: unknown;
+};
+
+export type CompleteOnboardingInputStep3 = {
+  items?: CompleteOnboardingInputStep3ItemsItem[];
+  suppliers?: CompleteOnboardingInputStep3SuppliersItem[];
+  customers?: CompleteOnboardingInputStep3CustomersItem[];
+};
+
+export type CompleteOnboardingInputStep4PlanTier =
+  (typeof CompleteOnboardingInputStep4PlanTier)[keyof typeof CompleteOnboardingInputStep4PlanTier];
+
+export const CompleteOnboardingInputStep4PlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+export type CompleteOnboardingInputStep4 = {
+  planTier?: CompleteOnboardingInputStep4PlanTier;
+  stripePaymentMethodId?: string;
+};
+
+export type CompleteOnboardingInputStep5 = {
+  /** @maxItems 25 */
+  invites?: OnboardingInvite[];
+};
+
+export interface CompleteOnboardingInput {
+  step1: CompleteOnboardingStep1;
+  step2?: CompleteOnboardingInputStep2;
+  step3?: CompleteOnboardingInputStep3;
+  step4?: CompleteOnboardingInputStep4;
+  step5?: CompleteOnboardingInputStep5;
+}
+
+export type UploadOnboardingCsvBodyCsvType =
+  (typeof UploadOnboardingCsvBodyCsvType)[keyof typeof UploadOnboardingCsvBodyCsvType];
+
+export const UploadOnboardingCsvBodyCsvType = {
+  items: "items",
+  suppliers: "suppliers",
+  customers: "customers",
+} as const;
+
+export type UploadOnboardingCsvBody = {
+  file?: Blob;
+  csvType?: UploadOnboardingCsvBodyCsvType;
+};
+
 export type GetAdminAuditLogsParams = {
   tenantId?: number;
 };
