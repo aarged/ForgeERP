@@ -2941,4 +2941,80 @@ router.patch("/notifications/read-all", ...tenantUserMiddleware, async (req: Req
   res.json({ ok: true });
 });
 
+// ── GRN (Goods Received Note) Summary Report ──────────────────────────────────
+
+/**
+ * GET /procurement/reports/grn
+ * Summarise confirmed goods receipts for a period.
+ */
+router.get("/procurement/reports/grn", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { from, to, supplierId } = req.query as Record<string, string>;
+
+  const qr = await withTenantDb(tenantId, (db) =>
+    db.execute(sql`
+      SELECT
+        gr.id AS "id",
+        gr.code AS "grnCode",
+        po.code AS "poCode",
+        po.supplier_name AS "supplierName",
+        gr.status AS "status",
+        gr.received_at AS "receivedAt",
+        gr.received_by_email AS "receivedByEmail",
+        COALESCE(SUM(rl.received_qty::numeric), 0) AS "totalReceivedQty",
+        COALESCE(SUM(rl.received_qty::numeric * COALESCE(rl.unit_cost::numeric, 0)), 0) AS "totalValue",
+        COUNT(DISTINCT rl.item_id) AS "lineCount"
+      FROM po_receipts gr
+      JOIN purchase_orders po ON po.id = gr.po_id AND po.tenant_id = ${tenantId}
+      LEFT JOIN receipt_lines rl ON rl.receipt_id = gr.id AND rl.tenant_id = ${tenantId}
+      WHERE gr.tenant_id = ${tenantId}
+        AND gr.status = 'confirmed'
+        ${from ? sql`AND gr.received_at >= ${new Date(from)}` : sql``}
+        ${to ? sql`AND gr.received_at <= ${new Date(to)}` : sql``}
+        ${supplierId ? sql`AND po.supplier_id = ${Number(supplierId)}` : sql``}
+      GROUP BY gr.id, gr.code, po.code, po.supplier_name, gr.status, gr.received_at, gr.received_by_email
+      ORDER BY gr.received_at DESC NULLS LAST
+      LIMIT 500
+    `)
+  );
+
+  res.json(qr.rows);
+});
+
+/**
+ * GET /procurement/reports/grn/export/csv
+ * Export GRN summary as CSV.
+ */
+router.get("/procurement/reports/grn/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { from, to } = req.query as Record<string, string>;
+
+  const qr2 = await withTenantDb(tenantId, (db) =>
+    db.execute(sql`
+      SELECT gr.code AS "grnCode", po.code AS "poCode", po.supplier_name AS "supplierName",
+             gr.received_at AS "receivedAt", gr.received_by_email AS "receivedByEmail",
+             COALESCE(SUM(rl.received_qty::numeric), 0) AS "totalReceivedQty",
+             COALESCE(SUM(rl.received_qty::numeric * COALESCE(rl.unit_cost::numeric, 0)), 0) AS "totalValue"
+      FROM po_receipts gr
+      JOIN purchase_orders po ON po.id = gr.po_id AND po.tenant_id = ${tenantId}
+      LEFT JOIN receipt_lines rl ON rl.receipt_id = gr.id AND rl.tenant_id = ${tenantId}
+      WHERE gr.tenant_id = ${tenantId} AND gr.status = 'confirmed'
+        ${from ? sql`AND gr.received_at >= ${new Date(from)}` : sql``}
+        ${to ? sql`AND gr.received_at <= ${new Date(to)}` : sql``}
+      GROUP BY gr.id, gr.code, po.code, po.supplier_name, gr.received_at, gr.received_by_email
+      ORDER BY gr.received_at DESC NULLS LAST LIMIT 5000
+    `)
+  );
+  const rows = qr2.rows as Array<{ grnCode: string; poCode: string; supplierName: string; receivedAt: string | null; receivedByEmail: string | null; totalReceivedQty: number; totalValue: number }>;
+
+  const escape = (v: unknown) => { const s = v == null ? "" : String(v); return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [
+    ["GRN Code", "PO Code", "Supplier", "Received At", "Received By", "Total Qty", "Total Value"].join(","),
+    ...rows.map(r => [r.grnCode, r.poCode, r.supplierName, r.receivedAt ?? "", r.receivedByEmail ?? "", Number(r.totalReceivedQty).toFixed(2), Number(r.totalValue).toFixed(2)].map(escape).join(",")),
+  ];
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="grn-report.csv"`);
+  res.send(lines.join("\r\n"));
+});
+
 export default router;

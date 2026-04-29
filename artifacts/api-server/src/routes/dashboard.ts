@@ -105,7 +105,7 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
   }
 
   if (role === "approver") {
-    const [pendingPos, pendingReqs] = await Promise.all([
+    const [pendingPos, pendingReqs, approvedMtdRows, avgTurnaround, valuePendingRows, recentDecisions] = await Promise.all([
       withTenantDb(tenantId, (db) =>
         db.select({ id: purchaseOrdersTable.id, code: purchaseOrdersTable.code, supplierName: purchaseOrdersTable.supplierName, total: purchaseOrdersTable.total, createdAt: purchaseOrdersTable.createdAt })
           .from(purchaseOrdersTable)
@@ -116,19 +116,51 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
           .from(purchaseRequisitionsTable)
           .where(and(eq(purchaseRequisitionsTable.tenantId, tenantId), isNull(purchaseRequisitionsTable.deletedAt), eq(purchaseRequisitionsTable.status, "pending_approval")))
           .orderBy(desc(purchaseRequisitionsTable.createdAt)).limit(20)),
+      withTenantDb(tenantId, (db) =>
+        db.select({ count: sql<number>`count(*)` }).from(approvalDecisionsTable)
+          .where(and(eq(approvalDecisionsTable.tenantId, tenantId), eq(approvalDecisionsTable.decision, "approved"), gte(approvalDecisionsTable.decidedAt, startOfMonth())))),
+      withTenantDb(tenantId, async (db) => {
+        const rows = await db.execute(sql`
+          SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (ad.decided_at - po.created_at)) / 3600), 0) AS avg_hours
+          FROM approval_decisions ad
+          JOIN purchase_orders po ON po.id = ad.entity_id AND ad.entity_type = 'purchase_order' AND po.tenant_id = ${tenantId}
+          WHERE ad.tenant_id = ${tenantId} AND ad.decided_at >= ${startOfMonth()}
+        `) as unknown as Array<{ avg_hours: string }>;
+        return Number(rows[0]?.avg_hours ?? 0);
+      }),
+      withTenantDb(tenantId, async (db) => {
+        const [pos, reqs] = await Promise.all([
+          db.select({ total: sql<string>`coalesce(sum(total),0)` }).from(purchaseOrdersTable)
+            .where(and(eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt), eq(purchaseOrdersTable.status, "pending_approval"))),
+          db.select({ total: sql<string>`coalesce(sum(total_estimated),0)` }).from(purchaseRequisitionsTable)
+            .where(and(eq(purchaseRequisitionsTable.tenantId, tenantId), isNull(purchaseRequisitionsTable.deletedAt), eq(purchaseRequisitionsTable.status, "pending_approval"))),
+        ]);
+        return Number(pos[0]?.total ?? 0) + Number(reqs[0]?.total ?? 0);
+      }),
+      withTenantDb(tenantId, (db) =>
+        db.select({ id: approvalDecisionsTable.id, entityType: approvalDecisionsTable.entityType, entityId: approvalDecisionsTable.entityId, decision: approvalDecisionsTable.decision, approverEmail: approvalDecisionsTable.approverEmail, comment: approvalDecisionsTable.comment, decidedAt: approvalDecisionsTable.decidedAt })
+          .from(approvalDecisionsTable)
+          .where(and(eq(approvalDecisionsTable.tenantId, tenantId)))
+          .orderBy(desc(approvalDecisionsTable.decidedAt)).limit(10)),
     ]);
     const pending = [...pendingPos.map(p => ({ ...p, entityType: "purchase_order" })), ...pendingReqs.map(r => ({ ...r, entityType: "purchase_requisition" }))];
     res.json({
       role,
-      kpis: { pendingApprovals: pending.length },
+      kpis: {
+        pendingApprovals: pending.length,
+        approvedMtd: Number(approvedMtdRows[0]?.count ?? 0),
+        avgTurnaroundHours: Math.round(avgTurnaround * 10) / 10,
+        valuePending: valuePendingRows,
+      },
       pendingApprovalList: pending.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+      recentDecisions,
     });
     return;
   }
 
   if (role === "accountant") {
     const today = startOfToday();
-    const [postingsToday, unreconciled, trialBalTotals, outstandingInvoices] = await Promise.all([
+    const [postingsToday, unreconciled, trialBalTotals, outstandingInvoices, cashFlowRows] = await Promise.all([
       withTenantDb(tenantId, (db) =>
         db.select({ count: sql<number>`count(*)`, totalDebit: sql<string>`coalesce(sum(total_debit),0)` })
           .from(glPostingsTable)
@@ -146,6 +178,16 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
       withTenantDb(tenantId, (db) =>
         db.select({ count: sql<number>`count(*)`, total: sql<string>`coalesce(sum(total),0)` }).from(customerInvoicesTable)
           .where(and(eq(customerInvoicesTable.tenantId, tenantId), isNull(customerInvoicesTable.deletedAt), sql`status IN ('sent','draft')`))),
+      // Cash flow estimate: paid invoices (inflows) - PO spend this month (outflows)
+      withTenantDb(tenantId, async (db) => {
+        const [inflow, outflow] = await Promise.all([
+          db.select({ total: sql<string>`coalesce(sum(paid_amount),0)` }).from(customerInvoicesTable)
+            .where(and(eq(customerInvoicesTable.tenantId, tenantId), isNull(customerInvoicesTable.deletedAt), eq(customerInvoicesTable.status, "paid"), gte(customerInvoicesTable.createdAt, startOfMonth()))),
+          db.select({ total: sql<string>`coalesce(sum(total),0)` }).from(purchaseOrdersTable)
+            .where(and(eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt), sql`status IN ('approved','sent','partially_received','closed')`, gte(purchaseOrdersTable.createdAt, startOfMonth()))),
+        ]);
+        return { inflow: Number(inflow[0]?.total ?? 0), outflow: Number(outflow[0]?.total ?? 0) };
+      }),
     ]);
     res.json({
       role,
@@ -156,13 +198,16 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
         trialBalanceTotalDebit: Number(trialBalTotals?.totalDebit ?? 0),
         trialBalanceTotalCredit: Number(trialBalTotals?.totalCredit ?? 0),
         outstandingReceivables: Number(outstandingInvoices[0]?.total ?? 0),
+        cashFlowEstimateMtd: cashFlowRows.inflow - cashFlowRows.outflow,
+        cashInflowMtd: cashFlowRows.inflow,
+        cashOutflowMtd: cashFlowRows.outflow,
       },
     });
     return;
   }
 
   // Admin / default — all-module overview
-  const [openPos, salesMtd, lowStockRows, pendingApprovals, invoicesDue, glPostingsWeek] = await Promise.all([
+  const [openPos, salesMtd, lowStockRows, pendingApprovals, invoicesDue, glPostingsWeek, itemCount, activeOrders] = await Promise.all([
     withTenantDb(tenantId, (db) =>
       db.select({ count: sql<number>`count(*)`, total: sql<string>`coalesce(sum(total),0)` }).from(purchaseOrdersTable)
         .where(and(eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt), sql`status NOT IN ('closed','cancelled')`))),
@@ -189,6 +234,14 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
     withTenantDb(tenantId, (db) =>
       db.select({ count: sql<number>`count(*)` }).from(glPostingsTable)
         .where(and(eq(glPostingsTable.tenantId, tenantId), eq(glPostingsTable.status, "posted"), gte(glPostingsTable.createdAt, daysAgo(7))))),
+    // System health: active items in catalog
+    withTenantDb(tenantId, (db) =>
+      db.select({ count: sql<number>`count(*)` }).from(itemsTable)
+        .where(and(eq(itemsTable.tenantId, tenantId), isNull(itemsTable.deletedAt)))),
+    // User activity: open sales orders (active work)
+    withTenantDb(tenantId, (db) =>
+      db.select({ count: sql<number>`count(*)` }).from(salesOrdersTable)
+        .where(and(eq(salesOrdersTable.tenantId, tenantId), isNull(salesOrdersTable.deletedAt), sql`status IN ('confirmed','processing','partially_despatched')`))),
   ]);
 
   res.json({
@@ -203,6 +256,8 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
       outstandingInvoicesCount: Number(invoicesDue[0]?.count ?? 0),
       outstandingReceivables: Number(invoicesDue[0]?.total ?? 0),
       glPostingsThisWeek: Number(glPostingsWeek[0]?.count ?? 0),
+      catalogItemCount: Number(itemCount[0]?.count ?? 0),
+      activeSalesOrders: Number(activeOrders[0]?.count ?? 0),
     },
   });
 });
@@ -231,7 +286,7 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
       res.json({ type, data: rows }); return;
     }
     case "stock-alerts": {
-      const rows = await withTenantDb(tenantId, async (db) =>
+      const result = await withTenantDb(tenantId, (db) =>
         db.execute(sql`
           SELECT DISTINCT ON (s.item_id) s.item_id AS "itemId", i.code AS "itemCode", i.name AS "itemName",
             s.warehouse_id AS "warehouseId", s.qty_on_hand::numeric AS "qtyOnHand", il.reorder_point::numeric AS "reorderPoint"
@@ -243,9 +298,9 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
             AND s.qty_on_hand::numeric <= il.reorder_point::numeric
           ORDER BY s.item_id, s.qty_on_hand ASC
           LIMIT ${lim}
-        `) as unknown as Array<{ itemId: number; itemCode: string; itemName: string; warehouseId: number; qtyOnHand: number; reorderPoint: number }>
+        `)
       );
-      res.json({ type, data: rows }); return;
+      res.json({ type, data: result.rows }); return;
     }
     case "pending-approvals": {
       const [pos, reqs] = await Promise.all([
@@ -265,7 +320,7 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
       res.json({ type, data: combined }); return;
     }
     case "top-items": {
-      const rows = await withTenantDb(tenantId, async (db) =>
+      const result = await withTenantDb(tenantId, (db) =>
         db.execute(sql`
           SELECT item_code AS "itemCode", item_name AS "itemName",
                  SUM(ABS(quantity::numeric)) AS "totalQty", COUNT(*) AS "movementCount"
@@ -273,12 +328,12 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
           WHERE tenant_id = ${tenantId} AND created_at >= ${daysAgo(30)}
           GROUP BY item_code, item_name
           ORDER BY "totalQty" DESC LIMIT ${lim}
-        `) as unknown as Array<{ itemCode: string; itemName: string; totalQty: number; movementCount: number }>
+        `)
       );
-      res.json({ type, data: rows }); return;
+      res.json({ type, data: result.rows }); return;
     }
     case "stock-value": {
-      const rows = await withTenantDb(tenantId, async (db) =>
+      const result = await withTenantDb(tenantId, (db) =>
         db.execute(sql`
           SELECT s.warehouse_id AS "warehouseId", w.name AS "warehouseName",
                  SUM(s.qty_on_hand::numeric * COALESCE(s.average_cost::numeric, 0)) AS "totalValue",
@@ -287,9 +342,9 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
           JOIN warehouses w ON w.id = s.warehouse_id AND w.tenant_id = ${tenantId}
           WHERE s.tenant_id = ${tenantId}
           GROUP BY s.warehouse_id, w.name ORDER BY "totalValue" DESC
-        `) as unknown as Array<{ warehouseId: number; warehouseName: string; totalValue: number; itemCount: number }>
+        `)
       );
-      res.json({ type, data: rows }); return;
+      res.json({ type, data: result.rows }); return;
     }
     case "gl-activity": {
       const rows = await withTenantDb(tenantId, (db) =>
@@ -299,7 +354,7 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
       res.json({ type, data: rows }); return;
     }
     case "sales-by-period": {
-      const rows = await withTenantDb(tenantId, async (db) =>
+      const result = await withTenantDb(tenantId, (db) =>
         db.execute(sql`
           SELECT DATE_TRUNC('month', created_at) AS "period",
                  COUNT(*) AS "orderCount",
@@ -309,9 +364,9 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
             AND created_at >= ${daysAgo(180)}
           GROUP BY DATE_TRUNC('month', created_at)
           ORDER BY "period" ASC
-        `) as unknown as Array<{ period: string; orderCount: number; revenue: number }>
+        `)
       );
-      res.json({ type, data: rows }); return;
+      res.json({ type, data: result.rows }); return;
     }
     default:
       res.status(400).json({ error: `Unknown widget type: ${type}` });

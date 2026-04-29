@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useForm, useFieldArray } from "react-hook-form";
 import {
   useGetFinanceJournals,
@@ -42,7 +42,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Eye, Download, Undo2, ChevronDown, ChevronRight, FileText } from "lucide-react";
+import { Plus, Search, Eye, Download, Undo2, ChevronDown, ChevronRight, FileText, CheckCircle2 } from "lucide-react";
 
 // ── Local DTOs ────────────────────────────────────────────────────────────────
 
@@ -102,6 +102,13 @@ function JournalTab() {
   const { data: glAccounts } = useListGlAccounts({ limit: 500 });
   const postMut = usePostFinanceJournals();
   const reverseMut = usePostFinanceJournalsIdReverse();
+  const approveMut = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/finance/journals/${id}/approve`, { method: "POST" });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as { error?: string }).error ?? "Approval failed"); }
+      return res.json();
+    },
+  });
 
   const form = useForm<FormValues>({
     defaultValues: {
@@ -158,6 +165,17 @@ function JournalTab() {
     }
   }
 
+  async function onApprove(id: number) {
+    try {
+      await approveMut.mutateAsync(id);
+      toast({ title: "Journal approved and posted" });
+      qc.invalidateQueries({ queryKey: getGetFinanceJournalsQueryKey({}) });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "An unexpected error occurred";
+      toast({ title: "Approval failed", description: msg, variant: "destructive" });
+    }
+  }
+
   const rows: GlPosting[] = data?.data ?? [];
   const filtered = rows.filter(r => !search || r.code?.toLowerCase().includes(search.toLowerCase()) || r.notes?.toLowerCase().includes(search.toLowerCase()));
 
@@ -188,7 +206,14 @@ function JournalTab() {
             if (fromDate) params.set("fromDate", fromDate);
             if (toDate) params.set("toDate", toDate);
             window.open(`/api/finance/journals/export/csv?${params.toString()}`, "_blank");
-          }}><Download className="h-4 w-4 mr-2" />Export CSV</Button>
+          }}><Download className="h-4 w-4 mr-2" />CSV</Button>
+          <Button variant="outline" onClick={() => {
+            const params = new URLSearchParams();
+            if (status !== "all") params.set("status", status);
+            if (fromDate) params.set("fromDate", fromDate);
+            if (toDate) params.set("toDate", toDate);
+            window.open(`/api/finance/journals/export/xlsx?${params.toString()}`, "_blank");
+          }}><FileText className="h-4 w-4 mr-2" />Excel</Button>
           <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4 mr-2" />Manual Entry</Button>
         </div>
       </div>
@@ -227,11 +252,18 @@ function JournalTab() {
                   <TableCell className="text-right font-medium">{fmt(r.totalDebit)}</TableCell>
                   <TableCell><StatusBadge status={r.status} /></TableCell>
                   <TableCell className="text-right">
-                    {r.status === "posted" && (
-                      <Button variant="ghost" size="sm" title="Reverse" onClick={() => r.id && onReverse(r.id)}>
-                        <Undo2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
+                    <div className="flex justify-end gap-1">
+                      {r.status === "draft" && (
+                        <Button variant="ghost" size="sm" title="Approve" onClick={() => r.id && onApprove(r.id)} className="text-emerald-600">
+                          <CheckCircle2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {r.status === "posted" && (
+                        <Button variant="ghost" size="sm" title="Reverse" onClick={() => r.id && onReverse(r.id)}>
+                          <Undo2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
                 {expandedId === r.id && (

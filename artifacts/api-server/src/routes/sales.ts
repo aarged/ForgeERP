@@ -2006,4 +2006,125 @@ router.get("/sales/alternatives", ...tenantUserMiddleware, async (req: Request, 
   res.json({ referenceItem: { id: Number(itemId), code: item.code }, alternatives: alternatives.map((a) => ({ ...a, qtyOnHand: Number(a.qtyOnHand), qtyAvailable: Number(a.qtyAvailable) })) });
 });
 
+// ── Invoice Aging Report ───────────────────────────────────────────────────────
+
+/**
+ * GET /sales/reports/invoice-aging
+ * Group outstanding invoices into aging buckets: current, 1-30, 31-60, 61-90, 90+ days overdue.
+ */
+router.get("/sales/reports/invoice-aging", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { customerId } = req.query as Record<string, string>;
+
+  const qr = await withTenantDb(tenantId, (db) =>
+    db.execute(sql`
+      SELECT
+        ci.id,
+        ci.code,
+        ci.customer_name AS "customerName",
+        ci.invoice_date AS "invoiceDate",
+        ci.due_date AS "dueDate",
+        ci.total::numeric AS "total",
+        ci.paid_amount::numeric AS "paidAmount",
+        (ci.total::numeric - ci.paid_amount::numeric) AS "balance",
+        CURRENT_DATE - ci.due_date::date AS "daysOverdue",
+        CASE
+          WHEN ci.due_date IS NULL OR ci.due_date::date >= CURRENT_DATE THEN 'current'
+          WHEN CURRENT_DATE - ci.due_date::date <= 30 THEN '1_to_30'
+          WHEN CURRENT_DATE - ci.due_date::date <= 60 THEN '31_to_60'
+          WHEN CURRENT_DATE - ci.due_date::date <= 90 THEN '61_to_90'
+          ELSE 'over_90'
+        END AS "agingBucket"
+      FROM customer_invoices ci
+      WHERE ci.tenant_id = ${tenantId}
+        AND ci.deleted_at IS NULL
+        AND ci.status IN ('sent', 'draft')
+        AND (ci.total::numeric - ci.paid_amount::numeric) > 0
+        ${customerId ? sql`AND ci.customer_id = ${Number(customerId)}` : sql``}
+      ORDER BY ci.due_date ASC NULLS LAST
+    `)
+  );
+  const rows = qr.rows as Array<{ id: number; code: string; customerName: string | null; invoiceDate: string | null; dueDate: string | null; total: number; paidAmount: number; balance: number; daysOverdue: number | null; agingBucket: string }>;
+
+  // Aggregate totals per bucket
+  const buckets = ["current", "1_to_30", "31_to_60", "61_to_90", "over_90"];
+  const summary = Object.fromEntries(buckets.map(b => [b, { count: 0, total: 0 }]));
+  for (const r of rows) {
+    const bucket = summary[r.agingBucket];
+    if (bucket) { bucket.count++; bucket.total += Number(r.balance); }
+  }
+
+  res.json({ invoices: rows, summary });
+});
+
+/**
+ * GET /sales/reports/invoice-aging/export/csv
+ * Export invoice aging report as CSV.
+ */
+router.get("/sales/reports/invoice-aging/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+
+  const qr2 = await withTenantDb(tenantId, (db) =>
+    db.execute(sql`
+      SELECT ci.code, ci.customer_name AS "customerName", ci.invoice_date AS "invoiceDate",
+             ci.due_date AS "dueDate", ci.total::numeric AS "total", ci.paid_amount::numeric AS "paidAmount",
+             (ci.total::numeric - ci.paid_amount::numeric) AS "balance",
+             CURRENT_DATE - ci.due_date::date AS "daysOverdue",
+             CASE
+               WHEN ci.due_date IS NULL OR ci.due_date::date >= CURRENT_DATE THEN 'Current'
+               WHEN CURRENT_DATE - ci.due_date::date <= 30 THEN '1-30 Days'
+               WHEN CURRENT_DATE - ci.due_date::date <= 60 THEN '31-60 Days'
+               WHEN CURRENT_DATE - ci.due_date::date <= 90 THEN '61-90 Days'
+               ELSE '90+ Days'
+             END AS "agingBucket"
+      FROM customer_invoices ci
+      WHERE ci.tenant_id = ${tenantId} AND ci.deleted_at IS NULL
+        AND ci.status IN ('sent','draft') AND (ci.total::numeric - ci.paid_amount::numeric) > 0
+      ORDER BY ci.due_date ASC NULLS LAST LIMIT 5000
+    `)
+  );
+  const rows = qr2.rows as Array<{ code: string; customerName: string | null; invoiceDate: string | null; dueDate: string | null; total: number; paidAmount: number; balance: number; daysOverdue: number | null; agingBucket: string }>;
+
+  const escape = (v: unknown) => { const s = v == null ? "" : String(v); return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [
+    ["Invoice", "Customer", "Invoice Date", "Due Date", "Total", "Paid", "Balance", "Days Overdue", "Aging Bucket"].join(","),
+    ...rows.map(r => [r.code, r.customerName ?? "", r.invoiceDate ?? "", r.dueDate ?? "", Number(r.total).toFixed(2), Number(r.paidAmount).toFixed(2), Number(r.balance).toFixed(2), r.daysOverdue ?? 0, r.agingBucket].map(escape).join(",")),
+  ];
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="invoice-aging.csv"`);
+  res.send(lines.join("\r\n"));
+});
+
+/**
+ * GET /sales/reports/backorders/export/csv
+ * Export backorder report as CSV.
+ */
+router.get("/sales/reports/backorders/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      soId: soLinesTable.soId,
+      soLineId: soLinesTable.id,
+      itemCode: soLinesTable.itemCode,
+      itemName: soLinesTable.itemName,
+      qty: soLinesTable.quantity,
+      despatched: soLinesTable.despatched_qty,
+      backorderQty: sql<string>`${soLinesTable.quantity} - ${soLinesTable.despatched_qty}`,
+    })
+      .from(soLinesTable)
+      .where(and(eq(soLinesTable.tenantId, tenantId), eq(soLinesTable.lineType, "stock"), sql`${soLinesTable.despatched_qty} < ${soLinesTable.quantity}`))
+      .orderBy(soLinesTable.soId)
+      .limit(5000)
+  );
+
+  const escape = (v: unknown) => { const s = v == null ? "" : String(v); return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [
+    ["SO ID", "SO Line ID", "Item Code", "Item Name", "Ordered Qty", "Despatched Qty", "Backorder Qty"].join(","),
+    ...rows.map(r => [r.soId, r.soLineId, r.itemCode ?? "", r.itemName ?? "", r.qty, r.despatched, Number(r.backorderQty).toFixed(2)].map(escape).join(",")),
+  ];
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="backorders.csv"`);
+  res.send(lines.join("\r\n"));
+});
+
 export default router;

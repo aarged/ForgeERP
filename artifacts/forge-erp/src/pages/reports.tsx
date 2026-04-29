@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { 
   useGetInventoryReportsStockValuation,
   useGetInventoryReportsMovementHistory,
@@ -10,6 +11,8 @@ import {
   useReportSupplierPerformance,
   useReportSalesByPeriod,
   useReportSalesByItem,
+  useReportBackorders,
+  useReportGoodsInTransit,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -20,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Download } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 
 // ── Formatters ─────────────────────────────────────────────────────────────────
 
@@ -37,6 +41,10 @@ function fmtDate(s: string | null | undefined): string {
   return new Date(s).toLocaleDateString();
 }
 
+function exportCsv(url: string) {
+  window.open(url, "_blank");
+}
+
 // ── Row DTOs ──────────────────────────────────────────────────────────────────
 
 interface StockValuationRow { itemCode: string; itemName: string; warehouseName: string | null; qtyOnHand: number | string; averageCost: number | string; totalValue: number | string; }
@@ -47,8 +55,15 @@ interface WarehouseItem { id: number; name: string; }
 
 interface PoSummaryRow { status: string; count: number; total: number | string; }
 interface SupplierRow { supplierId: number | null; supplierName: string | null; totalOrders: number; totalValue: number | string; avgOrderValue: number | string; }
+interface GrnRow { id: number; grnCode: string; poCode: string; supplierName: string; receivedAt: string | null; receivedByEmail: string | null; totalReceivedQty: number | string; totalValue: number | string; lineCount: number | string; }
+interface GoodsInTransitRow { id: number; code: string; supplierName: string | null; status: string; total: number | string; deliveryDate: string | null; outstandingQty: number; }
+
 interface SalesPeriodRow { period: string; totalRevenue: string | number; invoiceCount: number; orderCount: number; }
 interface SalesItemRow { itemId: number | null; itemCode: string | null; itemName: string | null; totalQty: string | number; totalRevenue: string | number; invoiceCount: number; }
+interface BackorderRow { soId: number; soLineId: number; itemCode: string | null; itemName: string | null; qty: string | number; despatched: string | number; backorderQty: string | number; }
+interface InvoiceAgingInvoice { id: number; code: string; customerName: string | null; invoiceDate: string | null; dueDate: string | null; total: number; paidAmount: number; balance: number; daysOverdue: number | null; agingBucket: string; }
+interface AgingBucketSummary { count: number; total: number; }
+interface InvoiceAgingResponse { invoices: InvoiceAgingInvoice[]; summary: Record<string, AgingBucketSummary>; }
 
 // ── Inventory Tabs ────────────────────────────────────────────────────────────
 
@@ -75,7 +90,9 @@ function StockValuationTab() {
             ))}
           </SelectContent>
         </Select>
-        <Button variant="outline"><Download className="h-4 w-4 mr-2" />Export CSV</Button>
+        <Button variant="outline" onClick={() => exportCsv(`/api/inventory/reports/stock-valuation/export/csv${warehouseId !== "all" ? `?warehouseId=${warehouseId}` : ""}`)}>
+          <Download className="h-4 w-4 mr-2" />Export CSV
+        </Button>
       </div>
 
       <div className="rounded-md border">
@@ -357,11 +374,16 @@ function ProcurementPoSummaryTab() {
   const grandTotal = rows.reduce((s, r) => s + Number(r.total ?? 0), 0);
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 items-center">
-        <Label className="whitespace-nowrap">From</Label>
-        <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-        <Label className="whitespace-nowrap">To</Label>
-        <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2 items-center">
+          <Label className="whitespace-nowrap">From</Label>
+          <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <Label className="whitespace-nowrap">To</Label>
+          <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+        <Button variant="outline" onClick={() => exportCsv(`/api/procurement/reports/po-summary/export/csv${fromDate || toDate ? `?${new URLSearchParams({ from: fromDate, to: toDate })}` : ""}`)}>
+          <Download className="h-4 w-4 mr-2" />Export CSV
+        </Button>
       </div>
       <div className="rounded-md border">
         <Table>
@@ -403,27 +425,141 @@ function SupplierSpendTab() {
   const { data, isLoading } = useReportSupplierPerformance();
   const rows = (data as unknown as SupplierRow[] | undefined) ?? [];
   return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button variant="outline" onClick={() => exportCsv("/api/procurement/reports/supplier-performance/export/csv")}>
+          <Download className="h-4 w-4 mr-2" />Export CSV
+        </Button>
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Supplier</TableHead>
+              <TableHead className="text-right">Total Orders</TableHead>
+              <TableHead className="text-right">Total Spend</TableHead>
+              <TableHead className="text-right">Avg Order Value</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={4} className="text-center py-8">Loading report...</TableCell></TableRow>
+            ) : !rows.length ? (
+              <TableRow><TableCell colSpan={4} className="text-center py-8">No supplier data found</TableCell></TableRow>
+            ) : rows.map((r, i) => (
+              <TableRow key={i}>
+                <TableCell className="font-medium">{r.supplierName ?? "—"}</TableCell>
+                <TableCell className="text-right font-mono">{r.totalOrders}</TableCell>
+                <TableCell className="text-right font-mono font-medium">{fmt(r.totalValue, true)}</TableCell>
+                <TableCell className="text-right font-mono">{fmt(r.avgOrderValue, true)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function GrnTab() {
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  const params = new URLSearchParams();
+  if (fromDate) params.set("from", fromDate);
+  if (toDate) params.set("to", toDate);
+  const queryString = params.toString();
+
+  const { data: rows = [], isLoading } = useQuery<GrnRow[]>({
+    queryKey: ["grn-report", fromDate, toDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/procurement/reports/grn${queryString ? `?${queryString}` : ""}`);
+      if (!res.ok) throw new Error("Failed to load GRN report");
+      return res.json() as Promise<GrnRow[]>;
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2 items-center">
+          <Label className="whitespace-nowrap">From</Label>
+          <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <Label className="whitespace-nowrap">To</Label>
+          <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+        <Button variant="outline" onClick={() => exportCsv(`/api/procurement/reports/grn/export/csv${queryString ? `?${queryString}` : ""}`)}>
+          <Download className="h-4 w-4 mr-2" />Export CSV
+        </Button>
+      </div>
+
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>GRN Code</TableHead>
+              <TableHead>PO Code</TableHead>
+              <TableHead>Supplier</TableHead>
+              <TableHead>Received At</TableHead>
+              <TableHead>Received By</TableHead>
+              <TableHead className="text-right">Items</TableHead>
+              <TableHead className="text-right">Total Qty</TableHead>
+              <TableHead className="text-right">Total Value</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={8} className="text-center py-8">Loading GRN report...</TableCell></TableRow>
+            ) : !rows.length ? (
+              <TableRow><TableCell colSpan={8} className="text-center py-8">No goods received notes found</TableCell></TableRow>
+            ) : rows.map((r) => (
+              <TableRow key={r.id}>
+                <TableCell className="font-mono font-medium">{r.grnCode}</TableCell>
+                <TableCell className="font-mono text-muted-foreground">{r.poCode}</TableCell>
+                <TableCell>{r.supplierName}</TableCell>
+                <TableCell>{fmtDate(r.receivedAt)}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{r.receivedByEmail ?? "—"}</TableCell>
+                <TableCell className="text-right font-mono">{Number(r.lineCount)}</TableCell>
+                <TableCell className="text-right font-mono">{fmt(r.totalReceivedQty)}</TableCell>
+                <TableCell className="text-right font-mono font-medium">{fmt(r.totalValue, true)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function GoodsInTransitTab() {
+  const { data, isLoading } = useReportGoodsInTransit({});
+  const rows = (data as unknown as GoodsInTransitRow[] | undefined) ?? [];
+  return (
     <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>PO Code</TableHead>
             <TableHead>Supplier</TableHead>
-            <TableHead className="text-right">Total Orders</TableHead>
-            <TableHead className="text-right">Total Spend</TableHead>
-            <TableHead className="text-right">Avg Order Value</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Expected By</TableHead>
+            <TableHead className="text-right">Outstanding Qty</TableHead>
+            <TableHead className="text-right">PO Value</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {isLoading ? (
-            <TableRow><TableCell colSpan={4} className="text-center py-8">Loading report...</TableCell></TableRow>
+            <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
           ) : !rows.length ? (
-            <TableRow><TableCell colSpan={4} className="text-center py-8">No supplier data found</TableCell></TableRow>
-          ) : rows.map((r, i) => (
-            <TableRow key={i}>
-              <TableCell className="font-medium">{r.supplierName ?? "—"}</TableCell>
-              <TableCell className="text-right font-mono">{r.totalOrders}</TableCell>
-              <TableCell className="text-right font-mono font-medium">{fmt(r.totalValue, true)}</TableCell>
-              <TableCell className="text-right font-mono">{fmt(r.avgOrderValue, true)}</TableCell>
+            <TableRow><TableCell colSpan={6} className="text-center py-8">No items in transit</TableCell></TableRow>
+          ) : rows.map((r) => (
+            <TableRow key={r.id}>
+              <TableCell className="font-mono font-medium">{r.code}</TableCell>
+              <TableCell>{r.supplierName ?? "—"}</TableCell>
+              <TableCell><Badge variant="outline" className="capitalize">{r.status.replace(/_/g, " ")}</Badge></TableCell>
+              <TableCell>{fmtDate(r.deliveryDate)}</TableCell>
+              <TableCell className="text-right font-mono">{fmt(r.outstandingQty)}</TableCell>
+              <TableCell className="text-right font-mono font-medium">{fmt(r.total, true)}</TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -444,11 +580,16 @@ function SalesByPeriodTab() {
   const grandRevenue = rows.reduce((s, r) => s + Number(r.totalRevenue ?? 0), 0);
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 items-center">
-        <Label className="whitespace-nowrap">From</Label>
-        <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-        <Label className="whitespace-nowrap">To</Label>
-        <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2 items-center">
+          <Label className="whitespace-nowrap">From</Label>
+          <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <Label className="whitespace-nowrap">To</Label>
+          <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+        <Button variant="outline" onClick={() => exportCsv(`/api/sales/reports/by-period/export/csv${fromDate || toDate ? `?${new URLSearchParams({ fromDate, toDate })}` : ""}`)}>
+          <Download className="h-4 w-4 mr-2" />Export CSV
+        </Button>
       </div>
       <div className="rounded-md border">
         <Table>
@@ -497,11 +638,16 @@ function SalesByItemTab() {
   const rows = (data as unknown as SalesItemRow[] | undefined) ?? [];
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 items-center">
-        <Label className="whitespace-nowrap">From</Label>
-        <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-        <Label className="whitespace-nowrap">To</Label>
-        <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2 items-center">
+          <Label className="whitespace-nowrap">From</Label>
+          <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <Label className="whitespace-nowrap">To</Label>
+          <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+        <Button variant="outline" onClick={() => exportCsv(`/api/sales/reports/by-item/export/csv${fromDate || toDate ? `?${new URLSearchParams({ fromDate, toDate })}` : ""}`)}>
+          <Download className="h-4 w-4 mr-2" />Export CSV
+        </Button>
       </div>
       <div className="rounded-md border">
         <Table>
@@ -529,6 +675,149 @@ function SalesByItemTab() {
                 <TableCell className="text-right font-mono font-medium">{fmt(r.totalRevenue, true)}</TableCell>
               </TableRow>
             ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function BackordersTab() {
+  const { data, isLoading } = useReportBackorders();
+  const rows = (data as unknown as BackorderRow[] | undefined) ?? [];
+  const totalBackorder = rows.reduce((s, r) => s + Number(r.backorderQty ?? 0), 0);
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button variant="outline" onClick={() => exportCsv("/api/sales/reports/backorders/export/csv")}>
+          <Download className="h-4 w-4 mr-2" />Export CSV
+        </Button>
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>SO ID</TableHead>
+              <TableHead>Item</TableHead>
+              <TableHead className="text-right">Ordered</TableHead>
+              <TableHead className="text-right">Despatched</TableHead>
+              <TableHead className="text-right">Backorder Qty</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={5} className="text-center py-8">Loading backorders...</TableCell></TableRow>
+            ) : !rows.length ? (
+              <TableRow><TableCell colSpan={5} className="text-center py-8">No open backorders — great!</TableCell></TableRow>
+            ) : (
+              <>
+                {rows.map((r, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-mono text-muted-foreground">SO-{r.soId}</TableCell>
+                    <TableCell>
+                      <div className="font-mono font-medium">{r.itemCode ?? "—"}</div>
+                      <div className="text-sm text-muted-foreground">{r.itemName ?? "—"}</div>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">{fmt(r.qty)}</TableCell>
+                    <TableCell className="text-right font-mono">{fmt(r.despatched)}</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-orange-600">{fmt(r.backorderQty)}</TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="bg-muted/50 font-bold">
+                  <TableCell colSpan={4} className="text-right">Total Backorder Qty</TableCell>
+                  <TableCell className="text-right font-mono text-orange-600">{fmt(totalBackorder)}</TableCell>
+                </TableRow>
+              </>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+const AGING_BUCKETS: { key: string; label: string; color: string }[] = [
+  { key: "current",  label: "Current",    color: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+  { key: "1_to_30",  label: "1–30 Days",  color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+  { key: "31_to_60", label: "31–60 Days", color: "bg-orange-100 text-orange-800 border-orange-200" },
+  { key: "61_to_90", label: "61–90 Days", color: "bg-red-100 text-red-800 border-red-200" },
+  { key: "over_90",  label: "90+ Days",   color: "bg-red-200 text-red-900 border-red-300" },
+];
+
+function InvoiceAgingTab() {
+  const { data, isLoading } = useQuery<InvoiceAgingResponse>({
+    queryKey: ["invoice-aging"],
+    queryFn: async () => {
+      const res = await fetch("/api/sales/reports/invoice-aging");
+      if (!res.ok) throw new Error("Failed to load aging report");
+      return res.json() as Promise<InvoiceAgingResponse>;
+    },
+  });
+
+  const invoices = data?.invoices ?? [];
+  const summary = data?.summary ?? {};
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button variant="outline" onClick={() => exportCsv("/api/sales/reports/invoice-aging/export/csv")}>
+          <Download className="h-4 w-4 mr-2" />Export CSV
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-5 gap-3">
+        {AGING_BUCKETS.map(({ key, label, color }) => {
+          const bucket = summary[key] ?? { count: 0, total: 0 };
+          return (
+            <Card key={key} className={`border ${color}`}>
+              <CardContent className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-1">{label}</p>
+                <p className="text-xl font-bold">{fmt(bucket.total, true)}</p>
+                <p className="text-xs mt-1">{bucket.count} invoice{bucket.count !== 1 ? "s" : ""}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Invoice</TableHead>
+              <TableHead>Customer</TableHead>
+              <TableHead>Invoice Date</TableHead>
+              <TableHead>Due Date</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+              <TableHead className="text-right">Paid</TableHead>
+              <TableHead className="text-right">Balance</TableHead>
+              <TableHead>Bucket</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={8} className="text-center py-8">Loading aging report...</TableCell></TableRow>
+            ) : !invoices.length ? (
+              <TableRow><TableCell colSpan={8} className="text-center py-8">No outstanding invoices</TableCell></TableRow>
+            ) : invoices.map((r) => {
+              const bucket = AGING_BUCKETS.find(b => b.key === r.agingBucket);
+              return (
+                <TableRow key={r.id}>
+                  <TableCell className="font-mono font-medium">{r.code}</TableCell>
+                  <TableCell>{r.customerName ?? "—"}</TableCell>
+                  <TableCell>{fmtDate(r.invoiceDate)}</TableCell>
+                  <TableCell>{fmtDate(r.dueDate)}</TableCell>
+                  <TableCell className="text-right font-mono">{fmt(r.total, true)}</TableCell>
+                  <TableCell className="text-right font-mono">{fmt(r.paidAmount, true)}</TableCell>
+                  <TableCell className="text-right font-mono font-bold">{fmt(r.balance, true)}</TableCell>
+                  <TableCell>
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold border ${bucket?.color ?? ""}`}>
+                      {bucket?.label ?? r.agingBucket}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
@@ -573,9 +862,13 @@ export default function Reports() {
             <TabsList className="mb-4">
               <TabsTrigger value="po-summary">PO Summary</TabsTrigger>
               <TabsTrigger value="supplier-spend">Supplier Spend</TabsTrigger>
+              <TabsTrigger value="grn">Goods Received</TabsTrigger>
+              <TabsTrigger value="in-transit">Goods in Transit</TabsTrigger>
             </TabsList>
             <TabsContent value="po-summary"><ProcurementPoSummaryTab /></TabsContent>
             <TabsContent value="supplier-spend"><SupplierSpendTab /></TabsContent>
+            <TabsContent value="grn"><GrnTab /></TabsContent>
+            <TabsContent value="in-transit"><GoodsInTransitTab /></TabsContent>
           </Tabs>
         </TabsContent>
 
@@ -584,9 +877,13 @@ export default function Reports() {
             <TabsList className="mb-4">
               <TabsTrigger value="by-period">Revenue by Period</TabsTrigger>
               <TabsTrigger value="by-item">Top Products</TabsTrigger>
+              <TabsTrigger value="backorders">Backorders</TabsTrigger>
+              <TabsTrigger value="invoice-aging">Invoice Aging</TabsTrigger>
             </TabsList>
             <TabsContent value="by-period"><SalesByPeriodTab /></TabsContent>
             <TabsContent value="by-item"><SalesByItemTab /></TabsContent>
+            <TabsContent value="backorders"><BackordersTab /></TabsContent>
+            <TabsContent value="invoice-aging"><InvoiceAgingTab /></TabsContent>
           </Tabs>
         </TabsContent>
       </Tabs>

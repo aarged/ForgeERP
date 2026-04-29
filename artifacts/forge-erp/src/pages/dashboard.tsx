@@ -14,7 +14,7 @@ import {
   Calculator, PackageSearch, ShoppingCart, 
   AlertTriangle, CheckCircle2, DollarSign, Activity,
   TrendingUp, Clock, Package, FileText, FileBarChart,
-  Settings2
+  Settings2, ChevronUp, ChevronDown, ArrowUpDown
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -42,12 +42,6 @@ function fmtDate(s: string | null | undefined): string {
 
 // ── KPI Interfaces ─────────────────────────────────────────────────────────────
 
-interface AdminKpis {
-  openPOs: number;
-  salesMtdValue: number;
-  lowStockAlerts: number;
-  glPostingsThisWeek: number;
-}
 interface PurchaserKpis {
   openPOs: number;
   awaitingApproval: number;
@@ -65,14 +59,27 @@ interface ApproverKpis {
   approvedMtd: number;
   avgTurnaroundHours: number;
   valuePending: number;
+  recentDecisions: RecentDecision[];
 }
 interface AccountantKpis {
   glPostingsToday: number;
   unreconciledDraftPostings: number;
   outstandingReceivables: number;
   trialBalanceTotalDebit: number;
+  cashFlowEstimateMtd: number;
+  cashInflowMtd: number;
+  cashOutflowMtd: number;
 }
-type AnyKpis = Partial<AdminKpis & PurchaserKpis & WarehouseKpis & ApproverKpis & AccountantKpis>;
+interface AdminKpisExtra {
+  openPOs: number;
+  salesMtdValue: number;
+  lowStockAlerts: number;
+  glPostingsThisWeek: number;
+  catalogItemCount: number;
+  activeSalesOrders: number;
+}
+interface RecentDecision { code: string; type: string; amount: number; decision: string; decidedAt: string; }
+type AnyKpis = Partial<AdminKpisExtra & PurchaserKpis & WarehouseKpis & ApproverKpis & AccountantKpis>;
 
 // ── Widget data shapes ─────────────────────────────────────────────────────────
 
@@ -295,22 +302,39 @@ const DEFAULT_WIDGETS: Record<string, string[]> = {
 function useWidgetPrefs(role: UserRole) {
   const storageKey = `dashboard-widgets-${role}`;
   const defaults = DEFAULT_WIDGETS[role] ?? DEFAULT_WIDGETS.viewer;
-  const [enabled, setEnabled] = useState<string[]>(() => {
+  const [ordered, setOrdered] = useState<string[]>(() => {
     try {
       const stored = localStorage.getItem(storageKey);
       return stored ? (JSON.parse(stored) as string[]) : defaults;
     } catch { return defaults; }
   });
 
-  const toggle = (id: string) => {
-    setEnabled(prev => {
-      const next = prev.includes(id) ? prev.filter(w => w !== id) : [...prev, id];
-      try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
+  const persist = (next: string[]) => {
+    setOrdered(next);
+    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
   };
 
-  return { enabled, toggle };
+  const toggle = (id: string) => {
+    persist(ordered.includes(id) ? ordered.filter(w => w !== id) : [...ordered, id]);
+  };
+
+  const moveUp = (id: string) => {
+    const idx = ordered.indexOf(id);
+    if (idx <= 0) return;
+    const next = [...ordered];
+    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+    persist(next);
+  };
+
+  const moveDown = (id: string) => {
+    const idx = ordered.indexOf(id);
+    if (idx < 0 || idx >= ordered.length - 1) return;
+    const next = [...ordered];
+    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+    persist(next);
+  };
+
+  return { enabled: ordered, toggle, moveUp, moveDown };
 }
 
 // ── KPI Card ───────────────────────────────────────────────────────────────────
@@ -347,7 +371,7 @@ export default function Dashboard() {
     { query: { enabled: !!rawRole, queryKey: getGetDashboardKpiQueryKey({ role: kpiRole }) } }
   );
 
-  const { enabled: enabledWidgets, toggle } = useWidgetPrefs(role);
+  const { enabled: enabledWidgets, toggle, moveUp, moveDown } = useWidgetPrefs(role);
 
   const availableWidgets = useMemo(
     () => WIDGET_LIBRARY.filter(w => w.availableRoles.includes(role)),
@@ -390,22 +414,22 @@ export default function Dashboard() {
       <KpiCard title="Pending Counts"     value={kpis.pendingCycleCounts}   icon={Activity}      color="text-orange-500" />
     </>);
     if (role === "approver") return (<>
-      <KpiCard title="Pending Approvals"  value={kpis.pendingApprovals}                   icon={Clock}         color="text-orange-500" />
-      <KpiCard title="Approved MTD"       value={kpis.approvedMtd ?? 0}                   icon={CheckCircle2}  color="text-emerald-500" />
-      <KpiCard title="Avg Turnaround"     value={(kpis.avgTurnaroundHours ?? 0) + "h"}    icon={Activity}      color="text-blue-500" />
-      <KpiCard title="Total Value Pending"value={fmt(kpis.valuePending ?? 0, true)}       icon={DollarSign}    color="text-indigo-500" />
+      <KpiCard title="Pending Approvals"   value={kpis.pendingApprovals}                icon={Clock}         color="text-orange-500" />
+      <KpiCard title="Approved MTD"        value={kpis.approvedMtd ?? 0}               icon={CheckCircle2}  color="text-emerald-500" />
+      <KpiCard title="Avg Turnaround"      value={(kpis.avgTurnaroundHours ?? 0) + "h"} icon={Activity}      color="text-blue-500" />
+      <KpiCard title="Total Value Pending" value={fmt(kpis.valuePending ?? 0, true)}   icon={DollarSign}    color="text-indigo-500" />
     </>);
     if (role === "accountant") return (<>
-      <KpiCard title="Postings Today"     value={kpis.glPostingsToday}            icon={FileText}    color="text-blue-500" />
-      <KpiCard title="Draft Journals"     value={kpis.unreconciledDraftPostings}  icon={FileBarChart} color="text-orange-500" />
-      <KpiCard title="A/R Outstanding"   value={fmt(kpis.outstandingReceivables, true)}  icon={DollarSign} color="text-emerald-500" />
-      <KpiCard title="Trial Bal (Debit)" value={fmt(kpis.trialBalanceTotalDebit, true)}  icon={Calculator} color="text-indigo-500" />
+      <KpiCard title="Postings Today"      value={kpis.glPostingsToday}                        icon={FileText}    color="text-blue-500" />
+      <KpiCard title="Draft Journals"      value={kpis.unreconciledDraftPostings}              icon={FileBarChart} color="text-orange-500" />
+      <KpiCard title="Cash Flow MTD"       value={fmt(kpis.cashFlowEstimateMtd ?? 0, true)}   icon={TrendingUp}  color="text-emerald-500" />
+      <KpiCard title="A/R Outstanding"     value={fmt(kpis.outstandingReceivables, true)}      icon={DollarSign}  color="text-indigo-500" />
     </>);
     return (<>
-      <KpiCard title="Open POs"       value={kpis.openPOs}                   icon={ShoppingCart} color="text-blue-500" />
-      <KpiCard title="Sales MTD"      value={fmt(kpis.salesMtdValue, true)}  icon={TrendingUp}   color="text-emerald-500" />
-      <KpiCard title="Low Stock"      value={kpis.lowStockAlerts}            icon={AlertTriangle} color="text-red-500" />
-      <KpiCard title="Postings (Week)"value={kpis.glPostingsThisWeek}        icon={Calculator}   color="text-indigo-500" />
+      <KpiCard title="Open POs"           value={kpis.openPOs}                   icon={ShoppingCart} color="text-blue-500" />
+      <KpiCard title="Sales MTD"          value={fmt(kpis.salesMtdValue, true)}  icon={TrendingUp}   color="text-emerald-500" />
+      <KpiCard title="Active Sales Orders" value={kpis.activeSalesOrders ?? 0}  icon={FileText}     color="text-orange-500" />
+      <KpiCard title="Low Stock"          value={kpis.lowStockAlerts}            icon={AlertTriangle} color="text-red-500" />
     </>);
   };
 
@@ -432,6 +456,76 @@ export default function Dashboard() {
         {renderKpis()}
       </div>
 
+      {role === "approver" && !kpiLoading && (kpis.recentDecisions?.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+              Recent Approval Decisions
+            </CardTitle>
+            <CardDescription>Your latest approval activity</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Document</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Decision</TableHead>
+                  <TableHead>Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(kpis.recentDecisions ?? []).map((d, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-mono font-medium">{d.code}</TableCell>
+                    <TableCell className="capitalize text-muted-foreground">{d.type.replace(/_/g, " ")}</TableCell>
+                    <TableCell className="text-right font-mono">{fmt(d.amount, true)}</TableCell>
+                    <TableCell>
+                      <Badge variant={d.decision === "approved" ? "default" : "destructive"} className="capitalize">{d.decision}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{fmtDate(d.decidedAt)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {role === "accountant" && !kpiLoading && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="border-emerald-200 bg-emerald-50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-emerald-700">Cash Inflow MTD</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-emerald-700">{fmt(kpis.cashInflowMtd ?? 0, true)}</p>
+              <p className="text-xs text-emerald-600 mt-1">Estimated receipts this month</p>
+            </CardContent>
+          </Card>
+          <Card className="border-red-200 bg-red-50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-red-700">Cash Outflow MTD</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-red-700">{fmt(kpis.cashOutflowMtd ?? 0, true)}</p>
+              <p className="text-xs text-red-600 mt-1">Estimated payments this month</p>
+            </CardContent>
+          </Card>
+          <Card className={`border-2 ${(kpis.cashFlowEstimateMtd ?? 0) >= 0 ? "border-emerald-300 bg-emerald-50" : "border-red-300 bg-red-50"}`}>
+            <CardHeader className="pb-2">
+              <CardTitle className={`text-sm font-medium ${(kpis.cashFlowEstimateMtd ?? 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>Net Cash Flow MTD</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={`text-2xl font-bold ${(kpis.cashFlowEstimateMtd ?? 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{fmt(kpis.cashFlowEstimateMtd ?? 0, true)}</p>
+              <p className="text-xs text-muted-foreground mt-1">Inflow minus outflow</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {visibleWidgets.map(({ id, Component }) => <Component key={id} />)}
         {visibleWidgets.length === 0 && (
@@ -448,20 +542,51 @@ export default function Dashboard() {
       <Dialog open={customizing} onOpenChange={setCustomizing}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Customize Dashboard</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowUpDown className="h-4 w-4" />
+              Customize Dashboard
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 pt-2">
-            <p className="text-sm text-muted-foreground">Select which widgets to display on your dashboard.</p>
-            {availableWidgets.map(w => (
-              <div key={w.id} className="flex items-center gap-3">
-                <Checkbox
-                  id={`widget-${w.id}`}
-                  checked={enabledWidgets.includes(w.id)}
-                  onCheckedChange={() => toggle(w.id)}
-                />
-                <Label htmlFor={`widget-${w.id}`} className="cursor-pointer">{w.label}</Label>
-              </div>
-            ))}
+          <div className="space-y-2 pt-2">
+            <p className="text-sm text-muted-foreground">Toggle widgets and drag them up/down to reorder.</p>
+            {enabledWidgets
+              .filter(id => availableWidgets.some(w => w.id === id))
+              .concat(availableWidgets.filter(w => !enabledWidgets.includes(w.id)).map(w => w.id))
+              .map((id, idx, arr) => {
+                const w = availableWidgets.find(x => x.id === id);
+                if (!w) return null;
+                const isEnabled = enabledWidgets.includes(id);
+                return (
+                  <div key={id} className={`flex items-center gap-3 p-2 rounded-md ${isEnabled ? "bg-muted/50" : ""}`}>
+                    <Checkbox
+                      id={`widget-${id}`}
+                      checked={isEnabled}
+                      onCheckedChange={() => toggle(id)}
+                    />
+                    <Label htmlFor={`widget-${id}`} className="flex-1 cursor-pointer">{w.label}</Label>
+                    {isEnabled && (
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost" size="sm" className="h-6 w-6 p-0"
+                          disabled={idx === 0}
+                          onClick={() => moveUp(id)}
+                          title="Move up"
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="sm" className="h-6 w-6 p-0"
+                          disabled={idx >= enabledWidgets.filter(e => availableWidgets.some(x => x.id === e)).length - 1}
+                          onClick={() => moveDown(id)}
+                          title="Move down"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         </DialogContent>
       </Dialog>

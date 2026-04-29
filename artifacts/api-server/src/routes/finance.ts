@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { eq, and, isNull, desc, sql, or, ilike, gte, lte, asc } from "drizzle-orm";
 import PDFDocument from "pdfkit";
+import * as XLSX from "xlsx";
 import {
   glPostingsTable,
   glAccountsTable,
@@ -259,6 +260,84 @@ router.post("/finance/journals/:id/reverse", ...tenantWriteMiddleware, async (re
   res.status(201).json(result);
 });
 
+/**
+ * POST /finance/journals/:id/approve
+ * Approve a draft manual journal entry (admin/manager only).
+ */
+router.post("/finance/journals/:id/approve", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail, userRole } = req as TenantRequest;
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  if (!["admin", "super_admin"].includes(userRole)) {
+    res.status(403).json({ error: "Only admins can approve journals" });
+    return;
+  }
+
+  const [posting] = await withTenantDb(tenantId, (db) =>
+    db.select().from(glPostingsTable).where(and(eq(glPostingsTable.id, id), eq(glPostingsTable.tenantId, tenantId))).limit(1)
+  );
+  if (!posting) { res.status(404).json({ error: "GL posting not found" }); return; }
+  if (posting.status !== "draft") { res.status(400).json({ error: `Cannot approve posting with status: ${posting.status}` }); return; }
+
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(glPostingsTable)
+      .set({ status: "posted", postedAt: new Date(), postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined })
+      .where(and(eq(glPostingsTable.id, id), eq(glPostingsTable.tenantId, tenantId)))
+      .returning()
+  );
+
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "finance.manual_journal_approved", entityType: "gl_posting", entityId: String(id) });
+  res.json(updated);
+});
+
+/**
+ * GET /finance/journals/export/xlsx
+ * Export GL journal entries as Excel workbook.
+ */
+router.get("/finance/journals/export/xlsx", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate, entityType, status, accountCode } = req.query as Record<string, string>;
+
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      id: glPostingsTable.id,
+      code: glPostingsTable.code,
+      entityType: glPostingsTable.entityType,
+      entityId: glPostingsTable.entityId,
+      status: glPostingsTable.status,
+      totalDebit: glPostingsTable.totalDebit,
+      totalCredit: glPostingsTable.totalCredit,
+      postedAt: glPostingsTable.postedAt,
+      postedByEmail: glPostingsTable.postedByEmail,
+      notes: glPostingsTable.notes,
+      createdAt: glPostingsTable.createdAt,
+    }).from(glPostingsTable).where(
+      and(
+        eq(glPostingsTable.tenantId, tenantId),
+        fromDate ? gte(glPostingsTable.createdAt, new Date(fromDate)) : undefined,
+        toDate ? lte(glPostingsTable.createdAt, new Date(toDate)) : undefined,
+        entityType ? eq(glPostingsTable.entityType, entityType) : undefined,
+        status ? eq(glPostingsTable.status, status) : undefined,
+        accountCode ? sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${glPostingsTable.lines}) AS ln WHERE ln->>'accountCode' = ${accountCode})` : undefined,
+      )
+    ).orderBy(desc(glPostingsTable.createdAt)).limit(5000)
+  );
+
+  const wsData = [
+    ["ID", "Code", "Type", "Entity ID", "Status", "Total Debit", "Total Credit", "Posted At", "Posted By", "Notes", "Created At"],
+    ...rows.map(r => [r.id, r.code, r.entityType, r.entityId, r.status, Number(r.totalDebit), Number(r.totalCredit), r.postedAt?.toISOString() ?? "", r.postedByEmail ?? "", r.notes ?? "", r.createdAt?.toISOString() ?? ""])
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  XLSX.utils.book_append_sheet(wb, ws, "GL Journals");
+  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="gl-journals.xlsx"`);
+  res.send(buf);
+});
+
 // ── Trial Balance ──────────────────────────────────────────────────────────────
 
 /**
@@ -351,7 +430,8 @@ router.get("/finance/trial-balance/pdf", ...tenantUserMiddleware, async (req: Re
   const { tenantId } = req as TenantRequest;
   const { fromDate, toDate } = req.query as Record<string, string>;
 
-  const [tenant, accounts, periodMovements] = await Promise.all([
+  type PdfMovSummary = Array<{ accountCode: string; totalDebit: number; totalCredit: number }>;
+  const [tenant, accounts, openingMovements, periodMovements] = await Promise.all([
     withTenantDb(tenantId, (db) =>
       db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1)
     ),
@@ -362,6 +442,19 @@ router.get("/finance/trial-balance/pdf", ...tenantUserMiddleware, async (req: Re
         .orderBy(asc(glAccountsTable.code))
     ),
     withTenantDb(tenantId, async (db) => {
+      if (!fromDate) return [] as PdfMovSummary;
+      const rows = await db.execute(sql`
+        SELECT line->>'accountCode' AS "accountCode",
+               SUM((line->>'debit')::numeric) AS "totalDebit",
+               SUM((line->>'credit')::numeric) AS "totalCredit"
+        FROM ${glPostingsTable}, jsonb_array_elements(${glPostingsTable.lines}) AS line
+        WHERE ${glPostingsTable.tenantId} = ${tenantId} AND ${glPostingsTable.status} = 'posted'
+          AND ${glPostingsTable.createdAt} < ${new Date(fromDate)}
+        GROUP BY line->>'accountCode'
+      `) as unknown as PdfMovSummary;
+      return rows;
+    }),
+    withTenantDb(tenantId, async (db) => {
       const rows = await db.execute(sql`
         SELECT line->>'accountCode' AS "accountCode",
                SUM((line->>'debit')::numeric) AS "totalDebit",
@@ -371,71 +464,78 @@ router.get("/finance/trial-balance/pdf", ...tenantUserMiddleware, async (req: Re
           ${fromDate ? sql`AND ${glPostingsTable.createdAt} >= ${new Date(fromDate)}` : sql``}
           ${toDate ? sql`AND ${glPostingsTable.createdAt} <= ${new Date(toDate)}` : sql``}
         GROUP BY line->>'accountCode'
-      `) as unknown as Array<{ accountCode: string; totalDebit: number; totalCredit: number }>;
+      `) as unknown as PdfMovSummary;
       return rows;
     }),
   ]);
 
-  const movementMap = new Map<string, { dr: number; cr: number }>();
+  const openMap = new Map<string, number>();
+  for (const row of openingMovements) {
+    openMap.set(row.accountCode, Number(row.totalDebit ?? 0) - Number(row.totalCredit ?? 0));
+  }
+  const periodMap = new Map<string, { dr: number; cr: number }>();
   for (const row of periodMovements) {
-    movementMap.set(row.accountCode, { dr: Number(row.totalDebit ?? 0), cr: Number(row.totalCredit ?? 0) });
+    periodMap.set(row.accountCode, { dr: Number(row.totalDebit ?? 0), cr: Number(row.totalCredit ?? 0) });
   }
   const rows = accounts.map(acc => {
-    const mov = movementMap.get(acc.code) ?? { dr: 0, cr: 0 };
-    return { ...acc, periodDebit: mov.dr, periodCredit: mov.cr, closingBalance: mov.dr - mov.cr };
+    const opening = openMap.get(acc.code) ?? 0;
+    const { dr, cr } = periodMap.get(acc.code) ?? { dr: 0, cr: 0 };
+    return { ...acc, openingBalance: opening, periodDebit: dr, periodCredit: cr, closingBalance: opening + dr - cr };
   });
   const totals = rows.reduce((a, r) => ({ debit: a.debit + r.periodDebit, credit: a.credit + r.periodCredit }), { debit: 0, credit: 0 });
 
-  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  const doc = new PDFDocument({ margin: 40, size: "A4", layout: "landscape" });
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="trial-balance.pdf"`);
   doc.pipe(res);
 
   const tenantName = tenant[0]?.name ?? "Forge ERP";
-  const fmt = (n: number) => n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const fmtN = (n: number) => n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   const period = `${fromDate ?? "All time"} to ${toDate ?? "Today"}`;
 
-  doc.fontSize(18).font("Helvetica-Bold").text(tenantName, { align: "center" });
-  doc.fontSize(13).font("Helvetica").text("Trial Balance", { align: "center" });
-  doc.fontSize(10).text(period, { align: "center" });
+  doc.fontSize(16).font("Helvetica-Bold").text(tenantName, { align: "center" });
+  doc.fontSize(12).font("Helvetica").text("Trial Balance", { align: "center" });
+  doc.fontSize(9).text(period, { align: "center" });
   doc.moveDown();
 
-  const colX = { code: 40, name: 90, type: 280, dr: 360, cr: 440, balance: 510 };
+  const colX = { code: 40, name: 90, type: 230, open: 320, dr: 390, cr: 470, balance: 550 };
   const headerY = doc.y;
-  doc.fontSize(9).font("Helvetica-Bold");
+  doc.fontSize(8).font("Helvetica-Bold");
   doc.text("Code", colX.code, headerY);
   doc.text("Account", colX.name, headerY);
   doc.text("Type", colX.type, headerY);
-  doc.text("Dr", colX.dr, headerY, { width: 70, align: "right" });
-  doc.text("Cr", colX.cr, headerY, { width: 70, align: "right" });
-  doc.text("Balance", colX.balance, headerY, { width: 70, align: "right" });
+  doc.text("Opening", colX.open, headerY, { width: 65, align: "right" });
+  doc.text("Period Dr", colX.dr, headerY, { width: 65, align: "right" });
+  doc.text("Period Cr", colX.cr, headerY, { width: 65, align: "right" });
+  doc.text("Closing", colX.balance, headerY, { width: 65, align: "right" });
   doc.moveDown(0.3);
-  doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#999").stroke();
+  doc.moveTo(40, doc.y).lineTo(760, doc.y).strokeColor("#999").stroke();
   doc.moveDown(0.3);
 
-  doc.font("Helvetica").fontSize(8);
+  doc.font("Helvetica").fontSize(7.5);
   for (const row of rows) {
-    if (doc.y > 760) { doc.addPage(); }
+    if (doc.y > 520) { doc.addPage(); }
     const y = doc.y;
     doc.text(row.code, colX.code, y);
-    doc.text(row.name.substring(0, 30), colX.name, y);
+    doc.text(row.name.substring(0, 25), colX.name, y);
     doc.text(row.accountType ?? "", colX.type, y);
-    doc.text(fmt(row.periodDebit), colX.dr, y, { width: 70, align: "right" });
-    doc.text(fmt(row.periodCredit), colX.cr, y, { width: 70, align: "right" });
+    doc.fillColor(row.openingBalance < 0 ? "#c00" : "#000").text(fmtN(Math.abs(row.openingBalance)), colX.open, y, { width: 65, align: "right" });
+    doc.fillColor("#000").text(fmtN(row.periodDebit), colX.dr, y, { width: 65, align: "right" });
+    doc.text(fmtN(row.periodCredit), colX.cr, y, { width: 65, align: "right" });
     const bal = row.closingBalance;
-    doc.fillColor(bal < 0 ? "#c00" : "#000").text(fmt(Math.abs(bal)), colX.balance, y, { width: 70, align: "right" });
+    doc.fillColor(bal < 0 ? "#c00" : "#000").text(fmtN(Math.abs(bal)), colX.balance, y, { width: 65, align: "right" });
     doc.fillColor("#000");
     doc.moveDown(0.5);
   }
 
   doc.moveDown(0.5);
-  doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#333").stroke();
+  doc.moveTo(40, doc.y).lineTo(760, doc.y).strokeColor("#333").stroke();
   doc.moveDown(0.3);
-  doc.font("Helvetica-Bold").fontSize(9);
+  doc.font("Helvetica-Bold").fontSize(8);
   const totY = doc.y;
   doc.text("TOTAL", colX.code, totY);
-  doc.text(fmt(totals.debit), colX.dr, totY, { width: 70, align: "right" });
-  doc.text(fmt(totals.credit), colX.cr, totY, { width: 70, align: "right" });
+  doc.text(fmtN(totals.debit), colX.dr, totY, { width: 65, align: "right" });
+  doc.text(fmtN(totals.credit), colX.cr, totY, { width: 65, align: "right" });
 
   doc.end();
 });
@@ -495,7 +595,8 @@ router.get("/finance/trial-balance/export/csv", ...tenantUserMiddleware, async (
   const { tenantId } = req as TenantRequest;
   const { fromDate, toDate } = req.query as Record<string, string>;
 
-  const [accounts, periodMovements] = await Promise.all([
+  type CsvMovSummary = Array<{ accountCode: string; totalDebit: string; totalCredit: string }>;
+  const [accounts, openingMov, periodMovements] = await Promise.all([
     withTenantDb(tenantId, (db) =>
       db.select({ code: glAccountsTable.code, name: glAccountsTable.name, accountType: glAccountsTable.accountType })
         .from(glAccountsTable)
@@ -503,35 +604,53 @@ router.get("/finance/trial-balance/export/csv", ...tenantUserMiddleware, async (
         .orderBy(asc(glAccountsTable.code))
     ),
     withTenantDb(tenantId, async (db) => {
+      if (!fromDate) return [] as CsvMovSummary;
+      const rows = await db.execute(sql`
+        SELECT line->>'accountCode' AS "accountCode",
+               SUM((line->>'debit')::numeric) AS "totalDebit",
+               SUM((line->>'credit')::numeric) AS "totalCredit"
+        FROM ${glPostingsTable}, jsonb_array_elements(${glPostingsTable.lines}) AS line
+        WHERE ${glPostingsTable.tenantId} = ${tenantId} AND ${glPostingsTable.status} = 'posted'
+          AND ${glPostingsTable.createdAt} < ${new Date(fromDate)}
+        GROUP BY line->>'accountCode'
+      `) as unknown as CsvMovSummary;
+      return rows;
+    }),
+    withTenantDb(tenantId, async (db) => {
       const rows = await db.execute(sql`
         SELECT
           line->>'accountCode' AS "accountCode",
           SUM((line->>'debit')::numeric) AS "totalDebit",
           SUM((line->>'credit')::numeric) AS "totalCredit"
-        FROM ${glPostingsTable}, jsonb_array_elements(lines) AS line
-        WHERE ${glPostingsTable}.tenant_id = ${tenantId}
-          AND ${glPostingsTable}.status = 'posted'
-          ${fromDate ? sql`AND ${glPostingsTable}.created_at >= ${new Date(fromDate)}` : sql``}
-          ${toDate ? sql`AND ${glPostingsTable}.created_at <= ${new Date(toDate)}` : sql``}
+        FROM ${glPostingsTable}, jsonb_array_elements(${glPostingsTable.lines}) AS line
+        WHERE ${glPostingsTable.tenantId} = ${tenantId}
+          AND ${glPostingsTable.status} = 'posted'
+          ${fromDate ? sql`AND ${glPostingsTable.createdAt} >= ${new Date(fromDate)}` : sql``}
+          ${toDate ? sql`AND ${glPostingsTable.createdAt} <= ${new Date(toDate)}` : sql``}
         GROUP BY line->>'accountCode'
-      `) as unknown as Array<{ accountCode: string; totalDebit: string; totalCredit: string }>;
+      `) as unknown as CsvMovSummary;
       return rows;
     }),
   ]);
 
+  const openMap2 = new Map(openingMov.map(m => [m.accountCode, m]));
   const movMap = new Map(periodMovements.map(m => [m.accountCode, m]));
-  const csvLines: string[] = ["Account Code,Account Name,Type,Period Debits,Period Credits,Net"];
+  const csvLines: string[] = ["Account Code,Account Name,Type,Opening Balance,Period Debits,Period Credits,Closing Balance"];
   for (const acct of accounts) {
+    const op = openMap2.get(acct.code);
     const mv = movMap.get(acct.code);
+    const opening = Number(op?.totalDebit ?? 0) - Number(op?.totalCredit ?? 0);
     const debits = Number(mv?.totalDebit ?? 0);
     const credits = Number(mv?.totalCredit ?? 0);
+    const closing = opening + debits - credits;
     csvLines.push([
       acct.code,
       `"${(acct.name ?? "").replace(/"/g, '""')}"`,
       acct.accountType ?? "",
+      opening.toFixed(2),
       debits.toFixed(2),
       credits.toFixed(2),
-      (debits - credits).toFixed(2),
+      closing.toFixed(2),
     ].join(","));
   }
 
