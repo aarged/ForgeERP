@@ -30,6 +30,20 @@ A modern, multi-tenant SaaS ERP platform for mid-market businesses. Covers purch
 - `tenant_memberships` — User↔tenant relationship with role (super_admin, tenant_admin, purchaser, warehouse, approver, accountant, viewer)
 - `users` — User profile cache
 - `audit_logs` — Full audit trail for all actions
+- `roles`, `permissions`, `role_permissions` — RBAC tables
+
+## Database Roles & RLS
+
+Two separate PostgreSQL roles:
+- **postgres** (superuser, BYPASSRLS) — used for migrations, admin ops, `applyRLSPolicies()`, `adminPool`
+- **forge_app** (no BYPASSRLS, no superuser) — used for ALL application queries via `pool`/`db`/`withTenantDb()`
+
+RLS is enforced via `FORCE ROW LEVEL SECURITY` + `tenant_isolation` policy on all tenant-scoped tables.
+`withTenantDb(tenantId, callback)` sets `app.tenant_id` GUC per-transaction so RLS filters rows automatically.
+
+Connection URLs:
+- `DATABASE_URL` (runtime-managed) → postgres superuser, admin operations only
+- `FORGE_APP_DB_URL` (shared env) → forge_app role, all application queries + RLS enforcement
 
 ## Auth & Roles
 

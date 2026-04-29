@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { applyRLSPolicies } from "@workspace/db/rls";
 
 const rawPort = process.env["PORT"];
 
@@ -15,11 +16,27 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
+/**
+ * Apply PostgreSQL RLS policies at startup (idempotent).
+ * This ensures DB-level tenant isolation is always in effect,
+ * even after a fresh deployment or DB reset.
+ */
+async function bootstrap() {
+  try {
+    await applyRLSPolicies();
+    logger.info("PostgreSQL RLS policies applied");
+  } catch (err) {
+    logger.error({ err }, "Failed to apply RLS policies — server will NOT start");
     process.exit(1);
   }
 
-  logger.info({ port }, "Server listening");
-});
+  app.listen(port, (err) => {
+    if (err) {
+      logger.error({ err }, "Error listening on port");
+      process.exit(1);
+    }
+    logger.info({ port }, "Server listening");
+  });
+}
+
+bootstrap();

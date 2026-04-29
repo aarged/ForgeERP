@@ -1,87 +1,149 @@
 /**
- * Row-Level Security utilities.
+ * Row-Level Security utilities for Forge ERP.
  *
- * Forge ERP enforces multi-tenant data isolation at two levels:
- *   1. Application layer: All queries pass through `tenantContext` middleware
- *      which sets req.tenantId from the authenticated user's active membership.
- *      Route handlers filter every query with `.where(eq(table.tenantId, req.tenantId))`.
- *   2. Database layer: PostgreSQL RLS policies defined here ensure that even if
- *      application-layer filtering is bypassed, rows from other tenants cannot
- *      be read or written.
+ * ## Isolation strategy (two layers)
  *
- * RLS is enforced per table via the `app.tenant_id` session-local setting.
- * Before executing any tenant-scoped query, call `setTenantId(tenantId)`.
+ * ### Layer 1 — Application-layer filtering (PRIMARY)
+ * Every tenant-scoped query MUST include `.where(eq(table.tenantId, req.tenantId))`.
+ * `tenantContext` middleware resolves `req.tenantId` from the active JWT claim or
+ * DB membership lookup before any route handler executes.
+ * This is the primary, always-active enforcement mechanism.
+ *
+ * ### Layer 2 — PostgreSQL RLS (DEFENSE-IN-DEPTH)
+ * RLS policies are applied to tenant-scoped tables via `applyRLSPolicies()`.
+ * Policies read the `app.tenant_id` session GUC variable.
+ * Because the API server uses a connection pool, callers MUST use `withTenantDb()`
+ * to execute queries inside a transaction where the GUC is SET LOCAL before any
+ * query runs. This prevents stale context from one request bleeding into another.
+ *
+ * ⚠️  Never call `set_config('app.tenant_id', ..., false)` on a pooled connection
+ *     outside of a transaction — it persists on the connection after the request
+ *     ends, creating a cross-request data leakage risk.
+ *
+ * ### Usage pattern for tenant-scoped route handlers
+ *
+ * ```typescript
+ * router.get("/example", tenantContext, async (req, res) => {
+ *   const { tenantId } = req as TenantRequest;
+ *   await withTenantDb(tenantId, async (txDb) => {
+ *     const rows = await txDb
+ *       .select()
+ *       .from(someTable)
+ *       .where(eq(someTable.tenantId, tenantId)); // app-layer filter (always)
+ *     res.json(rows);
+ *   });
+ * });
+ * ```
  */
 
-import { pool } from "./index";
+import { drizzle } from "drizzle-orm/node-postgres";
+import * as schema from "./schema";
+import { pool, adminPool } from "./index";
 
 /**
- * Sets the current tenant ID as a session-local GUC variable.
- * This variable is read by RLS policies on all tenant-scoped tables.
+ * withTenantDb
  *
- * Usage: await setTenantId(client, tenantId);
+ * Executes `callback` inside a READ-COMMITTED transaction on a dedicated
+ * connection. Before any query runs, `SET LOCAL app.tenant_id = tenantId`
+ * scopes the RLS policy to the current tenant for the duration of the
+ * transaction. The setting is automatically cleared when the transaction
+ * ends (LOCAL = transaction-scoped only).
+ *
+ * All queries in `callback` MUST still include explicit `.where(tenantId)`
+ * clauses — RLS is defense-in-depth, not a substitute for app-layer filters.
  */
-export async function setTenantId(
-  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+export async function withTenantDb<T>(
   tenantId: number,
-): Promise<void> {
-  await client.query("SELECT set_config('app.tenant_id', $1, true)", [
-    tenantId.toString(),
-  ]);
+  callback: (txDb: ReturnType<typeof drizzle<typeof schema>>) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    const txDb = drizzle(client, { schema });
+    await client.query("BEGIN");
+    // Reset row_security in case a previous session on this pooled connection
+    // had SET row_security = off. This ensures RLS is always enforced.
+    await client.query("SET LOCAL row_security = on");
+    await client.query(
+      "SELECT set_config('app.tenant_id', $1, true)",
+      [tenantId.toString()],
+    );
+    const result = await callback(txDb);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**
- * Applies RLS policies to all tenant-scoped tables.
- * Safe to run multiple times (idempotent via IF NOT EXISTS / OR REPLACE).
+ * applyRLSPolicies
  *
- * This should be called once during DB setup / migration.
+ * Idempotent: enables RLS on all tenant-scoped tables and creates/replaces
+ * `tenant_isolation` policies. Safe to run at server startup.
+ *
+ * Called once during `artifacts/api-server/src/index.ts` boot sequence.
  */
 export async function applyRLSPolicies(): Promise<void> {
-  const client = await pool.connect();
+  // Use adminPool (superuser) to manage RLS policies
+  const client = await adminPool.connect();
   try {
     await client.query("BEGIN");
 
-    // Enable RLS on tenant-scoped tables
-    const tenantScopedTables = ["tenants", "tenant_memberships", "audit_logs", "roles", "role_permissions"];
+    const tenantScopedTables = [
+      "tenants",
+      "tenant_memberships",
+      "audit_logs",
+      "roles",
+    ];
+
     for (const table of tenantScopedTables) {
-      await client.query(`ALTER TABLE IF EXISTS "${table}" ENABLE ROW LEVEL SECURITY`);
+      // ENABLE ROW LEVEL SECURITY activates RLS.
+      // FORCE ROW LEVEL SECURITY ensures RLS applies even to the table owner
+      // and superusers — required when the DB user has BYPASSRLS privilege.
+      await client.query(`
+        ALTER TABLE IF EXISTS "${table}" ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE IF EXISTS "${table}" FORCE ROW LEVEL SECURITY;
+      `);
     }
 
-    // Drop and recreate RLS policies for tenants table
+    // tenants: only the exact tenant row is visible
     await client.query(`
       DROP POLICY IF EXISTS tenant_isolation ON tenants;
       CREATE POLICY tenant_isolation ON tenants
-        USING (id::text = current_setting('app.tenant_id', true))
-        WITH CHECK (id::text = current_setting('app.tenant_id', true));
+        USING (id::text = COALESCE(current_setting('app.tenant_id', true), ''))
+        WITH CHECK (id::text = COALESCE(current_setting('app.tenant_id', true), ''));
     `);
 
     // tenant_memberships
     await client.query(`
       DROP POLICY IF EXISTS tenant_isolation ON tenant_memberships;
       CREATE POLICY tenant_isolation ON tenant_memberships
-        USING (tenant_id::text = current_setting('app.tenant_id', true))
-        WITH CHECK (tenant_id::text = current_setting('app.tenant_id', true));
+        USING (tenant_id::text = COALESCE(current_setting('app.tenant_id', true), ''))
+        WITH CHECK (tenant_id::text = COALESCE(current_setting('app.tenant_id', true), ''));
     `);
 
     // audit_logs
     await client.query(`
       DROP POLICY IF EXISTS tenant_isolation ON audit_logs;
       CREATE POLICY tenant_isolation ON audit_logs
-        USING (tenant_id::text = current_setting('app.tenant_id', true))
-        WITH CHECK (tenant_id::text = current_setting('app.tenant_id', true));
+        USING (tenant_id::text = COALESCE(current_setting('app.tenant_id', true), ''))
+        WITH CHECK (tenant_id::text = COALESCE(current_setting('app.tenant_id', true), ''));
     `);
 
-    // roles (nullable tenant_id for system roles — allow when tenant_id is null OR matches)
+    // roles: system roles (tenant_id IS NULL) are visible to all tenants
     await client.query(`
       DROP POLICY IF EXISTS tenant_isolation ON roles;
       CREATE POLICY tenant_isolation ON roles
         USING (
           tenant_id IS NULL
-          OR tenant_id::text = current_setting('app.tenant_id', true)
+          OR tenant_id::text = COALESCE(current_setting('app.tenant_id', true), '')
         )
         WITH CHECK (
           tenant_id IS NULL
-          OR tenant_id::text = current_setting('app.tenant_id', true)
+          OR tenant_id::text = COALESCE(current_setting('app.tenant_id', true), '')
         );
     `);
 
