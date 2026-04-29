@@ -1048,9 +1048,14 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
       ));
     }
   } else {
+    // Auto-approved on submit — immediately convert to a draft PO
+    const poId = await createPoFromRequisition(tenantId, id, clerkUserId, userEmail);
+    if (poId) {
+      await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "requisition.auto_converted_to_po", entityType: "purchase_requisition", entityId: String(id), newValues: { poId } });
+    }
     await createNotification(tenantId, clerkUserId, "decision_made",
       "Requisition auto-approved",
-      `Purchase Requisition ${genCode("REQ", id)} was auto-approved (no approval workflow required).`,
+      `Purchase Requisition ${genCode("REQ", id)} was auto-approved and converted to a Purchase Order.`,
       { entityType: "purchase_requisition", entityId: id, entityCode: genCode("REQ", id) });
   }
 
@@ -2330,8 +2335,12 @@ router.get("/procurement/reports/pending-approvals", ...approverMiddleware, asyn
     eligibleSteps = steps.filter((s) => {
       const roles = (s.approverRoles as string[]) ?? [];
       const userIds = (s.approverUserIds as string[]) ?? [];
-      return (roles.length === 0 || roles.includes(userRole)) &&
-             (userIds.length === 0 || userIds.includes(clerkUserId));
+      const hasRoleConstraint = roles.length > 0;
+      const hasUserConstraint = userIds.length > 0;
+      if (!hasRoleConstraint && !hasUserConstraint) return true; // open step — any approver-role user
+      if (hasRoleConstraint && !hasUserConstraint) return roles.includes(userRole);
+      if (!hasRoleConstraint && hasUserConstraint) return userIds.includes(clerkUserId);
+      return roles.includes(userRole) || userIds.includes(clerkUserId); // both constraints: OR semantics
     });
   }
 
