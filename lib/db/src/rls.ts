@@ -80,6 +80,21 @@ export async function applyRLSPolicies(): Promise<void> {
       "tenant_memberships",
       "audit_logs",
       "roles",
+      // Master-data tables (tenant-scoped)
+      "warehouses",
+      "warehouse_locations",
+      "departments",
+      "items",
+      "item_variants",
+      "item_units",
+      "item_attributes",
+      "item_locations",
+      "item_cross_references",
+      "suppliers",
+      "supplier_contacts",
+      "customers",
+      "customer_contacts",
+      "gl_accounts",
       // Procurement tables
       "approval_workflows",
       "approval_steps",
@@ -159,8 +174,24 @@ export async function applyRLSPolicies(): Promise<void> {
         );
     `);
 
-    // All procurement + inventory + GL tables use the standard tenant_id pattern
+    // All master-data + procurement + inventory + GL tables: standard tenant_id pattern
     const standardTenantTables = [
+      // Master-data
+      "warehouses",
+      "warehouse_locations",
+      "departments",
+      "items",
+      "item_variants",
+      "item_units",
+      "item_attributes",
+      "item_locations",
+      "item_cross_references",
+      "suppliers",
+      "supplier_contacts",
+      "customers",
+      "customer_contacts",
+      "gl_accounts",
+      // Procurement
       "approval_workflows",
       "approval_steps",
       "approval_decisions",
@@ -172,7 +203,7 @@ export async function applyRLSPolicies(): Promise<void> {
       "receipt_lines",
       "po_returns",
       "po_return_lines",
-      // Inventory tables
+      // Inventory
       "inventory_stock",
       "inventory_movements",
       "cost_layers",
@@ -186,7 +217,7 @@ export async function applyRLSPolicies(): Promise<void> {
       "landed_cost_allocations",
       "serial_numbers",
       "inventory_transfers",
-      // GL tables
+      // GL
       "gl_postings",
       "notifications",
     ];

@@ -435,7 +435,7 @@ router.post("/inventory/adjust", ...tenantWriteMiddleware, async (req: Request, 
 
     // Resolve GL adjustment account
     const glAcc = parsed.data.glAccountId
-      ? (await db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(eq(glAccountsTable.id, parsed.data.glAccountId)).limit(1))[0]
+      ? (await db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(and(eq(glAccountsTable.id, parsed.data.glAccountId), eq(glAccountsTable.tenantId, tenantId))).limit(1))[0]
       : null;
 
     // Process each line with costing-method awareness
@@ -444,7 +444,7 @@ router.post("/inventory/adjust", ...tenantWriteMiddleware, async (req: Request, 
 
     for (const line of parsed.data.lines) {
       const [item] = await db.select({ code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod })
-        .from(itemsTable).where(eq(itemsTable.id, line.itemId)).limit(1);
+        .from(itemsTable).where(and(eq(itemsTable.id, line.itemId), eq(itemsTable.tenantId, tenantId))).limit(1);
       const costingMethod = (item?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
 
       const [movement] = await db.insert(inventoryMovementsTable).values({
@@ -594,8 +594,8 @@ router.post("/inventory/transfer", ...tenantWriteMiddleware, async (req: Request
   }
 
   const [[item], itemFull] = await Promise.all([
-    withTenantDb(tenantId, (db) => db.select({ code: itemsTable.code, name: itemsTable.name }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1)),
-    withTenantDb(tenantId, (db) => db.select({ costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1)),
+    withTenantDb(tenantId, (db) => db.select({ code: itemsTable.code, name: itemsTable.name }).from(itemsTable).where(and(eq(itemsTable.id, d.itemId), eq(itemsTable.tenantId, tenantId))).limit(1)),
+    withTenantDb(tenantId, (db) => db.select({ costingMethod: itemsTable.costingMethod }).from(itemsTable).where(and(eq(itemsTable.id, d.itemId), eq(itemsTable.tenantId, tenantId))).limit(1)),
   ]);
   const costingMethod = ((itemFull[0]?.costingMethod) ?? "avco") as "fifo" | "avco" | "standard";
 
@@ -702,7 +702,7 @@ router.post("/inventory/transfers/:id/receive", ...tenantWriteMiddleware, async 
   if (transfer.status === "cancelled") { res.status(400).json({ error: "Transfer has been cancelled" }); return; }
 
   const itemFull = await withTenantDb(tenantId, (db) =>
-    db.select({ costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, transfer.itemId)).limit(1));
+    db.select({ costingMethod: itemsTable.costingMethod }).from(itemsTable).where(and(eq(itemsTable.id, transfer.itemId), eq(itemsTable.tenantId, tenantId))).limit(1));
   const costingMethod = ((itemFull[0]?.costingMethod) ?? "avco") as "fifo" | "avco" | "standard";
 
   const result = await withTenantDb(tenantId, async (db) => {
@@ -774,12 +774,12 @@ router.post("/inventory/receive", ...tenantWriteMiddleware, async (req: Request,
   const d = parsed.data;
 
   const [item] = await withTenantDb(tenantId, (db) =>
-    db.select({ code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+    db.select({ code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(and(eq(itemsTable.id, d.itemId), eq(itemsTable.tenantId, tenantId))).limit(1));
   if (!item) { res.status(404).json({ error: "Item not found" }); return; }
   const costingMethod = (item.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
 
   const [glAcc] = await withTenantDb(tenantId, (db) =>
-    db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(eq(glAccountsTable.id, d.glAccountId)).limit(1));
+    db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(and(eq(glAccountsTable.id, d.glAccountId), eq(glAccountsTable.tenantId, tenantId))).limit(1));
   if (!glAcc) { res.status(404).json({ error: "GL account not found" }); return; }
 
   const result = await withTenantDb(tenantId, async (db) => {
@@ -855,12 +855,12 @@ router.post("/inventory/issue", ...tenantWriteMiddleware, async (req: Request, r
 
   const unitCost = Number(sourceStock?.averageCost ?? 0);
   const [item] = await withTenantDb(tenantId, (db) =>
-    db.select({ code: itemsTable.code, name: itemsTable.name }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+    db.select({ code: itemsTable.code, name: itemsTable.name }).from(itemsTable).where(and(eq(itemsTable.id, d.itemId), eq(itemsTable.tenantId, tenantId))).limit(1));
   const [glAcc] = await withTenantDb(tenantId, (db) =>
-    db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(eq(glAccountsTable.id, d.glAccountId)).limit(1));
+    db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(and(eq(glAccountsTable.id, d.glAccountId), eq(glAccountsTable.tenantId, tenantId))).limit(1));
 
   const itemFull = await withTenantDb(tenantId, (db) =>
-    db.select({ costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+    db.select({ costingMethod: itemsTable.costingMethod }).from(itemsTable).where(and(eq(itemsTable.id, d.itemId), eq(itemsTable.tenantId, tenantId))).limit(1));
   const costingMethod = ((itemFull[0]?.costingMethod) ?? "avco") as "fifo" | "avco" | "standard";
 
   const result = await withTenantDb(tenantId, async (db) => {
@@ -926,7 +926,7 @@ router.post("/inventory/return", ...tenantWriteMiddleware, async (req: Request, 
   const d = parsed.data;
 
   const [item] = await withTenantDb(tenantId, (db) =>
-    db.select({ code: itemsTable.code, name: itemsTable.name, unitCost: itemsTable.unitCost, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+    db.select({ code: itemsTable.code, name: itemsTable.name, unitCost: itemsTable.unitCost, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(and(eq(itemsTable.id, d.itemId), eq(itemsTable.tenantId, tenantId))).limit(1));
   const costingMethod = (item?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
 
   const result = await withTenantDb(tenantId, async (db) => {
@@ -973,7 +973,7 @@ router.post("/inventory/repack", ...tenantWriteMiddleware, async (req: Request, 
   const d = parsed.data;
 
   const [item] = await withTenantDb(tenantId, (db) =>
-    db.select({ code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+    db.select({ code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(and(eq(itemsTable.id, d.itemId), eq(itemsTable.tenantId, tenantId))).limit(1));
   const costingMethod = (item?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
 
   const result = await withTenantDb(tenantId, async (db) => {
@@ -1048,14 +1048,14 @@ router.post("/inventory/build", ...tenantWriteMiddleware, async (req: Request, r
         )).limit(1));
     const available = Number(stock?.qtyOnHand ?? 0) - Number(stock?.qtyReserved ?? 0);
     if (available < comp.qty) {
-      const [it] = await withTenantDb(tenantId, (db) => db.select({ code: itemsTable.code }).from(itemsTable).where(eq(itemsTable.id, comp.itemId)).limit(1));
+      const [it] = await withTenantDb(tenantId, (db) => db.select({ code: itemsTable.code }).from(itemsTable).where(and(eq(itemsTable.id, comp.itemId), eq(itemsTable.tenantId, tenantId))).limit(1));
       res.status(400).json({ error: `Insufficient stock for component ${it?.code ?? comp.itemId}. Available: ${available.toFixed(4)}` });
       return;
     }
   }
 
   const [finishedItem] = await withTenantDb(tenantId, (db) =>
-    db.select({ code: itemsTable.code, name: itemsTable.name, unitCost: itemsTable.unitCost, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.finishedItemId)).limit(1));
+    db.select({ code: itemsTable.code, name: itemsTable.name, unitCost: itemsTable.unitCost, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(and(eq(itemsTable.id, d.finishedItemId), eq(itemsTable.tenantId, tenantId))).limit(1));
   const finishedCostingMethod = (finishedItem?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
 
   const result = await withTenantDb(tenantId, async (db) => {
@@ -1063,7 +1063,7 @@ router.post("/inventory/build", ...tenantWriteMiddleware, async (req: Request, r
 
     // Consume each component (resolve per-component costing method)
     for (const comp of d.components) {
-      const [compItem] = await db.select({ code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, comp.itemId)).limit(1);
+      const [compItem] = await db.select({ code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(and(eq(itemsTable.id, comp.itemId), eq(itemsTable.tenantId, tenantId))).limit(1);
       const compCostingMethod = (compItem?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
       const [movement] = await db.insert(inventoryMovementsTable).values({
         tenantId, itemId: comp.itemId, itemCode: compItem?.code, itemName: compItem?.name,
@@ -1555,7 +1555,7 @@ router.post("/inventory/stocktakes/:id/post", ...tenantWriteMiddleware, async (r
   await withTenantDb(tenantId, async (db) => {
     // Resolve GL account for variance posting
     const glAcc = glAccountId
-      ? (await db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(eq(glAccountsTable.id, glAccountId)).limit(1))[0]
+      ? (await db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(and(eq(glAccountsTable.id, glAccountId), eq(glAccountsTable.tenantId, tenantId))).limit(1))[0]
       : null;
 
     // Build GL lines for all variances, create single GL posting
@@ -1567,7 +1567,7 @@ router.post("/inventory/stocktakes/:id/post", ...tenantWriteMiddleware, async (r
 
       // Resolve item costing method
       const [itemRow] = await db.select({ costingMethod: itemsTable.costingMethod })
-        .from(itemsTable).where(eq(itemsTable.id, line.itemId)).limit(1);
+        .from(itemsTable).where(and(eq(itemsTable.id, line.itemId), eq(itemsTable.tenantId, tenantId))).limit(1);
       const costingMethod = (itemRow?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
 
       const [movement] = await db.insert(inventoryMovementsTable).values({
