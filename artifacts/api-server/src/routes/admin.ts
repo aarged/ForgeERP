@@ -216,7 +216,7 @@ router.get(
           onboardingCompletedAt: t.onboardingCompletedAt?.toISOString() ?? null,
           createdAt: t.createdAt.toISOString(),
           memberCount: Number(t.memberCount),
-          storageUsageMb: Math.round(storageUsageMb),
+          storageUsageMb,
           subscriptionStatus: null as string | null,
         };
       }),
