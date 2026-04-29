@@ -82,6 +82,8 @@ export const itemsTable = pgTable("items", {
   marketPrice: numeric("market_price", { precision: 18, scale: 4 }),
   category: text("category"),
   imageUrl: text("image_url"),
+  /** fifo | avco | standard — determines how stock cost is maintained */
+  costingMethod: text("costing_method").notNull().default("avco"),
   isActive: boolean("is_active").notNull().default(true),
   hasVariants: boolean("has_variants").notNull().default(false),
   notes: text("notes"),

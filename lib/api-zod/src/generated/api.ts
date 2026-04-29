@@ -6191,11 +6191,14 @@ export const GetItemAvailabilityResponse = zod.object({
       id: zod.number().optional(),
       code: zod.string().optional(),
       name: zod.string().optional(),
+      costingMethod: zod.string().optional(),
     })
     .optional(),
   totalOnHand: zod.number().optional(),
   totalReserved: zod.number().optional(),
   totalAvailable: zod.number().optional(),
+  totalOnOrder: zod.number().optional(),
+  totalInTransit: zod.number().optional(),
   byWarehouse: zod
     .array(
       zod.object({
@@ -6520,7 +6523,7 @@ export const ListLotNumbersResponse = zod.object({
 });
 
 /**
- * @summary Forward trace all movements for a lot
+ * @summary Forward or backward trace for a lot number
  */
 export const TraceLotNumberParams = zod.object({
   lotNumber: zod.coerce.string(),
@@ -6528,6 +6531,9 @@ export const TraceLotNumberParams = zod.object({
 
 export const TraceLotNumberQueryParams = zod.object({
   itemId: zod.coerce.number().optional(),
+  direction: zod.enum(["forward", "backward"]).optional(),
+  refType: zod.coerce.string().optional(),
+  refId: zod.coerce.number().optional(),
 });
 
 export const TraceLotNumberHeader = zod.object({
@@ -6535,7 +6541,8 @@ export const TraceLotNumberHeader = zod.object({
 });
 
 export const TraceLotNumberResponse = zod.object({
-  lotNumber: zod.string().optional(),
+  direction: zod.string().optional(),
+  lotNumber: zod.string().nullish(),
   lot: zod
     .object({
       id: zod.number().optional(),
@@ -6581,6 +6588,8 @@ export const TraceLotNumberResponse = zod.object({
       }),
     )
     .optional(),
+  refType: zod.string().nullish(),
+  refId: zod.number().nullish(),
 });
 
 /**
@@ -6931,6 +6940,185 @@ export const UpdateCycleCountLineHeader = zod.object({
 
 export const UpdateCycleCountLineBody = zod.object({
   countedQty: zod.number(),
+});
+
+/**
+ * @summary List warehouse-to-warehouse transfers
+ */
+export const ListInventoryTransfersQueryParams = zod.object({
+  status: zod.enum(["in_transit", "received", "cancelled"]).optional(),
+  fromWarehouseId: zod.coerce.number().optional(),
+  toWarehouseId: zod.coerce.number().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListInventoryTransfersHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListInventoryTransfersResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        fromWarehouseId: zod.number().optional(),
+        toWarehouseId: zod.number().optional(),
+        itemId: zod.number().optional(),
+        quantity: zod.number().optional(),
+        status: zod.string().optional(),
+        notes: zod.string().nullish(),
+        createdAt: zod.string().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Receive an in-transit transfer (creates inbound movement)
+ */
+export const ReceiveInventoryTransferParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ReceiveInventoryTransferHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReceiveInventoryTransferBody = zod.object({
+  notes: zod.string().optional(),
+});
+
+export const ReceiveInventoryTransferResponse = zod.object({
+  transferId: zod.number().optional(),
+  status: zod.string().optional(),
+  inboundMovementId: zod.number().optional(),
+});
+
+/**
+ * @summary List serial numbers with filtering
+ */
+export const ListSerialNumbersQueryParams = zod.object({
+  itemId: zod.coerce.number().optional(),
+  warehouseId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  search: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListSerialNumbersHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListSerialNumbersResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        serialNumber: zod.string().optional(),
+        itemId: zod.number().nullish(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        warehouseId: zod.number().nullish(),
+        warehouseName: zod.string().nullish(),
+        status: zod.string().optional(),
+        lotNumber: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.string().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Register a new serial number
+ */
+export const RegisterSerialNumberHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const RegisterSerialNumberBody = zod.object({
+  serialNumber: zod.string(),
+  itemId: zod.number().optional(),
+  warehouseId: zod.number().optional(),
+  locationId: zod.number().optional(),
+  lotNumber: zod.string().optional(),
+  status: zod.string().optional(),
+  notes: zod.string().optional(),
+});
+
+/**
+ * @summary Get serial number detail with full movement trace
+ */
+export const GetSerialNumberParams = zod.object({
+  serialNumber: zod.coerce.string(),
+});
+
+export const GetSerialNumberHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetSerialNumberResponse = zod.object({
+  id: zod.number().optional(),
+  serialNumber: zod.string().optional(),
+  itemId: zod.number().nullish(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  warehouseId: zod.number().nullish(),
+  status: zod.string().optional(),
+  lotNumber: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  movements: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        movementType: zod.string().optional(),
+        quantity: zod.number().optional(),
+        unitCost: zod.string().nullish(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        warehouseId: zod.number().optional(),
+        warehouseName: zod.string().nullish(),
+        locationId: zod.number().nullish(),
+        toWarehouseId: zod.number().nullish(),
+        toLocationId: zod.number().nullish(),
+        refType: zod.string().nullish(),
+        refId: zod.number().nullish(),
+        refCode: zod.string().nullish(),
+        lotNumber: zod.string().nullish(),
+        adjReason: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        postedByClerkId: zod.string().nullish(),
+        postedByEmail: zod.string().nullish(),
+        glPostingId: zod.number().nullish(),
+        createdAt: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Update serial number status or location
+ */
+export const UpdateSerialNumberParams = zod.object({
+  serialNumber: zod.coerce.string(),
+});
+
+export const UpdateSerialNumberHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateSerialNumberBody = zod.object({
+  status: zod.string().optional(),
+  warehouseId: zod.number().optional(),
+  locationId: zod.number().optional(),
+  notes: zod.string().optional(),
 });
 
 /**

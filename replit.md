@@ -66,9 +66,12 @@ A modern, multi-tenant SaaS ERP platform for mid-market businesses. Covers purch
 - `cycle_count_tasks` — Cycle count assignments (code, warehouseId, assignedTo, dueDate, status)
 - `cycle_count_lines` — Lines within a cycle count task (itemId, locationId, systemQty, countedQty, varianceQty)
 - `inventory_adjustments` — Manual stock adjustment records (adjustmentType, qty, unitCost, reason, glAccountId)
+- `inventory_transfers` — Inter-warehouse transfer records with transit-state lifecycle (status: in_transit/received/cancelled; fromWarehouseId/toWarehouseId, quantity, linked outbound movement)
+- `serial_numbers` — Serial number master per tenant (serialNumber, itemId, warehouseId, locationId, lotNumber, status: available/sold/scrapped/quarantine/in_transit, notes)
 - `landed_cost_allocations` — Landed cost apportionment to receipt lines (landedCostType, amount, allocationBasis)
-- `gl_postings` — GL journal entry headers (postingDate, reference, sourceType: po_receipt/return, description)
+- `gl_postings` — GL journal entry headers (postingDate, reference, sourceType: po_receipt/return/inventory_adjustment/inventory_issue, description)
 - `gl_posting_lines` — Journal entry lines (accountCode, debit, credit, description)
+- `items.costingMethod` — Per-item costing method: fifo | avco | standard (default avco)
 
 ## Database Roles & RLS
 
@@ -148,7 +151,7 @@ Stripe is optional — all code is guarded by `isStripeConfigured()` which retur
 - `/settings` — User profile settings (protected)
 - `/procurement` — Full Procurement & Purchase Orders module (9 tabs: Dashboard, Requisitions, Purchase Orders, Goods Receipts, Returns, Inventory, GL Postings, Workflows, Reports)
 - `/sales` — Full Sales Orders module (8 tabs: Quotations, Sales Orders, Despatches, Invoices, Credit Notes, RMA, Pick Slips, Allocations). Covers quotation → SO → pick slip → despatch → invoice lifecycle, RMA/credit notes, ATP allocation, GL postings.
-- `/inventory` — Full Inventory & Warehouse Operations module (8 tabs: Stock Dashboard, Movement Log, Adjustments, Transfers, Issues, Stocktake, Cycle Counts, Lot Traceability). Features: multi-warehouse stock position, manual adjustments with GL, inter-warehouse transfers, stock issues to GL accounts, physical stocktake runs with variance posting, cycle count task assignment, lot traceability with forward trace.
+- `/inventory` — Full Inventory & Warehouse Operations module (10 tabs: Stock Dashboard, Movement Log, Adjustments, Transfers, Issues, Stocktake, Cycle Counts, Lot Traceability, Serial Numbers, Repack/Build). Features: multi-warehouse stock position with on-order/in-transit availability, manual adjustments with automatic GL postings, per-item costing method (FIFO/AVCO/Standard), transit-state inter-warehouse transfers with Receive workflow, stock issues to GL accounts, physical stocktake runs with variance posting, cycle count task assignment, lot traceability with forward+backward trace, serial number register with full movement trace, repack/build dual-panel posting, CSV export of stock positions.
 - `/finance` — Module placeholder (protected)
 - `/super-admin` — Super admin dashboard: KPI bar, tenant table w/ search/filter, create tenant dialog, tenant detail sheet with Stripe invoices, row actions (suspend/unsuspend/plan change/delete)
 - `/pending` — Shown when a signed-in user has no tenant; CTA to start onboarding

@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { eq, and, isNull, desc, sql, or, ilike, asc, gt } from "drizzle-orm";
+import { eq, and, isNull, desc, sql, or, ilike, asc, gt, inArray, ne } from "drizzle-orm";
 import {
   inventoryStockTable,
   inventoryMovementsTable,
@@ -16,6 +16,11 @@ import {
   cycleCountTasksTable,
   cycleCountLinesTable,
   landedCostAllocationsTable,
+  serialNumbersTable,
+  inventoryTransfersTable,
+  glPostingsTable,
+  poLinesTable,
+  purchaseOrdersTable,
 } from "@workspace/db";
 import { withTenantDb, type TenantDb } from "@workspace/db/rls";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -34,7 +39,39 @@ const tenantWriteMiddleware = [requireAuth, tenantContext, requireRole("admin", 
 // ── Helper: generate code ─────────────────────────────────────────────────────
 function genCode(prefix: string, id: number) { return `${prefix}-${String(id).padStart(5, "0")}`; }
 
-// ── Helper: update inventory stock atomically ─────────────────────────────────
+// ── Helper: create GL posting for an inventory movement ───────────────────────
+async function createInventoryGlPosting(
+  db: TenantDb,
+  tenantId: number,
+  entityType: string,
+  entityId: number,
+  entityCode: string,
+  clerkUserId: string,
+  userEmail: string | undefined,
+  lines: Array<{ accountId?: number; accountCode: string; accountName: string; debit: number; credit: number; description: string }>,
+): Promise<number | null> {
+  if (lines.length === 0) return null;
+  const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
+  const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
+  const [posting] = await db.insert(glPostingsTable).values({
+    tenantId,
+    code: "GLP-PENDING",
+    entityType,
+    entityId,
+    status: "posted",
+    postedByClerkId: clerkUserId,
+    postedByEmail: userEmail ?? undefined,
+    postedAt: new Date(),
+    notes: `Auto-posted for ${entityCode}`,
+    lines: lines as unknown as typeof glPostingsTable.$inferInsert["lines"],
+    totalDebit: String(totalDebit.toFixed(2)),
+    totalCredit: String(totalCredit.toFixed(2)),
+  } as typeof glPostingsTable.$inferInsert).returning();
+  await db.update(glPostingsTable).set({ code: genCode("GLP", posting.id) }).where(eq(glPostingsTable.id, posting.id));
+  return posting.id;
+}
+
+// ── Helper: update inventory stock atomically (costing-method aware) ──────────
 async function updateStockLevel(
   db: TenantDb,
   tenantId: number,
@@ -45,6 +82,7 @@ async function updateStockLevel(
   unitCost: number | null,
   lotNumber: string | null,
   movementId: number,
+  costingMethod: "fifo" | "avco" | "standard" = "avco",
 ) {
   // Find existing stock bucket or create one
   const existing = await db.select()
@@ -59,15 +97,32 @@ async function updateStockLevel(
     .limit(1);
 
   const qty = quantity.toFixed(4);
+
+  // Cost calculation branched by method
+  let newAvgCost: string | undefined = undefined;
+  if (quantity > 0 && unitCost !== null) {
+    if (costingMethod === "fifo") {
+      // FIFO: don't update average cost; use existing as-is (FIFO pulls from layers on outbound)
+      newAvgCost = existing[0]?.averageCost ?? String(unitCost);
+    } else if (costingMethod === "standard") {
+      // Standard cost: keep the item master cost, ignore receipt cost
+      newAvgCost = existing[0]?.averageCost ?? String(unitCost);
+    } else {
+      // AVCO (weighted average): re-compute rolling average on each inbound
+      const prevQty = Number(existing[0]?.qtyOnHand ?? 0);
+      const prevCost = Number(existing[0]?.averageCost ?? unitCost);
+      const newAvg = prevQty + quantity > 0
+        ? (prevQty * prevCost + quantity * unitCost) / (prevQty + quantity)
+        : unitCost;
+      newAvgCost = newAvg.toFixed(4);
+    }
+  }
+
   if (existing.length > 0) {
-    const avgCost = existing[0].averageCost
-      ? ((Number(existing[0].averageCost) * Number(existing[0].qtyOnHand) + (unitCost ?? 0) * Math.max(0, quantity)) /
-         Math.max(0.0001, Number(existing[0].qtyOnHand) + Math.max(0, quantity)))
-      : unitCost;
     await db.update(inventoryStockTable)
       .set({
         qtyOnHand: sql`GREATEST(0, ${inventoryStockTable.qtyOnHand} + ${qty}::numeric)`,
-        averageCost: quantity > 0 && unitCost !== null ? String(avgCost?.toFixed(4) ?? unitCost) : existing[0].averageCost,
+        ...(newAvgCost !== undefined ? { averageCost: newAvgCost } : {}),
         lastMovementAt: new Date(),
       })
       .where(eq(inventoryStockTable.id, existing[0].id));
@@ -83,7 +138,7 @@ async function updateStockLevel(
     } as typeof inventoryStockTable.$inferInsert);
   }
 
-  // Update FIFO cost layer if inbound
+  // Maintain FIFO cost layers for inbound (all methods track layers; FIFO consumes them on outbound)
   if (quantity > 0 && unitCost !== null) {
     await db.insert(costLayersTable).values({
       tenantId, itemId, warehouseId,
@@ -97,8 +152,8 @@ async function updateStockLevel(
     } as typeof costLayersTable.$inferInsert);
   }
 
-  // Consume FIFO layers for outbound movements
-  if (quantity < 0) {
+  // FIFO outbound: consume oldest cost layers first
+  if (quantity < 0 && (costingMethod === "fifo")) {
     let remaining = Math.abs(quantity);
     const layers = await db.select()
       .from(costLayersTable)
@@ -193,7 +248,7 @@ router.get("/inventory/stock", ...tenantUserMiddleware, async (req: Request, res
   res.json({ data: rows.slice(0, lim).map((r) => ({ ...r, qtyOnHand: Number(r.qtyOnHand), qtyReserved: Number(r.qtyReserved), qtyAvailable: Number(r.qtyAvailable), stockValue: Number(r.stockValue) })), hasMore, page: pg });
 });
 
-/** Item availability summary — on-hand, reserved, available, on-order */
+/** Item availability summary — on-hand, reserved, available, on-order, in-transit */
 router.get("/inventory/stock/:itemId", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
   const itemId = Number(req.params.itemId);
@@ -204,29 +259,60 @@ router.get("/inventory/stock/:itemId", ...tenantUserMiddleware, async (req: Requ
       .where(and(eq(itemsTable.id, itemId), eq(itemsTable.tenantId, tenantId))).limit(1));
   if (!item) { res.status(404).json({ error: "Item not found" }); return; }
 
-  const stockRows = await withTenantDb(tenantId, (db) =>
-    db.select({
-      warehouseId: inventoryStockTable.warehouseId,
-      warehouseName: warehousesTable.name,
-      qtyOnHand: sql<string>`coalesce(sum(${inventoryStockTable.qtyOnHand}),0)`,
-      qtyReserved: sql<string>`coalesce(sum(${inventoryStockTable.qtyReserved}),0)`,
-    })
-    .from(inventoryStockTable)
-    .innerJoin(warehousesTable, eq(warehousesTable.id, inventoryStockTable.warehouseId))
-    .where(and(
-      eq(inventoryStockTable.tenantId, tenantId),
-      eq(inventoryStockTable.itemId, itemId),
-      warehouseId ? eq(inventoryStockTable.warehouseId, Number(warehouseId)) : undefined,
-    ))
-    .groupBy(inventoryStockTable.warehouseId, warehousesTable.name));
+  const [stockRows, onOrderRows, inTransitRows] = await Promise.all([
+    withTenantDb(tenantId, (db) =>
+      db.select({
+        warehouseId: inventoryStockTable.warehouseId,
+        warehouseName: warehousesTable.name,
+        qtyOnHand: sql<string>`coalesce(sum(${inventoryStockTable.qtyOnHand}),0)`,
+        qtyReserved: sql<string>`coalesce(sum(${inventoryStockTable.qtyReserved}),0)`,
+      })
+      .from(inventoryStockTable)
+      .innerJoin(warehousesTable, eq(warehousesTable.id, inventoryStockTable.warehouseId))
+      .where(and(
+        eq(inventoryStockTable.tenantId, tenantId),
+        eq(inventoryStockTable.itemId, itemId),
+        warehouseId ? eq(inventoryStockTable.warehouseId, Number(warehouseId)) : undefined,
+      ))
+      .groupBy(inventoryStockTable.warehouseId, warehousesTable.name)),
+    // On-order: qty on open/approved PO lines for this item
+    withTenantDb(tenantId, (db) =>
+      db.select({ qty: sql<string>`coalesce(sum(${poLinesTable.quantity} - ${poLinesTable.receivedQty}),0)` })
+        .from(poLinesTable)
+        .innerJoin(purchaseOrdersTable, eq(purchaseOrdersTable.id, poLinesTable.poId))
+        .where(and(
+          eq(purchaseOrdersTable.tenantId, tenantId),
+          eq(poLinesTable.itemId, itemId),
+          inArray(purchaseOrdersTable.status, ["approved", "sent", "partial"]),
+        ))),
+    // In-transit: qty from transfers dispatched but not yet received
+    withTenantDb(tenantId, (db) =>
+      db.select({ qty: sql<string>`coalesce(sum(${inventoryTransfersTable.quantity}),0)` })
+        .from(inventoryTransfersTable)
+        .where(and(
+          eq(inventoryTransfersTable.tenantId, tenantId),
+          eq(inventoryTransfersTable.itemId, itemId),
+          inArray(inventoryTransfersTable.status, ["pending", "in_transit"]),
+        ))),
+  ]);
 
   const totalOnHand = stockRows.reduce((s, r) => s + Number(r.qtyOnHand), 0);
   const totalReserved = stockRows.reduce((s, r) => s + Number(r.qtyReserved), 0);
+  const totalOnOrder = Number(onOrderRows[0]?.qty ?? 0);
+  const totalInTransit = Number(inTransitRows[0]?.qty ?? 0);
 
   res.json({
-    item: { id: item.id, code: item.code, name: item.name, unitCost: item.unitCost },
-    totalOnHand, totalReserved, totalAvailable: totalOnHand - totalReserved,
-    byWarehouse: stockRows.map((r) => ({ ...r, qtyOnHand: Number(r.qtyOnHand), qtyReserved: Number(r.qtyReserved), qtyAvailable: Number(r.qtyOnHand) - Number(r.qtyReserved) })),
+    item: { id: item.id, code: item.code, name: item.name, unitCost: item.unitCost, costingMethod: item.costingMethod },
+    totalOnHand, totalReserved,
+    totalAvailable: totalOnHand - totalReserved,
+    totalOnOrder,
+    totalInTransit,
+    byWarehouse: stockRows.map((r) => ({
+      ...r,
+      qtyOnHand: Number(r.qtyOnHand),
+      qtyReserved: Number(r.qtyReserved),
+      qtyAvailable: Number(r.qtyOnHand) - Number(r.qtyReserved),
+    })),
   });
 });
 
@@ -331,12 +417,23 @@ router.post("/inventory/adjust", ...tenantWriteMiddleware, async (req: Request, 
       notes: parsed.data.notes ?? undefined,
     } as typeof inventoryAdjustmentsTable.$inferInsert).returning();
 
-    await db.update(inventoryAdjustmentsTable).set({ code: genCode("ADJ", adj.id) }).where(eq(inventoryAdjustmentsTable.id, adj.id));
+    const adjCode = genCode("ADJ", adj.id);
+    await db.update(inventoryAdjustmentsTable).set({ code: adjCode }).where(eq(inventoryAdjustmentsTable.id, adj.id));
 
-    // Process each line
+    // Resolve GL adjustment account
+    const glAcc = parsed.data.glAccountId
+      ? (await db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(eq(glAccountsTable.id, parsed.data.glAccountId)).limit(1))[0]
+      : null;
+
+    // Process each line with costing-method awareness
     const lineIds: number[] = [];
+    const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
+
     for (const line of parsed.data.lines) {
-      const [item] = await db.select({ code: itemsTable.code, name: itemsTable.name }).from(itemsTable).where(eq(itemsTable.id, line.itemId)).limit(1);
+      const [item] = await db.select({ code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod })
+        .from(itemsTable).where(eq(itemsTable.id, line.itemId)).limit(1);
+      const costingMethod = (item?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
+
       const [movement] = await db.insert(inventoryMovementsTable).values({
         tenantId,
         itemId: line.itemId,
@@ -350,14 +447,14 @@ router.post("/inventory/adjust", ...tenantWriteMiddleware, async (req: Request, 
         adjReason: parsed.data.reason,
         refType: "adjustment",
         refId: adj.id,
-        refCode: genCode("ADJ", adj.id),
+        refCode: adjCode,
         lotNumber: line.lotNumber ?? undefined,
         postedByClerkId: clerkUserId,
         postedByEmail: userEmail ?? undefined,
         notes: parsed.data.notes ?? undefined,
       } as typeof inventoryMovementsTable.$inferInsert).returning();
 
-      await updateStockLevel(db, tenantId, line.itemId, line.warehouseId, line.locationId ?? null, line.qtyAdjusted, line.unitCost ?? null, line.lotNumber ?? null, movement.id);
+      await updateStockLevel(db, tenantId, line.itemId, line.warehouseId, line.locationId ?? null, line.qtyAdjusted, line.unitCost ?? null, line.lotNumber ?? null, movement.id, costingMethod);
 
       const [adjLine] = await db.insert(inventoryAdjustmentLinesTable).values({
         tenantId, adjustmentId: adj.id,
@@ -372,12 +469,40 @@ router.post("/inventory/adjust", ...tenantWriteMiddleware, async (req: Request, 
         movementId: movement.id,
       } as typeof inventoryAdjustmentLinesTable.$inferInsert).returning();
       lineIds.push(adjLine.id);
+
+      // Accumulate GL lines: stock account Dr/Cr, adjustment account as offset
+      if (glAcc && line.unitCost) {
+        const value = Math.abs(line.qtyAdjusted * line.unitCost);
+        const isIncrease = line.qtyAdjusted > 0;
+        glLines.push({
+          accountCode: "1300", accountName: "Inventory Asset",
+          debit: isIncrease ? value : 0,
+          credit: isIncrease ? 0 : value,
+          description: `${item?.code ?? "Item"} qty adj ${line.qtyAdjusted}`,
+        });
+        glLines.push({
+          accountCode: glAcc.code, accountName: glAcc.name,
+          debit: isIncrease ? 0 : value,
+          credit: isIncrease ? value : 0,
+          description: parsed.data.reason,
+        });
+      }
     }
-    return { adjId: adj.id, lineCount: lineIds.length };
+
+    // Create GL posting for the entire adjustment document
+    let glPostingId: number | null = null;
+    if (glLines.length > 0) {
+      glPostingId = await createInventoryGlPosting(db, tenantId, "inventory_adjustment", adj.id, adjCode, clerkUserId, userEmail, glLines);
+      if (glPostingId) {
+        await db.update(inventoryAdjustmentsTable).set({ glPostingId }).where(eq(inventoryAdjustmentsTable.id, adj.id));
+      }
+    }
+
+    return { adjId: adj.id, lineCount: lineIds.length, glPostingId };
   });
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "inventory.adjusted", entityType: "inventory_adjustment", entityId: String(result.adjId), newValues: { lines: result.lineCount } });
-  res.status(201).json({ id: result.adjId, code: genCode("ADJ", result.adjId), lines: result.lineCount });
+  res.status(201).json({ id: result.adjId, code: genCode("ADJ", result.adjId), lines: result.lineCount, glPostingId: result.glPostingId });
 });
 
 // List adjustments
@@ -430,6 +555,7 @@ const transferSchema = z.object({
   notes: z.string().optional(),
 });
 
+/** Create a transfer request — goods leave source immediately (in_transit state) */
 router.post("/inventory/transfer", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const parsed = transferSchema.safeParse(req.body);
@@ -454,11 +580,32 @@ router.post("/inventory/transfer", ...tenantWriteMiddleware, async (req: Request
     return;
   }
 
-  const [item] = await withTenantDb(tenantId, (db) =>
-    db.select({ code: itemsTable.code, name: itemsTable.name }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+  const [[item], itemFull] = await Promise.all([
+    withTenantDb(tenantId, (db) => db.select({ code: itemsTable.code, name: itemsTable.name }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1)),
+    withTenantDb(tenantId, (db) => db.select({ costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1)),
+  ]);
+  const costingMethod = ((itemFull[0]?.costingMethod) ?? "avco") as "fifo" | "avco" | "standard";
 
   const result = await withTenantDb(tenantId, async (db) => {
-    // Out movement at source
+    // Create transfer record (pending → in_transit after dispatch)
+    const [transfer] = await db.insert(inventoryTransfersTable).values({
+      tenantId, code: "TRF-PENDING",
+      itemId: d.itemId, itemCode: item?.code, itemName: item?.name,
+      fromWarehouseId: d.fromWarehouseId, fromLocationId: d.fromLocationId ?? undefined,
+      toWarehouseId: d.toWarehouseId, toLocationId: d.toLocationId ?? undefined,
+      quantity: String(d.quantity),
+      unitCost: d.unitCost != null ? String(d.unitCost) : undefined,
+      lotNumber: d.lotNumber ?? undefined,
+      status: "in_transit",
+      requestedByClerkId: clerkUserId,
+      requestedByEmail: userEmail ?? undefined,
+      notes: d.notes ?? undefined,
+    } as typeof inventoryTransfersTable.$inferInsert).returning();
+
+    const transferCode = genCode("TRF", transfer.id);
+    await db.update(inventoryTransfersTable).set({ code: transferCode }).where(eq(inventoryTransfersTable.id, transfer.id));
+
+    // Out movement at source — removes stock immediately
     const [outMovement] = await db.insert(inventoryMovementsTable).values({
       tenantId, itemId: d.itemId, itemCode: item?.code, itemName: item?.name,
       warehouseId: d.fromWarehouseId, locationId: d.fromLocationId ?? undefined,
@@ -467,34 +614,125 @@ router.post("/inventory/transfer", ...tenantWriteMiddleware, async (req: Request
       quantity: String(-d.quantity),
       unitCost: d.unitCost != null ? String(d.unitCost) : undefined,
       lotNumber: d.lotNumber ?? undefined,
-      refType: "transfer",
+      refType: "transfer", refId: transfer.id, refCode: transferCode,
       postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined,
       notes: d.notes ?? undefined,
     } as typeof inventoryMovementsTable.$inferInsert).returning();
 
-    await db.update(inventoryMovementsTable).set({ refCode: genCode("TRF", outMovement.id) }).where(eq(inventoryMovementsTable.id, outMovement.id));
-    await updateStockLevel(db, tenantId, d.itemId, d.fromWarehouseId, d.fromLocationId ?? null, -d.quantity, d.unitCost ?? null, d.lotNumber ?? null, outMovement.id);
+    await db.update(inventoryTransfersTable).set({ outMovementId: outMovement.id }).where(eq(inventoryTransfersTable.id, transfer.id));
+    await updateStockLevel(db, tenantId, d.itemId, d.fromWarehouseId, d.fromLocationId ?? null, -d.quantity, d.unitCost ?? null, d.lotNumber ?? null, outMovement.id, costingMethod);
 
-    // In movement at destination
-    const [inMovement] = await db.insert(inventoryMovementsTable).values({
-      tenantId, itemId: d.itemId, itemCode: item?.code, itemName: item?.name,
-      warehouseId: d.toWarehouseId, locationId: d.toLocationId ?? undefined,
-      movementType: "transfer",
-      quantity: String(d.quantity),
-      unitCost: d.unitCost != null ? String(d.unitCost) : undefined,
-      lotNumber: d.lotNumber ?? undefined,
-      refType: "transfer", refId: outMovement.id, refCode: genCode("TRF", outMovement.id),
-      postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined,
-      notes: d.notes ?? undefined,
-    } as typeof inventoryMovementsTable.$inferInsert).returning();
-
-    await updateStockLevel(db, tenantId, d.itemId, d.toWarehouseId, d.toLocationId ?? null, d.quantity, d.unitCost ?? null, d.lotNumber ?? null, inMovement.id);
-
-    return { transferCode: genCode("TRF", outMovement.id), outMovementId: outMovement.id, inMovementId: inMovement.id };
+    return { transferId: transfer.id, transferCode, outMovementId: outMovement.id, status: "in_transit" };
   });
 
-  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "inventory.transferred", entityType: "inventory_movement", entityId: String(result.outMovementId), newValues: d });
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "inventory.transfer_dispatched", entityType: "inventory_transfer", entityId: String(result.transferId), newValues: d });
   res.status(201).json(result);
+});
+
+/** List transfers */
+router.get("/inventory/transfers", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { status, warehouseId, itemId, page = "1", limit = "25" } = req.query as Record<string, string>;
+  const pg = Math.max(1, Number(page));
+  const lim = Math.min(100, Math.max(1, Number(limit)));
+
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      id: inventoryTransfersTable.id,
+      code: inventoryTransfersTable.code,
+      itemId: inventoryTransfersTable.itemId,
+      itemCode: inventoryTransfersTable.itemCode,
+      itemName: inventoryTransfersTable.itemName,
+      fromWarehouseId: inventoryTransfersTable.fromWarehouseId,
+      fromWarehouseName: sql<string>`fw.name`,
+      toWarehouseId: inventoryTransfersTable.toWarehouseId,
+      toWarehouseName: sql<string>`tw.name`,
+      quantity: inventoryTransfersTable.quantity,
+      unitCost: inventoryTransfersTable.unitCost,
+      lotNumber: inventoryTransfersTable.lotNumber,
+      status: inventoryTransfersTable.status,
+      requestedByEmail: inventoryTransfersTable.requestedByEmail,
+      receivedByClerkId: inventoryTransfersTable.receivedByClerkId,
+      receivedAt: inventoryTransfersTable.receivedAt,
+      notes: inventoryTransfersTable.notes,
+      createdAt: inventoryTransfersTable.createdAt,
+    })
+    .from(inventoryTransfersTable)
+    .leftJoin(sql`warehouses fw`, sql`fw.id = ${inventoryTransfersTable.fromWarehouseId}`)
+    .leftJoin(sql`warehouses tw`, sql`tw.id = ${inventoryTransfersTable.toWarehouseId}`)
+    .where(and(
+      eq(inventoryTransfersTable.tenantId, tenantId),
+      isNull(inventoryTransfersTable.deletedAt),
+      status ? eq(inventoryTransfersTable.status, status) : undefined,
+      warehouseId ? or(eq(inventoryTransfersTable.fromWarehouseId, Number(warehouseId)), eq(inventoryTransfersTable.toWarehouseId, Number(warehouseId))) : undefined,
+      itemId ? eq(inventoryTransfersTable.itemId, Number(itemId)) : undefined,
+    ))
+    .orderBy(desc(inventoryTransfersTable.createdAt))
+    .limit(lim + 1).offset((pg - 1) * lim));
+
+  const hasMore = rows.length > lim;
+  res.json({ data: rows.slice(0, lim).map((r) => ({ ...r, quantity: Number(r.quantity) })), hasMore, page: pg });
+});
+
+/** Receive a transfer — creates in movement at destination, marks transfer as received */
+router.post("/inventory/transfers/:id/receive", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const transferId = Number(req.params.id);
+  const { notes, toLocationId } = req.body as { notes?: string; toLocationId?: number };
+
+  const [transfer] = await withTenantDb(tenantId, (db) =>
+    db.select().from(inventoryTransfersTable)
+      .where(and(eq(inventoryTransfersTable.id, transferId), eq(inventoryTransfersTable.tenantId, tenantId))).limit(1));
+
+  if (!transfer) { res.status(404).json({ error: "Transfer not found" }); return; }
+  if (transfer.status === "received") { res.status(400).json({ error: "Transfer already received" }); return; }
+  if (transfer.status === "cancelled") { res.status(400).json({ error: "Transfer has been cancelled" }); return; }
+
+  const itemFull = await withTenantDb(tenantId, (db) =>
+    db.select({ costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, transfer.itemId)).limit(1));
+  const costingMethod = ((itemFull[0]?.costingMethod) ?? "avco") as "fifo" | "avco" | "standard";
+
+  const result = await withTenantDb(tenantId, async (db) => {
+    const destLocationId = toLocationId ?? transfer.toLocationId;
+    // In movement at destination
+    const [inMovement] = await db.insert(inventoryMovementsTable).values({
+      tenantId,
+      itemId: transfer.itemId,
+      itemCode: transfer.itemCode ?? undefined,
+      itemName: transfer.itemName ?? undefined,
+      warehouseId: transfer.toWarehouseId,
+      locationId: destLocationId ?? undefined,
+      movementType: "transfer",
+      quantity: transfer.quantity,
+      unitCost: transfer.unitCost ?? undefined,
+      lotNumber: transfer.lotNumber ?? undefined,
+      refType: "transfer", refId: transfer.id, refCode: transfer.code,
+      postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined,
+      notes: notes ?? transfer.notes ?? undefined,
+    } as typeof inventoryMovementsTable.$inferInsert).returning();
+
+    await updateStockLevel(
+      db, tenantId, transfer.itemId, transfer.toWarehouseId,
+      destLocationId ?? null,
+      Number(transfer.quantity),
+      transfer.unitCost ? Number(transfer.unitCost) : null,
+      transfer.lotNumber ?? null,
+      inMovement.id,
+      costingMethod,
+    );
+
+    await db.update(inventoryTransfersTable).set({
+      status: "received",
+      inMovementId: inMovement.id,
+      receivedByClerkId: clerkUserId,
+      receivedAt: new Date(),
+    }).where(eq(inventoryTransfersTable.id, transferId));
+
+    return { inMovementId: inMovement.id, transferId, status: "received" };
+  });
+
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "inventory.transfer_received", entityType: "inventory_transfer", entityId: String(transferId) });
+  res.json(result);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -537,6 +775,10 @@ router.post("/inventory/issue", ...tenantWriteMiddleware, async (req: Request, r
   const [glAcc] = await withTenantDb(tenantId, (db) =>
     db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(eq(glAccountsTable.id, d.glAccountId)).limit(1));
 
+  const itemFull = await withTenantDb(tenantId, (db) =>
+    db.select({ costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+  const costingMethod = ((itemFull[0]?.costingMethod) ?? "avco") as "fifo" | "avco" | "standard";
+
   const result = await withTenantDb(tenantId, async (db) => {
     const [movement] = await db.insert(inventoryMovementsTable).values({
       tenantId, itemId: d.itemId, itemCode: item?.code, itemName: item?.name,
@@ -552,8 +794,24 @@ router.post("/inventory/issue", ...tenantWriteMiddleware, async (req: Request, r
       notes: d.notes ?? undefined,
     } as typeof inventoryMovementsTable.$inferInsert).returning();
 
-    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, -d.quantity, null, d.lotNumber ?? null, movement.id);
-    return { movementId: movement.id };
+    const issueCode = genCode("ISS", movement.id);
+    await db.update(inventoryMovementsTable).set({ refCode: issueCode }).where(eq(inventoryMovementsTable.id, movement.id));
+    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, -d.quantity, null, d.lotNumber ?? null, movement.id, costingMethod);
+
+    // Create GL posting: Debit issue account, Credit inventory
+    let glPostingId: number | null = null;
+    if (unitCost > 0 && glAcc) {
+      const value = d.quantity * unitCost;
+      glPostingId = await createInventoryGlPosting(db, tenantId, "inventory_issue", movement.id, issueCode, clerkUserId, userEmail, [
+        { accountCode: glAcc.code, accountName: glAcc.name, debit: value, credit: 0, description: `Issue: ${item?.code} x${d.quantity}` },
+        { accountCode: "1300", accountName: "Inventory Asset", debit: 0, credit: value, description: `Stock issued to ${glAcc.name}` },
+      ]);
+      if (glPostingId) {
+        await db.update(inventoryMovementsTable).set({ glPostingId }).where(eq(inventoryMovementsTable.id, movement.id));
+      }
+    }
+
+    return { movementId: movement.id, glPostingId };
   });
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "inventory.issued", entityType: "inventory_movement", entityId: String(result.movementId) });
@@ -795,12 +1053,53 @@ router.get("/inventory/lots", ...tenantUserMiddleware, async (req: Request, res:
   res.json({ data: rows.slice(0, lim), hasMore, page: pg });
 });
 
-/** Forward trace — all movements for a given lot number */
+/**
+ * Lot trace — forward (where did this lot go?) or backward (what lots came into this SO/receipt?)
+ * direction=forward (default) | backward
+ * backward requires refType + refId query params to find which lot arrived for a given source doc
+ */
 router.get("/inventory/lots/:lotNumber/trace", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
   const lotNumber = req.params.lotNumber as string;
-  const { itemId } = req.query as Record<string, string>;
+  const { itemId, direction = "forward", refType, refId } = req.query as Record<string, string>;
 
+  // Backward trace: given a reference doc (e.g. SO despatch), find which lots were consumed
+  if (direction === "backward" && refType) {
+    const consumed = await withTenantDb(tenantId, (db) =>
+      db.select({
+        id: inventoryMovementsTable.id,
+        movementType: inventoryMovementsTable.movementType,
+        quantity: inventoryMovementsTable.quantity,
+        lotNumber: inventoryMovementsTable.lotNumber,
+        warehouseId: inventoryMovementsTable.warehouseId,
+        warehouseName: warehousesTable.name,
+        refType: inventoryMovementsTable.refType,
+        refId: inventoryMovementsTable.refId,
+        refCode: inventoryMovementsTable.refCode,
+        itemCode: inventoryMovementsTable.itemCode,
+        itemName: inventoryMovementsTable.itemName,
+        createdAt: inventoryMovementsTable.createdAt,
+      })
+      .from(inventoryMovementsTable)
+      .leftJoin(warehousesTable, eq(warehousesTable.id, inventoryMovementsTable.warehouseId))
+      .where(and(
+        eq(inventoryMovementsTable.tenantId, tenantId),
+        eq(inventoryMovementsTable.refType, refType),
+        refId ? eq(inventoryMovementsTable.refId, Number(refId)) : undefined,
+        itemId ? eq(inventoryMovementsTable.itemId, Number(itemId)) : undefined,
+      ))
+      .orderBy(asc(inventoryMovementsTable.createdAt)));
+
+    res.json({
+      direction: "backward",
+      refType,
+      refId: refId ?? null,
+      movements: consumed.map((m) => ({ ...m, quantity: Number(m.quantity) })),
+    });
+    return;
+  }
+
+  // Forward trace: all movements for this specific lot number (where did it go?)
   const movements = await withTenantDb(tenantId, (db) =>
     db.select({
       id: inventoryMovementsTable.id,
@@ -832,10 +1131,171 @@ router.get("/inventory/lots/:lotNumber/trace", ...tenantUserMiddleware, async (r
       .limit(1));
 
   res.json({
+    direction: "forward",
     lotNumber,
     lot: lotRecord ?? null,
     movements: movements.map((m) => ({ ...m, quantity: Number(m.quantity) })),
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── Serial Number Ledger ──────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** List serial numbers (filterable by item, warehouse, status) */
+router.get("/inventory/serials", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { itemId, warehouseId, status, search, page = "1", limit = "50" } = req.query as Record<string, string>;
+  const pg = Math.max(1, Number(page));
+  const lim = Math.min(200, Math.max(1, Number(limit)));
+
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      id: serialNumbersTable.id,
+      serialNumber: serialNumbersTable.serialNumber,
+      itemId: serialNumbersTable.itemId,
+      itemCode: itemsTable.code,
+      itemName: itemsTable.name,
+      warehouseId: serialNumbersTable.warehouseId,
+      warehouseName: warehousesTable.name,
+      locationId: serialNumbersTable.locationId,
+      lotNumber: serialNumbersTable.lotNumber,
+      status: serialNumbersTable.status,
+      inboundMovementId: serialNumbersTable.inboundMovementId,
+      outboundMovementId: serialNumbersTable.outboundMovementId,
+      notes: serialNumbersTable.notes,
+      createdAt: serialNumbersTable.createdAt,
+    })
+    .from(serialNumbersTable)
+    .innerJoin(itemsTable, eq(itemsTable.id, serialNumbersTable.itemId))
+    .leftJoin(warehousesTable, eq(warehousesTable.id, serialNumbersTable.warehouseId))
+    .where(and(
+      eq(serialNumbersTable.tenantId, tenantId),
+      itemId ? eq(serialNumbersTable.itemId, Number(itemId)) : undefined,
+      warehouseId ? eq(serialNumbersTable.warehouseId, Number(warehouseId)) : undefined,
+      status ? eq(serialNumbersTable.status, status) : undefined,
+      search ? or(ilike(serialNumbersTable.serialNumber, `%${search}%`), ilike(itemsTable.code, `%${search}%`), ilike(itemsTable.name, `%${search}%`)) : undefined,
+    ))
+    .orderBy(desc(serialNumbersTable.createdAt))
+    .limit(lim + 1).offset((pg - 1) * lim));
+
+  const hasMore = rows.length > lim;
+  res.json({ data: rows.slice(0, lim), hasMore, page: pg });
+});
+
+/** Get serial number detail + full movement trace */
+router.get("/inventory/serials/:serialNumber", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const serialNumber = String(req.params.serialNumber);
+
+  const [sn] = await withTenantDb(tenantId, (db) =>
+    db.select({
+      id: serialNumbersTable.id,
+      serialNumber: serialNumbersTable.serialNumber,
+      itemId: serialNumbersTable.itemId,
+      itemCode: itemsTable.code,
+      itemName: itemsTable.name,
+      warehouseId: serialNumbersTable.warehouseId,
+      locationId: serialNumbersTable.locationId,
+      lotNumber: serialNumbersTable.lotNumber,
+      status: serialNumbersTable.status,
+      inboundMovementId: serialNumbersTable.inboundMovementId,
+      outboundMovementId: serialNumbersTable.outboundMovementId,
+      reservedForRefType: serialNumbersTable.reservedForRefType,
+      reservedForRefId: serialNumbersTable.reservedForRefId,
+      notes: serialNumbersTable.notes,
+      createdAt: serialNumbersTable.createdAt,
+    })
+    .from(serialNumbersTable)
+    .innerJoin(itemsTable, eq(itemsTable.id, serialNumbersTable.itemId))
+    .where(and(eq(serialNumbersTable.tenantId, tenantId), eq(serialNumbersTable.serialNumber, serialNumber)))
+    .limit(1));
+
+  if (!sn) { res.status(404).json({ error: "Serial number not found" }); return; }
+
+  // Full movement history for this serial number
+  const movements = await withTenantDb(tenantId, (db) =>
+    db.select({
+      id: inventoryMovementsTable.id,
+      movementType: inventoryMovementsTable.movementType,
+      quantity: inventoryMovementsTable.quantity,
+      warehouseId: inventoryMovementsTable.warehouseId,
+      warehouseName: warehousesTable.name,
+      refType: inventoryMovementsTable.refType,
+      refCode: inventoryMovementsTable.refCode,
+      createdAt: inventoryMovementsTable.createdAt,
+    })
+    .from(inventoryMovementsTable)
+    .leftJoin(warehousesTable, eq(warehousesTable.id, inventoryMovementsTable.warehouseId))
+    .where(and(
+      eq(inventoryMovementsTable.tenantId, tenantId),
+      eq(inventoryMovementsTable.serialNumber, serialNumber),
+    ))
+    .orderBy(asc(inventoryMovementsTable.createdAt)));
+
+  res.json({ ...sn, movements: movements.map((m) => ({ ...m, quantity: Number(m.quantity) })) });
+});
+
+/** Register a new serial number manually (or on receipt) */
+router.post("/inventory/serials", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId } = req as TenantRequest;
+  const schema = z.object({
+    serialNumber: z.string().min(1),
+    itemId: z.number().int().positive(),
+    warehouseId: z.number().int().optional(),
+    locationId: z.number().int().optional(),
+    lotNumber: z.string().optional(),
+    status: z.enum(["available", "reserved", "sold", "scrapped", "in_transit"]).default("available"),
+    notes: z.string().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+  const d = parsed.data;
+
+  // Check for duplicate within tenant
+  const existing = await withTenantDb(tenantId, (db) =>
+    db.select({ id: serialNumbersTable.id }).from(serialNumbersTable)
+      .where(and(eq(serialNumbersTable.tenantId, tenantId), eq(serialNumbersTable.itemId, d.itemId), eq(serialNumbersTable.serialNumber, d.serialNumber)))
+      .limit(1));
+  if (existing.length > 0) { res.status(409).json({ error: "Serial number already registered for this item" }); return; }
+
+  const [sn] = await withTenantDb(tenantId, (db) =>
+    db.insert(serialNumbersTable).values({
+      tenantId,
+      serialNumber: d.serialNumber,
+      itemId: d.itemId,
+      warehouseId: d.warehouseId ?? undefined,
+      locationId: d.locationId ?? undefined,
+      lotNumber: d.lotNumber ?? undefined,
+      status: d.status,
+      notes: d.notes ?? undefined,
+    } as typeof serialNumbersTable.$inferInsert).returning());
+
+  res.status(201).json(sn);
+});
+
+/** Update serial number status (e.g. mark scrapped, sold, available) */
+router.patch("/inventory/serials/:serialNumber", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const serialNumber = String(req.params.serialNumber);
+  const { status, warehouseId, locationId, notes } = req.body as { status?: string; warehouseId?: number; locationId?: number; notes?: string };
+
+  const [existing] = await withTenantDb(tenantId, (db) =>
+    db.select({ id: serialNumbersTable.id }).from(serialNumbersTable)
+      .where(and(eq(serialNumbersTable.tenantId, tenantId), eq(serialNumbersTable.serialNumber, serialNumber))).limit(1));
+  if (!existing) { res.status(404).json({ error: "Serial number not found" }); return; }
+
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(serialNumbersTable)
+      .set({
+        ...(status ? { status } : {}),
+        ...(warehouseId !== undefined ? { warehouseId } : {}),
+        ...(locationId !== undefined ? { locationId } : {}),
+        ...(notes !== undefined ? { notes } : {}),
+      })
+      .where(and(eq(serialNumbersTable.tenantId, tenantId), eq(serialNumbersTable.serialNumber, serialNumber)))
+      .returning());
+  res.json(updated);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

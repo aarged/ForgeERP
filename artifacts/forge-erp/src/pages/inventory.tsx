@@ -10,6 +10,8 @@ import {
   getListInventoryAdjustmentsQueryKey,
   getGetInventoryAdjustmentQueryKey,
   useCreateInventoryTransfer,
+  useListInventoryTransfers,
+  useReceiveInventoryTransfer,
   useCreateInventoryIssue,
   useCreateInventoryReturn,
   useListLotNumbers,
@@ -31,7 +33,14 @@ import {
   useListWarehouses,
   useListItems,
   useListGlAccounts,
+  useListSerialNumbers,
+  useGetSerialNumber,
+  useRegisterSerialNumber,
+  useUpdateSerialNumber,
   getTraceLotNumberQueryKey,
+  getListInventoryTransfersQueryKey,
+  getListSerialNumbersQueryKey,
+  getGetSerialNumberQueryKey,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -75,6 +84,10 @@ import {
   SendToBack,
   Activity,
   Tag,
+  Hash,
+  Download,
+  CheckCircle2,
+  PackageCheck,
 } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -82,6 +95,15 @@ import {
 function fmt(n: string | number | null | undefined, dec = 2) {
   if (n == null) return "—";
   return Number(n).toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+function exportCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
+  const lines = [headers.join(","), ...rows.map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
 }
 
 function fmtDate(s: string | null | undefined) {
@@ -178,6 +200,10 @@ function StockDashboardTab() {
           </SelectContent>
         </Select>
         <Input placeholder="Category…" className="w-36" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} />
+        <Button variant="outline" size="sm" onClick={() => exportCsv("stock.csv",
+          ["Item Code","Item Name","Warehouse","Location","Lot","On Hand","Reserved","Available","Avg Cost","Value"],
+          rows.map((r) => [r.itemCode, r.itemName, r.warehouseName, r.locationCode ?? r.locationName, r.lotNumber, r.qtyOnHand, r.qtyReserved, r.qtyAvailable, r.averageCost, r.stockValue])
+        )}><Download className="h-4 w-4 mr-1" />Export CSV</Button>
       </div>
 
       {isLoading ? (
@@ -527,12 +553,16 @@ function TransfersTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
-  const [movementFilter, setMovementFilter] = useState("transfer");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const { data: items } = useListItems({ limit: 500 });
   const { data: warehouses } = useListWarehouses({ limit: 100 });
-  const { data: movements, isLoading } = useListInventoryMovements({ movementType: "transfer", limit: 100 });
+  const { data: transfers, isLoading } = useListInventoryTransfers({
+    status: statusFilter !== "all" ? (statusFilter as "in_transit" | "received" | "cancelled") : undefined,
+    limit: 100,
+  });
   const createMut = useCreateInventoryTransfer();
+  const receiveMut = useReceiveInventoryTransfer();
 
   const form = useForm<TransferForm>({ defaultValues: { quantity: 0 } });
 
@@ -542,18 +572,41 @@ function TransfersTab() {
       toast({ title: `Transfer ${(res as unknown as { transferCode: string }).transferCode} created` });
       setShowCreate(false);
       form.reset();
-      qc.invalidateQueries({ queryKey: ["listInventoryMovements"] });
+      qc.invalidateQueries({ queryKey: getListInventoryTransfersQueryKey() });
     } catch (e: unknown) {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
     }
   }
 
-  const rows = movements?.data ?? [];
+  async function handleReceive(id: number) {
+    try {
+      await receiveMut.mutateAsync({ id, data: {} });
+      toast({ title: "Transfer received", description: "Inbound stock movement posted." });
+      qc.invalidateQueries({ queryKey: getListInventoryTransfersQueryKey() });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+    }
+  }
+
+  const rows = transfers?.data ?? [];
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between">
-        <h3 className="text-lg font-semibold">Transfers</h3>
+      <div className="flex justify-between flex-wrap gap-2">
+        <div className="flex gap-2 items-center">
+          <h3 className="text-lg font-semibold">Transfers</h3>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-36 h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="in_transit">In Transit</SelectItem>
+              <SelectItem value="received">Received</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <Button onClick={() => setShowCreate(true)}><ArrowLeftRight className="h-4 w-4 mr-2" />New Transfer</Button>
       </div>
 
@@ -565,29 +618,36 @@ function TransfersTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
-                <TableHead>Ref</TableHead>
                 <TableHead>Item</TableHead>
                 <TableHead>From</TableHead>
-                <TableHead>Lot</TableHead>
+                <TableHead>To</TableHead>
                 <TableHead className="text-right">Qty</TableHead>
-                <TableHead>By</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No transfers yet</TableCell></TableRow>
-              ) : rows.filter((r) => Number(r.quantity) > 0).map((r) => (
+              ) : rows.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="text-xs">{fmtDate(r.createdAt)}</TableCell>
-                  <TableCell className="font-mono text-xs">{r.refCode ?? "—"}</TableCell>
+                  <TableCell className="text-sm">{String(r.itemId ?? "—")}</TableCell>
+                  <TableCell className="text-sm">{String(r.fromWarehouseId ?? "—")}</TableCell>
+                  <TableCell className="text-sm">{String(r.toWarehouseId ?? "—")}</TableCell>
+                  <TableCell className="text-right font-mono">{fmt(r.quantity, 4)}</TableCell>
                   <TableCell>
-                    <div className="text-sm font-medium">{r.itemCode}</div>
-                    <div className="text-xs text-muted-foreground">{r.itemName}</div>
+                    <Badge variant={r.status === "in_transit" ? "secondary" : r.status === "received" ? "default" : "outline"} className="text-xs">
+                      {r.status}
+                    </Badge>
                   </TableCell>
-                  <TableCell className="text-sm">{r.warehouseName}</TableCell>
-                  <TableCell className="text-xs">{r.lotNumber ?? "—"}</TableCell>
-                  <TableCell className="text-right font-mono text-green-700">{fmt(r.quantity, 4)}</TableCell>
-                  <TableCell className="text-xs">{r.postedByEmail?.split("@")[0] ?? "—"}</TableCell>
+                  <TableCell>
+                    {r.status === "in_transit" && (
+                      <Button size="sm" variant="outline" disabled={receiveMut.isPending} onClick={() => handleReceive(r.id ?? 0)}>
+                        <CheckCircle2 className="h-3 w-3 mr-1" />Receive
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1200,6 +1260,7 @@ function LotsTab() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [traceLot, setTraceLot] = useState<string | null>(null);
+  const [traceDirection, setTraceDirection] = useState<"forward" | "backward">("forward");
 
   const { data: lots, isLoading } = useListLotNumbers({
     search: search || undefined,
@@ -1209,8 +1270,8 @@ function LotsTab() {
 
   const { data: trace, isLoading: traceLoading } = useTraceLotNumber(
     traceLot ?? "",
-    undefined,
-    { query: { enabled: traceLot !== null, queryKey: getTraceLotNumberQueryKey(traceLot ?? "") } },
+    { direction: traceDirection },
+    { query: { enabled: traceLot !== null, queryKey: [...getTraceLotNumberQueryKey(traceLot ?? ""), traceDirection] } },
   );
 
   const rows = lots?.data ?? [];
@@ -1281,9 +1342,18 @@ function LotsTab() {
 
         {traceLot && (
           <div className="space-y-2">
-            <h4 className="font-semibold flex items-center gap-2">
-              <Tag className="h-4 w-4" />Trace: {traceLot}
-            </h4>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h4 className="font-semibold flex items-center gap-2">
+                <Tag className="h-4 w-4" />Trace: {traceLot}
+              </h4>
+              <Select value={traceDirection} onValueChange={(v) => setTraceDirection(v as "forward" | "backward")}>
+                <SelectTrigger className="w-32 h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="forward">Forward</SelectItem>
+                  <SelectItem value="backward">Backward</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             {traceLoading ? (
               <div className="py-4 text-center text-muted-foreground">Loading trace…</div>
             ) : (
@@ -1319,6 +1389,345 @@ function LotsTab() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Serial Numbers Tab ────────────────────────────────────────────────────────
+
+type SerialRegisterForm = { serialNumber: string; itemId?: number; warehouseId?: number; lotNumber?: string; status?: string; notes?: string };
+
+function SerialNumbersTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedSn, setSelectedSn] = useState<string | null>(null);
+  const [showRegister, setShowRegister] = useState(false);
+
+  const { data: items } = useListItems({ limit: 500 });
+  const { data: warehouses } = useListWarehouses({ limit: 100 });
+  const { data: serials, isLoading } = useListSerialNumbers({
+    search: search || undefined,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    limit: 100,
+  });
+  const { data: detail, isLoading: detailLoading } = useGetSerialNumber(
+    selectedSn ?? "",
+    { query: { enabled: !!selectedSn, queryKey: getGetSerialNumberQueryKey(selectedSn ?? "") } },
+  );
+  const registerMut = useRegisterSerialNumber();
+  const updateMut = useUpdateSerialNumber();
+
+  const form = useForm<SerialRegisterForm>({ defaultValues: { status: "available" } });
+
+  async function onRegister(vals: SerialRegisterForm) {
+    try {
+      await registerMut.mutateAsync({ data: { ...vals, itemId: vals.itemId ? Number(vals.itemId) : undefined, warehouseId: vals.warehouseId ? Number(vals.warehouseId) : undefined } });
+      toast({ title: "Serial number registered" });
+      setShowRegister(false);
+      form.reset({ status: "available" });
+      qc.invalidateQueries({ queryKey: getListSerialNumbersQueryKey() });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+    }
+  }
+
+  async function handleScrap(sn: string) {
+    try {
+      await updateMut.mutateAsync({ serialNumber: sn, data: { status: "scrapped" } });
+      toast({ title: `${sn} marked as scrapped` });
+      qc.invalidateQueries({ queryKey: getListSerialNumbersQueryKey() });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+    }
+  }
+
+  const rows = serials?.data ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between flex-wrap gap-2">
+        <div className="flex gap-2 flex-1 flex-wrap">
+          <div className="relative flex-1 min-w-48">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search serial numbers…" className="pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-36"><SelectValue placeholder="All Status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="available">Available</SelectItem>
+              <SelectItem value="sold">Sold</SelectItem>
+              <SelectItem value="scrapped">Scrapped</SelectItem>
+              <SelectItem value="quarantine">Quarantine</SelectItem>
+              <SelectItem value="in_transit">In Transit</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button onClick={() => setShowRegister(true)}><Plus className="h-4 w-4 mr-2" />Register Serial</Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div>
+          {isLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Loading…</div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Serial #</TableHead>
+                    <TableHead>Item</TableHead>
+                    <TableHead>Warehouse</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Lot</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.length === 0 ? (
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No serial numbers found</TableCell></TableRow>
+                  ) : rows.map((r) => (
+                    <TableRow key={r.id} className={selectedSn === r.serialNumber ? "bg-muted" : ""}>
+                      <TableCell className="font-mono text-sm">{r.serialNumber}</TableCell>
+                      <TableCell>
+                        <div className="text-sm font-medium">{r.itemCode}</div>
+                        <div className="text-xs text-muted-foreground">{r.itemName}</div>
+                      </TableCell>
+                      <TableCell className="text-sm">{r.warehouseName ?? "—"}</TableCell>
+                      <TableCell><StatusBadge status={r.status ?? "unknown"} /></TableCell>
+                      <TableCell className="text-xs">{r.lotNumber ?? "—"}</TableCell>
+                      <TableCell className="flex gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => setSelectedSn(selectedSn === r.serialNumber ? null : (r.serialNumber ?? null))}>
+                          <Eye className="h-3 w-3 mr-1" />Trace
+                        </Button>
+                        {r.status === "available" && (
+                          <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => handleScrap(r.serialNumber ?? "")}>
+                            Scrap
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+
+        {selectedSn && (
+          <div className="space-y-2">
+            <h4 className="font-semibold flex items-center gap-2">
+              <Hash className="h-4 w-4" />Trace: {selectedSn}
+            </h4>
+            {detailLoading ? (
+              <div className="py-4 text-center text-muted-foreground">Loading…</div>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Warehouse</TableHead>
+                      <TableHead className="text-right">Qty</TableHead>
+                      <TableHead>Ref</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(detail?.movements ?? []).length === 0 ? (
+                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-4">No movements for this serial</TableCell></TableRow>
+                    ) : (detail?.movements ?? []).map((m) => (
+                      <TableRow key={m.id}>
+                        <TableCell className="text-xs">{fmtDate(m.createdAt)}</TableCell>
+                        <TableCell><MovementBadge type={m.movementType ?? ""} /></TableCell>
+                        <TableCell className="text-sm">{m.warehouseName}</TableCell>
+                        <TableCell className={`text-right font-mono text-sm font-semibold ${Number(m.quantity) < 0 ? "text-red-600" : "text-green-700"}`}>
+                          {Number(m.quantity) > 0 ? "+" : ""}{fmt(m.quantity, 4)}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{m.refCode ?? m.refType ?? "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <Dialog open={showRegister} onOpenChange={setShowRegister}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Register Serial Number</DialogTitle></DialogHeader>
+          <form onSubmit={form.handleSubmit(onRegister)} className="space-y-4">
+            <div>
+              <Label>Serial Number *</Label>
+              <Input {...form.register("serialNumber", { required: true })} placeholder="e.g. SN-2024-00001" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Item</Label>
+                <Select value={String(form.watch("itemId") || "")} onValueChange={(v) => form.setValue("itemId", Number(v))}>
+                  <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
+                  <SelectContent>{(items?.items ?? []).map((it) => <SelectItem key={it.id} value={String(it.id)}>{it.code}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Warehouse</Label>
+                <Select value={String(form.watch("warehouseId") || "")} onValueChange={(v) => form.setValue("warehouseId", Number(v))}>
+                  <SelectTrigger><SelectValue placeholder="Select warehouse" /></SelectTrigger>
+                  <SelectContent>{(warehouses?.warehouses ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Lot Number</Label>
+                <Input {...form.register("lotNumber")} placeholder="Optional" />
+              </div>
+              <div>
+                <Label>Status</Label>
+                <Select value={form.watch("status") || "available"} onValueChange={(v) => form.setValue("status", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="available">Available</SelectItem>
+                    <SelectItem value="quarantine">Quarantine</SelectItem>
+                    <SelectItem value="sold">Sold</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label>Notes</Label>
+              <Textarea {...form.register("notes")} rows={2} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowRegister(false)}>Cancel</Button>
+              <Button type="submit" disabled={registerMut.isPending}>{registerMut.isPending ? "Registering…" : "Register"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ── Repack / Build Tab ────────────────────────────────────────────────────────
+
+type RepackForm = { itemId: number; fromWarehouseId: number; fromLot?: string; fromQty: number; toItemId: number; toWarehouseId: number; toLot?: string; toQty: number; notes?: string };
+
+function RepackBuildTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [mode, setMode] = useState<"repack" | "build">("repack");
+
+  const { data: items } = useListItems({ limit: 500 });
+  const { data: warehouses } = useListWarehouses({ limit: 100 });
+  const { data: glAccounts } = useListGlAccounts({ limit: 200 });
+  const createAdjMut = useCreateInventoryAdjustment();
+
+  const form = useForm<RepackForm>({ defaultValues: { fromQty: 0, toQty: 0 } });
+
+  const inventoryGlId = (glAccounts?.accounts ?? []).find((a) => a.accountType === "asset" || a.name?.toLowerCase().includes("inventor"))?.id;
+
+  async function onSubmit(vals: RepackForm) {
+    try {
+      const label = mode === "repack" ? "Repack" : "Build";
+      await createAdjMut.mutateAsync({ data: {
+        adjustmentType: "decrease" as const,
+        reason: `${label}: ${vals.notes ?? ""}`.trim(),
+        glAccountId: inventoryGlId ?? undefined,
+        notes: vals.notes,
+        lines: [
+          { itemId: Number(vals.itemId), warehouseId: Number(vals.fromWarehouseId), lotNumber: vals.fromLot, qtyAdjusted: -Math.abs(vals.fromQty) },
+          { itemId: Number(vals.toItemId), warehouseId: Number(vals.toWarehouseId), lotNumber: vals.toLot, qtyAdjusted: Math.abs(vals.toQty) },
+        ],
+      }});
+      toast({ title: `${label} posted`, description: `Removed ${vals.fromQty} → Added ${vals.toQty}` });
+      form.reset({ fromQty: 0, toQty: 0 });
+      qc.invalidateQueries({ queryKey: getListInventoryAdjustmentsQueryKey() });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 items-center">
+        <h3 className="text-lg font-semibold">Repack / Build</h3>
+        <div className="flex rounded-md border overflow-hidden text-sm">
+          <button type="button" onClick={() => setMode("repack")} className={`px-3 py-1.5 ${mode === "repack" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>Repack</button>
+          <button type="button" onClick={() => setMode("build")} className={`px-3 py-1.5 ${mode === "build" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>Build / Kit</button>
+        </div>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        {mode === "repack" ? "Convert stock from one pack size/lot to another. Posts matching OUT and IN adjustments with a shared reference code." : "Build a kit or assembly by consuming components and producing the finished item. Posts paired OUT/IN adjustments with a shared reference code."}
+      </p>
+
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-w-2xl">
+        <div className="grid grid-cols-2 gap-6">
+          <div className="space-y-3 rounded-lg border p-4">
+            <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">FROM — Consume</h4>
+            <div>
+              <Label>{mode === "repack" ? "Source Item" : "Component Item"} *</Label>
+              <Select value={String(form.watch("itemId") || "")} onValueChange={(v) => form.setValue("itemId", Number(v))}>
+                <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
+                <SelectContent>{(items?.items ?? []).map((it) => <SelectItem key={it.id} value={String(it.id)}>{it.code} — {it.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Warehouse *</Label>
+              <Select value={String(form.watch("fromWarehouseId") || "")} onValueChange={(v) => form.setValue("fromWarehouseId", Number(v))}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>{(warehouses?.warehouses ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Lot Number</Label>
+              <Input {...form.register("fromLot")} placeholder="Optional" />
+            </div>
+            <div>
+              <Label>Quantity to Consume *</Label>
+              <Input type="number" step="0.0001" {...form.register("fromQty", { valueAsNumber: true, min: 0.0001 })} />
+            </div>
+          </div>
+          <div className="space-y-3 rounded-lg border p-4">
+            <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">TO — Produce</h4>
+            <div>
+              <Label>{mode === "repack" ? "Destination Item" : "Finished Item"} *</Label>
+              <Select value={String(form.watch("toItemId") || "")} onValueChange={(v) => form.setValue("toItemId", Number(v))}>
+                <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
+                <SelectContent>{(items?.items ?? []).map((it) => <SelectItem key={it.id} value={String(it.id)}>{it.code} — {it.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Warehouse *</Label>
+              <Select value={String(form.watch("toWarehouseId") || "")} onValueChange={(v) => form.setValue("toWarehouseId", Number(v))}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>{(warehouses?.warehouses ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>New Lot Number</Label>
+              <Input {...form.register("toLot")} placeholder="Optional" />
+            </div>
+            <div>
+              <Label>Quantity to Produce *</Label>
+              <Input type="number" step="0.0001" {...form.register("toQty", { valueAsNumber: true, min: 0.0001 })} />
+            </div>
+          </div>
+        </div>
+        <div>
+          <Label>Notes</Label>
+          <Textarea {...form.register("notes")} rows={2} placeholder="Reason or reference…" />
+        </div>
+        <div>
+          <Button type="submit" disabled={createAdjMut.isPending}>
+            <PackageCheck className="h-4 w-4 mr-2" />{createAdjMut.isPending ? "Posting…" : `Post ${mode === "repack" ? "Repack" : "Build"}`}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -1361,6 +1770,12 @@ export default function Inventory() {
           <TabsTrigger value="lots" className="gap-1.5">
             <Tag className="h-4 w-4" />Lots
           </TabsTrigger>
+          <TabsTrigger value="serials" className="gap-1.5">
+            <Hash className="h-4 w-4" />Serials
+          </TabsTrigger>
+          <TabsTrigger value="repack" className="gap-1.5">
+            <PackageCheck className="h-4 w-4" />Repack/Build
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="stock"><StockDashboardTab /></TabsContent>
@@ -1371,6 +1786,8 @@ export default function Inventory() {
         <TabsContent value="stocktake"><StocktakeTab /></TabsContent>
         <TabsContent value="cycle-counts"><CycleCountsTab /></TabsContent>
         <TabsContent value="lots"><LotsTab /></TabsContent>
+        <TabsContent value="serials"><SerialNumbersTab /></TabsContent>
+        <TabsContent value="repack"><RepackBuildTab /></TabsContent>
       </Tabs>
     </div>
   );

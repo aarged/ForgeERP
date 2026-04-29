@@ -199,6 +199,63 @@ export const landedCostAllocationsTable = pgTable("landed_cost_allocations", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ── Serial Numbers ────────────────────────────────────────────────────────────
+// Master ledger for serial-controlled items. One row per physical serial number.
+export const serialNumbersTable = pgTable("serial_numbers", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  serialNumber: text("serial_number").notNull(),
+  itemId: integer("item_id").notNull().references(() => itemsTable.id, { onDelete: "cascade" }),
+  warehouseId: integer("warehouse_id").references(() => warehousesTable.id),
+  locationId: integer("location_id").references(() => warehouseLocationsTable.id),
+  lotNumber: text("lot_number"),
+  /** available | reserved | sold | scrapped | in_transit */
+  status: text("status").notNull().default("available"),
+  /** Movement that introduced this serial (receipt / adjustment / build) */
+  inboundMovementId: integer("inbound_movement_id").references(() => inventoryMovementsTable.id),
+  /** Movement that consumed this serial (issue / despatch / transfer out) */
+  outboundMovementId: integer("outbound_movement_id").references(() => inventoryMovementsTable.id),
+  /** SO line that reserved this serial */
+  reservedForRefType: text("reserved_for_ref_type"),
+  reservedForRefId: integer("reserved_for_ref_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+// ── Inventory Transfers (transit-state lifecycle) ─────────────────────────────
+// Transfers that have been requested but not yet received at the destination.
+export const inventoryTransfersTable = pgTable("inventory_transfers", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  itemId: integer("item_id").notNull().references(() => itemsTable.id, { onDelete: "cascade" }),
+  itemCode: text("item_code"),
+  itemName: text("item_name"),
+  fromWarehouseId: integer("from_warehouse_id").notNull().references(() => warehousesTable.id),
+  fromLocationId: integer("from_location_id").references(() => warehouseLocationsTable.id),
+  toWarehouseId: integer("to_warehouse_id").notNull().references(() => warehousesTable.id),
+  toLocationId: integer("to_location_id").references(() => warehouseLocationsTable.id),
+  quantity: numeric("quantity", { precision: 18, scale: 4 }).notNull(),
+  unitCost: numeric("unit_cost", { precision: 18, scale: 4 }),
+  lotNumber: text("lot_number"),
+  serialNumber: text("serial_number"),
+  /** pending | in_transit | received | cancelled */
+  status: text("status").notNull().default("pending"),
+  /** Movement that recorded the goods leaving the source warehouse */
+  outMovementId: integer("out_movement_id").references(() => inventoryMovementsTable.id),
+  /** Movement that recorded the goods arriving at the destination warehouse */
+  inMovementId: integer("in_movement_id").references(() => inventoryMovementsTable.id),
+  requestedByClerkId: text("requested_by_clerk_id"),
+  requestedByEmail: text("requested_by_email"),
+  receivedByClerkId: text("received_by_clerk_id"),
+  receivedAt: timestamp("received_at", { withTimezone: true }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
 // ── Type exports ──────────────────────────────────────────────────────────────
 export type CostLayer = typeof costLayersTable.$inferSelect;
 export type LotNumber = typeof lotNumbersTable.$inferSelect;
@@ -209,3 +266,5 @@ export type StocktakeLine = typeof stocktakeLinesTable.$inferSelect;
 export type CycleCountTask = typeof cycleCountTasksTable.$inferSelect;
 export type CycleCountLine = typeof cycleCountLinesTable.$inferSelect;
 export type LandedCostAllocation = typeof landedCostAllocationsTable.$inferSelect;
+export type SerialNumber = typeof serialNumbersTable.$inferSelect;
+export type InventoryTransfer = typeof inventoryTransfersTable.$inferSelect;

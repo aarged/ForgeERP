@@ -3207,6 +3207,7 @@ export type GetItemAvailability200Item = {
   id?: number;
   code?: string;
   name?: string;
+  costingMethod?: string;
 };
 
 export type GetItemAvailability200ByWarehouseItem = {
@@ -3222,6 +3223,8 @@ export type GetItemAvailability200 = {
   totalOnHand?: number;
   totalReserved?: number;
   totalAvailable?: number;
+  totalOnOrder?: number;
+  totalInTransit?: number;
   byWarehouse?: GetItemAvailability200ByWarehouseItem[];
 };
 
@@ -3403,12 +3406,26 @@ export type ListLotNumbers200 = {
 
 export type TraceLotNumberParams = {
   itemId?: number;
+  direction?: TraceLotNumberDirection;
+  refType?: string;
+  refId?: number;
 };
 
+export type TraceLotNumberDirection =
+  (typeof TraceLotNumberDirection)[keyof typeof TraceLotNumberDirection];
+
+export const TraceLotNumberDirection = {
+  forward: "forward",
+  backward: "backward",
+} as const;
+
 export type TraceLotNumber200 = {
-  lotNumber?: string;
+  direction?: string;
+  lotNumber?: string | null;
   lot?: LotNumber;
   movements?: InventoryMovement[];
+  refType?: string | null;
+  refId?: number | null;
 };
 
 export type ListStocktakeRunsParams = {
@@ -3498,6 +3515,109 @@ export type UpdateCycleCountBody = {
 
 export type UpdateCycleCountLineBody = {
   countedQty: number;
+};
+
+export type ListInventoryTransfersParams = {
+  status?: ListInventoryTransfersStatus;
+  fromWarehouseId?: number;
+  toWarehouseId?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type ListInventoryTransfersStatus =
+  (typeof ListInventoryTransfersStatus)[keyof typeof ListInventoryTransfersStatus];
+
+export const ListInventoryTransfersStatus = {
+  in_transit: "in_transit",
+  received: "received",
+  cancelled: "cancelled",
+} as const;
+
+export type ListInventoryTransfers200DataItem = {
+  id?: number;
+  fromWarehouseId?: number;
+  toWarehouseId?: number;
+  itemId?: number;
+  quantity?: number;
+  status?: string;
+  notes?: string | null;
+  createdAt?: string;
+};
+
+export type ListInventoryTransfers200 = {
+  data?: ListInventoryTransfers200DataItem[];
+  hasMore?: boolean;
+  page?: number;
+};
+
+export type ReceiveInventoryTransferBody = {
+  notes?: string;
+};
+
+export type ReceiveInventoryTransfer200 = {
+  transferId?: number;
+  status?: string;
+  inboundMovementId?: number;
+};
+
+export type ListSerialNumbersParams = {
+  itemId?: number;
+  warehouseId?: number;
+  status?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListSerialNumbers200DataItem = {
+  id?: number;
+  serialNumber?: string;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  warehouseId?: number | null;
+  warehouseName?: string | null;
+  status?: string;
+  lotNumber?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+};
+
+export type ListSerialNumbers200 = {
+  data?: ListSerialNumbers200DataItem[];
+  hasMore?: boolean;
+  page?: number;
+};
+
+export type RegisterSerialNumberBody = {
+  serialNumber: string;
+  itemId?: number;
+  warehouseId?: number;
+  locationId?: number;
+  lotNumber?: string;
+  status?: string;
+  notes?: string;
+};
+
+export type GetSerialNumber200 = {
+  id?: number;
+  serialNumber?: string;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  warehouseId?: number | null;
+  status?: string;
+  lotNumber?: string | null;
+  notes?: string | null;
+  movements?: InventoryMovement[];
+};
+
+export type UpdateSerialNumberBody = {
+  status?: string;
+  warehouseId?: number;
+  locationId?: number;
+  notes?: string;
 };
 
 export type ListLandedCostsParams = {

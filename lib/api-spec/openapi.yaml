@@ -4524,10 +4524,12 @@ paths:
               schema:
                 type: object
                 properties:
-                  item: { type: object, properties: { id: { type: integer }, code: { type: string }, name: { type: string } } }
+                  item: { type: object, properties: { id: { type: integer }, code: { type: string }, name: { type: string }, costingMethod: { type: string } } }
                   totalOnHand: { type: number }
                   totalReserved: { type: number }
                   totalAvailable: { type: number }
+                  totalOnOrder: { type: number }
+                  totalInTransit: { type: number }
                   byWarehouse: { type: array, items: { type: object, properties: { warehouseId: { type: integer }, warehouseName: { type: string, nullable: true }, qtyOnHand: { type: number }, qtyReserved: { type: number }, qtyAvailable: { type: number } } } }
 
   /inventory/movements:
@@ -4853,24 +4855,30 @@ paths:
   /inventory/lots/{lotNumber}/trace:
     get:
       operationId: traceLotNumber
-      summary: Forward trace all movements for a lot
+      summary: Forward or backward trace for a lot number
       tags: [Inventory]
       security: [{ clerkAuth: [] }]
       parameters:
         - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
         - { in: path, name: lotNumber, required: true, schema: { type: string } }
         - { in: query, name: itemId, schema: { type: integer } }
+        - { in: query, name: direction, schema: { type: string, enum: [forward, backward] } }
+        - { in: query, name: refType, schema: { type: string } }
+        - { in: query, name: refId, schema: { type: integer } }
       responses:
         "200":
-          description: Lot trace
+          description: Lot trace result (forward or backward)
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  lotNumber: { type: string }
+                  direction: { type: string }
+                  lotNumber: { type: string, nullable: true }
                   lot: { $ref: "#/components/schemas/LotNumber" }
                   movements: { type: array, items: { $ref: "#/components/schemas/InventoryMovement" } }
+                  refType: { type: string, nullable: true }
+                  refId: { type: integer, nullable: true }
 
   /inventory/stocktakes:
     get:
@@ -5112,6 +5120,186 @@ paths:
       responses:
         "200":
           description: Line updated
+
+  /inventory/transfers:
+    get:
+      operationId: listInventoryTransfers
+      summary: List warehouse-to-warehouse transfers
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string, enum: [in_transit, received, cancelled] } }
+        - { in: query, name: fromWarehouseId, schema: { type: integer } }
+        - { in: query, name: toWarehouseId, schema: { type: integer } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses:
+        "200":
+          description: Paginated transfer list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        fromWarehouseId: { type: integer }
+                        toWarehouseId: { type: integer }
+                        itemId: { type: integer }
+                        quantity: { type: number }
+                        status: { type: string }
+                        notes: { type: string, nullable: true }
+                        createdAt: { type: string }
+                  hasMore: { type: boolean }
+                  page: { type: integer }
+
+  /inventory/transfers/{id}/receive:
+    post:
+      operationId: receiveInventoryTransfer
+      summary: Receive an in-transit transfer (creates inbound movement)
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes: { type: string }
+      responses:
+        "200":
+          description: Transfer received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transferId: { type: integer }
+                  status: { type: string }
+                  inboundMovementId: { type: integer }
+
+  /inventory/serials:
+    get:
+      operationId: listSerialNumbers
+      summary: List serial numbers with filtering
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: itemId, schema: { type: integer } }
+        - { in: query, name: warehouseId, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses:
+        "200":
+          description: Paginated serial number list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        serialNumber: { type: string }
+                        itemId: { type: integer, nullable: true }
+                        itemCode: { type: string, nullable: true }
+                        itemName: { type: string, nullable: true }
+                        warehouseId: { type: integer, nullable: true }
+                        warehouseName: { type: string, nullable: true }
+                        status: { type: string }
+                        lotNumber: { type: string, nullable: true }
+                        notes: { type: string, nullable: true }
+                        createdAt: { type: string }
+                  hasMore: { type: boolean }
+                  page: { type: integer }
+    post:
+      operationId: registerSerialNumber
+      summary: Register a new serial number
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [serialNumber]
+              properties:
+                serialNumber: { type: string }
+                itemId: { type: integer }
+                warehouseId: { type: integer }
+                locationId: { type: integer }
+                lotNumber: { type: string }
+                status: { type: string }
+                notes: { type: string }
+      responses:
+        "201":
+          description: Serial number registered
+
+  /inventory/serials/{serialNumber}:
+    get:
+      operationId: getSerialNumber
+      summary: Get serial number detail with full movement trace
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: serialNumber, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Serial number with trace
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  serialNumber: { type: string }
+                  itemId: { type: integer, nullable: true }
+                  itemCode: { type: string, nullable: true }
+                  itemName: { type: string, nullable: true }
+                  warehouseId: { type: integer, nullable: true }
+                  status: { type: string }
+                  lotNumber: { type: string, nullable: true }
+                  notes: { type: string, nullable: true }
+                  movements: { type: array, items: { $ref: "#/components/schemas/InventoryMovement" } }
+    patch:
+      operationId: updateSerialNumber
+      summary: Update serial number status or location
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: serialNumber, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string }
+                warehouseId: { type: integer }
+                locationId: { type: integer }
+                notes: { type: string }
+      responses:
+        "200":
+          description: Serial number updated
 
   /inventory/landed-costs:
     get:

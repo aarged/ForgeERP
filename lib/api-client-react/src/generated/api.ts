@@ -99,6 +99,7 @@ import type {
   GetReceiptGlPreview200,
   GetSalesAlternatives200,
   GetSalesAlternativesParams,
+  GetSerialNumber200,
   GlAccountListResponse,
   GlPostingList,
   GlTemplateImportBody,
@@ -135,6 +136,8 @@ import type {
   ListInventoryStockDashboard200,
   ListInventoryStockDashboardParams,
   ListInventoryStockParams,
+  ListInventoryTransfers200,
+  ListInventoryTransfersParams,
   ListItemUnits200,
   ListItemsParams,
   ListLandedCosts200,
@@ -151,6 +154,8 @@ import type {
   ListReturnsParams,
   ListRmaOrdersParams,
   ListSalesOrdersParams,
+  ListSerialNumbers200,
+  ListSerialNumbersParams,
   ListStocktakeRuns200,
   ListStocktakeRunsParams,
   ListSuppliersParams,
@@ -198,7 +203,10 @@ import type {
   QuotationLineInput,
   QuotationListResponse,
   ReceiptList,
+  ReceiveInventoryTransfer200,
+  ReceiveInventoryTransferBody,
   ReceiveRmaBody,
+  RegisterSerialNumberBody,
   ReleaseBackorderBody,
   ReportBackorders200Item,
   ReportCustomerStatement200,
@@ -253,6 +261,7 @@ import type {
   UpdateRequisitionBody,
   UpdateReturnBody,
   UpdateSalesOrderBody,
+  UpdateSerialNumberBody,
   UpdateStocktakeLineBody,
   UpdateTenantBody,
   UpdateUserBody,
@@ -17907,7 +17916,7 @@ export function useListLotNumbers<
 }
 
 /**
- * @summary Forward trace all movements for a lot
+ * @summary Forward or backward trace for a lot number
  */
 export const getTraceLotNumberUrl = (
   lotNumber: string,
@@ -17994,7 +18003,7 @@ export type TraceLotNumberQueryResult = NonNullable<
 export type TraceLotNumberQueryError = ErrorType<unknown>;
 
 /**
- * @summary Forward trace all movements for a lot
+ * @summary Forward or backward trace for a lot number
  */
 
 export function useTraceLotNumber<
@@ -18908,6 +18917,559 @@ export const useUpdateCycleCountLine = <
   TContext
 > => {
   return useMutation(getUpdateCycleCountLineMutationOptions(options));
+};
+
+/**
+ * @summary List warehouse-to-warehouse transfers
+ */
+export const getListInventoryTransfersUrl = (
+  params?: ListInventoryTransfersParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/transfers?${stringifiedParams}`
+    : `/api/inventory/transfers`;
+};
+
+export const listInventoryTransfers = async (
+  params?: ListInventoryTransfersParams,
+  options?: RequestInit,
+): Promise<ListInventoryTransfers200> => {
+  return customFetch<ListInventoryTransfers200>(
+    getListInventoryTransfersUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListInventoryTransfersQueryKey = (
+  params?: ListInventoryTransfersParams,
+) => {
+  return [`/api/inventory/transfers`, ...(params ? [params] : [])] as const;
+};
+
+export const getListInventoryTransfersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listInventoryTransfers>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInventoryTransfersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryTransfers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListInventoryTransfersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listInventoryTransfers>>
+  > = ({ signal }) =>
+    listInventoryTransfers(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listInventoryTransfers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListInventoryTransfersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listInventoryTransfers>>
+>;
+export type ListInventoryTransfersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List warehouse-to-warehouse transfers
+ */
+
+export function useListInventoryTransfers<
+  TData = Awaited<ReturnType<typeof listInventoryTransfers>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInventoryTransfersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryTransfers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListInventoryTransfersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Receive an in-transit transfer (creates inbound movement)
+ */
+export const getReceiveInventoryTransferUrl = (id: number) => {
+  return `/api/inventory/transfers/${id}/receive`;
+};
+
+export const receiveInventoryTransfer = async (
+  id: number,
+  receiveInventoryTransferBody: ReceiveInventoryTransferBody,
+  options?: RequestInit,
+): Promise<ReceiveInventoryTransfer200> => {
+  return customFetch<ReceiveInventoryTransfer200>(
+    getReceiveInventoryTransferUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(receiveInventoryTransferBody),
+    },
+  );
+};
+
+export const getReceiveInventoryTransferMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof receiveInventoryTransfer>>,
+    TError,
+    { id: number; data: BodyType<ReceiveInventoryTransferBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof receiveInventoryTransfer>>,
+  TError,
+  { id: number; data: BodyType<ReceiveInventoryTransferBody> },
+  TContext
+> => {
+  const mutationKey = ["receiveInventoryTransfer"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof receiveInventoryTransfer>>,
+    { id: number; data: BodyType<ReceiveInventoryTransferBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return receiveInventoryTransfer(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReceiveInventoryTransferMutationResult = NonNullable<
+  Awaited<ReturnType<typeof receiveInventoryTransfer>>
+>;
+export type ReceiveInventoryTransferMutationBody =
+  BodyType<ReceiveInventoryTransferBody>;
+export type ReceiveInventoryTransferMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Receive an in-transit transfer (creates inbound movement)
+ */
+export const useReceiveInventoryTransfer = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof receiveInventoryTransfer>>,
+    TError,
+    { id: number; data: BodyType<ReceiveInventoryTransferBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof receiveInventoryTransfer>>,
+  TError,
+  { id: number; data: BodyType<ReceiveInventoryTransferBody> },
+  TContext
+> => {
+  return useMutation(getReceiveInventoryTransferMutationOptions(options));
+};
+
+/**
+ * @summary List serial numbers with filtering
+ */
+export const getListSerialNumbersUrl = (params?: ListSerialNumbersParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/serials?${stringifiedParams}`
+    : `/api/inventory/serials`;
+};
+
+export const listSerialNumbers = async (
+  params?: ListSerialNumbersParams,
+  options?: RequestInit,
+): Promise<ListSerialNumbers200> => {
+  return customFetch<ListSerialNumbers200>(getListSerialNumbersUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListSerialNumbersQueryKey = (
+  params?: ListSerialNumbersParams,
+) => {
+  return [`/api/inventory/serials`, ...(params ? [params] : [])] as const;
+};
+
+export const getListSerialNumbersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSerialNumbers>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListSerialNumbersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSerialNumbers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListSerialNumbersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listSerialNumbers>>
+  > = ({ signal }) => listSerialNumbers(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSerialNumbers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSerialNumbersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSerialNumbers>>
+>;
+export type ListSerialNumbersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List serial numbers with filtering
+ */
+
+export function useListSerialNumbers<
+  TData = Awaited<ReturnType<typeof listSerialNumbers>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListSerialNumbersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listSerialNumbers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSerialNumbersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Register a new serial number
+ */
+export const getRegisterSerialNumberUrl = () => {
+  return `/api/inventory/serials`;
+};
+
+export const registerSerialNumber = async (
+  registerSerialNumberBody: RegisterSerialNumberBody,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getRegisterSerialNumberUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(registerSerialNumberBody),
+  });
+};
+
+export const getRegisterSerialNumberMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof registerSerialNumber>>,
+    TError,
+    { data: BodyType<RegisterSerialNumberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof registerSerialNumber>>,
+  TError,
+  { data: BodyType<RegisterSerialNumberBody> },
+  TContext
+> => {
+  const mutationKey = ["registerSerialNumber"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof registerSerialNumber>>,
+    { data: BodyType<RegisterSerialNumberBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return registerSerialNumber(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RegisterSerialNumberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof registerSerialNumber>>
+>;
+export type RegisterSerialNumberMutationBody =
+  BodyType<RegisterSerialNumberBody>;
+export type RegisterSerialNumberMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Register a new serial number
+ */
+export const useRegisterSerialNumber = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof registerSerialNumber>>,
+    TError,
+    { data: BodyType<RegisterSerialNumberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof registerSerialNumber>>,
+  TError,
+  { data: BodyType<RegisterSerialNumberBody> },
+  TContext
+> => {
+  return useMutation(getRegisterSerialNumberMutationOptions(options));
+};
+
+/**
+ * @summary Get serial number detail with full movement trace
+ */
+export const getGetSerialNumberUrl = (serialNumber: string) => {
+  return `/api/inventory/serials/${serialNumber}`;
+};
+
+export const getSerialNumber = async (
+  serialNumber: string,
+  options?: RequestInit,
+): Promise<GetSerialNumber200> => {
+  return customFetch<GetSerialNumber200>(getGetSerialNumberUrl(serialNumber), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSerialNumberQueryKey = (serialNumber: string) => {
+  return [`/api/inventory/serials/${serialNumber}`] as const;
+};
+
+export const getGetSerialNumberQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSerialNumber>>,
+  TError = ErrorType<unknown>,
+>(
+  serialNumber: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSerialNumber>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetSerialNumberQueryKey(serialNumber);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSerialNumber>>> = ({
+    signal,
+  }) => getSerialNumber(serialNumber, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!serialNumber,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSerialNumber>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSerialNumberQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSerialNumber>>
+>;
+export type GetSerialNumberQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get serial number detail with full movement trace
+ */
+
+export function useGetSerialNumber<
+  TData = Awaited<ReturnType<typeof getSerialNumber>>,
+  TError = ErrorType<unknown>,
+>(
+  serialNumber: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSerialNumber>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSerialNumberQueryOptions(serialNumber, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update serial number status or location
+ */
+export const getUpdateSerialNumberUrl = (serialNumber: string) => {
+  return `/api/inventory/serials/${serialNumber}`;
+};
+
+export const updateSerialNumber = async (
+  serialNumber: string,
+  updateSerialNumberBody: UpdateSerialNumberBody,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getUpdateSerialNumberUrl(serialNumber), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateSerialNumberBody),
+  });
+};
+
+export const getUpdateSerialNumberMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateSerialNumber>>,
+    TError,
+    { serialNumber: string; data: BodyType<UpdateSerialNumberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateSerialNumber>>,
+  TError,
+  { serialNumber: string; data: BodyType<UpdateSerialNumberBody> },
+  TContext
+> => {
+  const mutationKey = ["updateSerialNumber"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateSerialNumber>>,
+    { serialNumber: string; data: BodyType<UpdateSerialNumberBody> }
+  > = (props) => {
+    const { serialNumber, data } = props ?? {};
+
+    return updateSerialNumber(serialNumber, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateSerialNumberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateSerialNumber>>
+>;
+export type UpdateSerialNumberMutationBody = BodyType<UpdateSerialNumberBody>;
+export type UpdateSerialNumberMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update serial number status or location
+ */
+export const useUpdateSerialNumber = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateSerialNumber>>,
+    TError,
+    { serialNumber: string; data: BodyType<UpdateSerialNumberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateSerialNumber>>,
+  TError,
+  { serialNumber: string; data: BodyType<UpdateSerialNumberBody> },
+  TContext
+> => {
+  return useMutation(getUpdateSerialNumberMutationOptions(options));
 };
 
 /**
