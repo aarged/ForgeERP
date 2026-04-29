@@ -45,6 +45,7 @@
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@types/node": "catalog:",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
@@ -79,6 +80,7 @@
     "@clerk/themes": "^2.4.57",
     "@stripe/react-stripe-js": "^6.3.0",
     "@stripe/stripe-js": "^9.3.1",
+    "papaparse": "^5.5.3",
     "xlsx": "^0.18.5"
   }
 }

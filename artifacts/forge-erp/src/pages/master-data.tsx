@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
+import Papa from "papaparse";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm, Controller } from "react-hook-form";
@@ -61,6 +62,7 @@ import {
   useLookupSupplier,
   useLookupCustomer,
   useLookupWarehouse,
+  useImportItems,
 } from "@workspace/api-client-react";
 import type {
   CreateItemBody,
@@ -89,6 +91,7 @@ import type {
   ItemCrossReference,
   WarehouseLocation,
   CustomerSalesSummary,
+  BulkImportResult,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -147,6 +150,7 @@ import {
   ArrowUp,
   ArrowDown,
   Loader2,
+  Upload,
 } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -1064,10 +1068,10 @@ function WarehouseLocationsPanel({ warehouseId }: { warehouseId: number }) {
           <div>
             <Label className="text-xs mb-1 block">Parent Location</Label>
             <Controller control={control} name="parentId" render={({ field }) => (
-              <Select value={field.value != null ? String(field.value) : ""} onValueChange={(v) => field.onChange(v ? Number(v) : undefined)}>
+              <Select value={field.value != null ? String(field.value) : "__none__"} onValueChange={(v) => field.onChange(v === "__none__" ? undefined : Number(v))}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="None (top-level)" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None (top-level)</SelectItem>
+                  <SelectItem value="__none__">None (top-level)</SelectItem>
                   {locations.map((l) => <SelectItem key={l.id} value={String(l.id)}>{l.code} — {l.name}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -1122,19 +1126,18 @@ function WarehouseStockPanel({ warehouseId }: { warehouseId: number }) {
       )}
       {data.locations && data.locations.length > 0 && (
         <div className="rounded border text-sm">
-          <div className="px-3 py-1.5 bg-muted text-xs font-medium grid grid-cols-5 gap-2">
-            <span className="col-span-2">Location</span><span>Type</span><span className="text-right">On Hand</span><span className="text-right">Available</span>
+          <div className="px-3 py-1.5 bg-muted text-xs font-medium grid grid-cols-3 gap-2">
+            <span className="col-span-2">Location</span><span>Type</span>
           </div>
           {data.locations.map((l) => (
-            <div key={l.id} className="px-3 py-1.5 grid grid-cols-5 gap-2 border-t text-xs">
+            <div key={l.id} className="px-3 py-1.5 grid grid-cols-3 gap-2 border-t text-xs">
               <span className="col-span-2 font-mono">{l.code}</span>
               <span className="capitalize text-muted-foreground">{l.locationType}</span>
-              <span className="text-right">{l.qtyOnHand ?? 0}</span>
-              <span className="text-right">{l.qtyAvailable ?? 0}</span>
             </div>
           ))}
         </div>
       )}
+      <p className="text-xs text-muted-foreground italic">Stock quantities (on-hand, reserved, available) will be tracked once the Inventory module is enabled.</p>
     </div>
   );
 }
@@ -1337,6 +1340,7 @@ function ItemsTab({ initialId, initialCode }: { initialId?: number; initialCode?
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editItem, setEditItem] = useState<ItemRow | undefined>();
   const [deleteItem, setDeleteItem] = useState<ItemRow | undefined>();
   const [auditTarget, setAuditTarget] = useState<{ id: string; name: string } | undefined>();
@@ -1435,6 +1439,9 @@ function ItemsTab({ initialId, initialCode }: { initialId?: number; initialCode?
           <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "items.xlsx")} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+            <Upload className="h-4 w-4 mr-1" /> Import CSV
+          </Button>
           <Button onClick={openCreate}><Plus className="h-4 w-4 mr-1" /> New Item</Button>
         </div>
       </div>
@@ -1504,6 +1511,7 @@ function ItemsTab({ initialId, initialCode }: { initialId?: number; initialCode?
       </Card>
 
       <ItemModal open={modalOpen} onOpenChange={setModalOpen} item={editItem} onSuccess={refresh} />
+      <ItemCsvImportDialog open={importOpen} onOpenChange={setImportOpen} onSuccess={refresh} />
       <DeleteConfirm open={!!deleteItem} onOpenChange={(v) => !v && setDeleteItem(undefined)} name={deleteItem?.name ?? "item"} onConfirm={handleDelete} isPending={deleteM.isPending} />
       {auditTarget && (
         <AuditTrailDialog
@@ -2325,6 +2333,116 @@ function GlAccountModal({ open, onOpenChange, account, allAccounts, onSuccess }:
             <Button type="submit" disabled={isPending}>{isPending ? "Saving…" : isEdit ? "Save Changes" : "Create Account"}</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ItemCsvImportDialog({ open, onOpenChange, onSuccess }: {
+  open: boolean; onOpenChange: (v: boolean) => void; onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const importM = useImportItems();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [result, setResult] = useState<BulkImportResult | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+
+  const VALID_ITEM_TYPES = new Set(["stock", "service", "charge"]);
+
+  const getCol = (row: Record<string, string>, ...keys: string[]): string | undefined => {
+    for (const k of keys) { const v = row[k]?.trim(); if (v) return v; }
+    return undefined;
+  };
+
+  const toNum = (v: string | undefined): number | undefined => {
+    if (!v) return undefined;
+    const n = Number(v);
+    return isNaN(n) ? undefined : n;
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsParsing(true);
+    try {
+      const parsed = await new Promise<Papa.ParseResult<Record<string, string>>>((resolve) => {
+        Papa.parse<Record<string, string>>(file, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (h) => h.trim().replace(/^\uFEFF/, ""),
+          complete: resolve,
+        });
+      });
+
+      if (parsed.errors.length > 0 && parsed.data.length === 0) {
+        toast({ title: "CSV parse error", description: parsed.errors[0]?.message, variant: "destructive" });
+        return;
+      }
+
+      const items = parsed.data
+        .map((r) => {
+          const rawType = getCol(r, "itemType", "item_type", "type") ?? "stock";
+          const itemType = VALID_ITEM_TYPES.has(rawType) ? rawType as "stock" | "service" | "charge" : "stock";
+          return {
+            code: getCol(r, "code", "Code") ?? "",
+            name: getCol(r, "name", "Name") ?? "",
+            description: getCol(r, "description", "Description") || undefined,
+            unitOfMeasure: getCol(r, "unitOfMeasure", "unit_of_measure", "UoM", "uom") || undefined,
+            unitCost: toNum(getCol(r, "unitCost", "unit_cost", "cost")),
+            salesPrice: toNum(getCol(r, "salesPrice", "sales_price", "price")),
+            category: getCol(r, "category", "Category") || undefined,
+            itemType,
+            barcode: getCol(r, "barcode", "Barcode") || undefined,
+          };
+        })
+        .filter((item) => item.code && item.name);
+
+      if (!items.length) {
+        toast({ title: "No valid rows found", description: "Ensure the CSV has 'code' and 'name' columns with at least one data row.", variant: "destructive" });
+        return;
+      }
+
+      const res = await importM.mutateAsync({ data: { items } });
+      setResult(res);
+      toast({ title: `Import complete: ${res.created} created, ${res.updated} updated${res.errors?.length ? `, ${res.errors.length} errors` : ""}` });
+      onSuccess();
+    } catch (err: unknown) {
+      toast({ title: "Import failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setIsParsing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleClose = () => { setResult(null); onOpenChange(false); };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Import Items from CSV</DialogTitle>
+          <DialogDescription>Upload a CSV file with columns: <code className="text-xs bg-muted px-1 rounded">code, name, description, unitOfMeasure, unitCost, salesPrice, category, itemType, barcode</code>. Existing items (matched by code) will be updated.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFile} />
+          <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()} disabled={isParsing || importM.isPending}>
+            <Upload className="h-4 w-4 mr-2" />
+            {isParsing || importM.isPending ? "Processing…" : "Choose CSV file"}
+          </Button>
+          {result && (
+            <div className="rounded-md border p-3 text-sm space-y-1">
+              <div className="font-medium">Results</div>
+              <div className="text-muted-foreground">Created: <span className="text-foreground font-medium">{result.created}</span></div>
+              <div className="text-muted-foreground">Updated: <span className="text-foreground font-medium">{result.updated}</span></div>
+              {result.errors && result.errors.length > 0 && (
+                <div className="text-destructive">Errors: {result.errors.length} row(s) failed</div>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose}>Close</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

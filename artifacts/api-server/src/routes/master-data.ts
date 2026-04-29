@@ -369,7 +369,7 @@ router.put(
   "/master-data/items/:id/attributes",
   ...tenantWriteMiddleware,
   async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
     const itemId = Number(req.params.id);
     if (!itemId) { res.status(400).json({ error: "Invalid ID" }); return; }
 
@@ -384,6 +384,8 @@ router.put(
       }
     });
 
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "item_attribute.set", entityType: "item_attribute", entityId: String(itemId), newValues: { count: parsed.data.length, attributes: parsed.data } });
+
     const attrs = await withTenantDb(tenantId, (db) =>
       db.select().from(itemAttributesTable).where(and(eq(itemAttributesTable.itemId, itemId), eq(itemAttributesTable.tenantId, tenantId))),
     );
@@ -396,7 +398,7 @@ router.put(
   "/master-data/items/:id/cross-references",
   ...tenantWriteMiddleware,
   async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
     const itemId = Number(req.params.id);
     if (!itemId) { res.status(400).json({ error: "Invalid ID" }); return; }
 
@@ -422,6 +424,8 @@ router.put(
         })));
       }
     });
+
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "item_cross_reference.set", entityType: "item_cross_reference", entityId: String(itemId), newValues: { count: parsed.data.length, refs: parsed.data } });
 
     const refs = await withTenantDb(tenantId, (db) =>
       db.select().from(itemCrossReferencesTable).where(and(eq(itemCrossReferencesTable.itemId, itemId), eq(itemCrossReferencesTable.tenantId, tenantId))),
@@ -886,7 +890,7 @@ router.post(
   "/master-data/suppliers/:id/contacts",
   ...tenantWriteMiddleware,
   async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
     const supplierId = Number(req.params.id);
     if (!supplierId) { res.status(400).json({ error: "Invalid ID" }); return; }
 
@@ -896,6 +900,7 @@ router.post(
     const [contact] = await withTenantDb(tenantId, (db) =>
       db.insert(supplierContactsTable).values({ ...parsed.data, supplierId, tenantId } as typeof supplierContactsTable.$inferInsert).returning(),
     );
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "supplier_contact.created", entityType: "supplier_contact", entityId: String(contact!.id), newValues: { supplierId, ...parsed.data } });
     res.status(201).json(contact);
   },
 );
@@ -904,7 +909,7 @@ router.patch(
   "/master-data/suppliers/:supplierId/contacts/:contactId",
   ...tenantWriteMiddleware,
   async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
     const supplierId = Number(req.params.supplierId);
     const contactId = Number(req.params.contactId);
 
@@ -919,6 +924,7 @@ router.patch(
     );
 
     if (!contact) { res.status(404).json({ error: "Contact not found" }); return; }
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "supplier_contact.updated", entityType: "supplier_contact", entityId: String(contactId), newValues: parsed.data });
     res.json(contact);
   },
 );
@@ -927,7 +933,7 @@ router.delete(
   "/master-data/suppliers/:supplierId/contacts/:contactId",
   ...tenantWriteMiddleware,
   async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
     const supplierId = Number(req.params.supplierId);
     const contactId = Number(req.params.contactId);
 
@@ -935,6 +941,7 @@ router.delete(
       db.delete(supplierContactsTable)
         .where(and(eq(supplierContactsTable.id, contactId), eq(supplierContactsTable.supplierId, supplierId), eq(supplierContactsTable.tenantId, tenantId))),
     );
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "supplier_contact.deleted", entityType: "supplier_contact", entityId: String(contactId), newValues: { supplierId } });
     res.status(204).send();
   },
 );
@@ -1156,7 +1163,7 @@ router.post(
   "/master-data/customers/:id/contacts",
   ...tenantWriteMiddleware,
   async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
     const customerId = Number(req.params.id);
     if (!customerId) { res.status(400).json({ error: "Invalid ID" }); return; }
 
@@ -1166,6 +1173,7 @@ router.post(
     const [contact] = await withTenantDb(tenantId, (db) =>
       db.insert(customerContactsTable).values({ ...parsed.data, customerId, tenantId } as typeof customerContactsTable.$inferInsert).returning(),
     );
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "customer_contact.created", entityType: "customer_contact", entityId: String(contact!.id), newValues: { customerId, ...parsed.data } });
     res.status(201).json(contact);
   },
 );
@@ -1174,7 +1182,7 @@ router.patch(
   "/master-data/customers/:customerId/contacts/:contactId",
   ...tenantWriteMiddleware,
   async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
     const customerId = Number(req.params.customerId);
     const contactId = Number(req.params.contactId);
 
@@ -1189,6 +1197,7 @@ router.patch(
     );
 
     if (!contact) { res.status(404).json({ error: "Contact not found" }); return; }
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "customer_contact.updated", entityType: "customer_contact", entityId: String(contactId), newValues: parsed.data });
     res.json(contact);
   },
 );
@@ -1197,7 +1206,7 @@ router.delete(
   "/master-data/customers/:customerId/contacts/:contactId",
   ...tenantWriteMiddleware,
   async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
     const customerId = Number(req.params.customerId);
     const contactId = Number(req.params.contactId);
 
@@ -1205,6 +1214,7 @@ router.delete(
       db.delete(customerContactsTable)
         .where(and(eq(customerContactsTable.id, contactId), eq(customerContactsTable.customerId, customerId), eq(customerContactsTable.tenantId, tenantId))),
     );
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "customer_contact.deleted", entityType: "customer_contact", entityId: String(contactId), newValues: { customerId } });
     res.status(204).send();
   },
 );
@@ -1381,7 +1391,7 @@ router.post(
   "/master-data/warehouses/:id/locations",
   ...tenantWriteMiddleware,
   async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
     const warehouseId = Number(req.params.id);
     if (!warehouseId) { res.status(400).json({ error: "Invalid ID" }); return; }
 
@@ -1391,6 +1401,7 @@ router.post(
     const [location] = await withTenantDb(tenantId, (db) =>
       db.insert(warehouseLocationsTable).values({ ...parsed.data, warehouseId, tenantId } as typeof warehouseLocationsTable.$inferInsert).returning(),
     );
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "warehouse_location.created", entityType: "warehouse_location", entityId: String(location!.id), newValues: { warehouseId, ...parsed.data } });
     res.status(201).json(location);
   },
 );
@@ -1399,7 +1410,7 @@ router.patch(
   "/master-data/warehouses/:warehouseId/locations/:locationId",
   ...tenantWriteMiddleware,
   async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
     const warehouseId = Number(req.params.warehouseId);
     const locationId = Number(req.params.locationId);
 
@@ -1414,6 +1425,7 @@ router.patch(
     );
 
     if (!location) { res.status(404).json({ error: "Location not found" }); return; }
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "warehouse_location.updated", entityType: "warehouse_location", entityId: String(locationId), newValues: parsed.data });
     res.json(location);
   },
 );
@@ -1422,7 +1434,7 @@ router.delete(
   "/master-data/warehouses/:warehouseId/locations/:locationId",
   ...tenantWriteMiddleware,
   async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
     const warehouseId = Number(req.params.warehouseId);
     const locationId = Number(req.params.locationId);
 
@@ -1430,6 +1442,7 @@ router.delete(
       db.delete(warehouseLocationsTable)
         .where(and(eq(warehouseLocationsTable.id, locationId), eq(warehouseLocationsTable.warehouseId, warehouseId), eq(warehouseLocationsTable.tenantId, tenantId))),
     );
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "warehouse_location.deleted", entityType: "warehouse_location", entityId: String(locationId), newValues: { warehouseId } });
     res.status(204).send();
   },
 );
