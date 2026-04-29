@@ -829,6 +829,11 @@ router.delete("/procurement/requisitions/:id", ...tenantWriteMiddleware, async (
 router.put("/procurement/requisitions/:id/lines", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
+  const [req_] = await withTenantDb(tenantId, (db) =>
+    db.select({ status: purchaseRequisitionsTable.status }).from(purchaseRequisitionsTable)
+      .where(and(eq(purchaseRequisitionsTable.id, id), eq(purchaseRequisitionsTable.tenantId, tenantId))).limit(1));
+  if (!req_) { res.status(404).json({ error: "Requisition not found" }); return; }
+  if (!["draft", "returned"].includes(req_.status)) { res.status(400).json({ error: `Cannot modify lines on a requisition with status: ${req_.status}` }); return; }
   const schema = z.array(reqLineSchema);
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
@@ -1222,6 +1227,11 @@ router.delete("/procurement/purchase-orders/:id", ...tenantWriteMiddleware, asyn
 router.put("/procurement/purchase-orders/:id/lines", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const poId = Number(req.params.id);
+  const [po_] = await withTenantDb(tenantId, (db) =>
+    db.select({ status: purchaseOrdersTable.status }).from(purchaseOrdersTable)
+      .where(and(eq(purchaseOrdersTable.id, poId), eq(purchaseOrdersTable.tenantId, tenantId))).limit(1));
+  if (!po_) { res.status(404).json({ error: "Purchase order not found" }); return; }
+  if (!["draft", "returned"].includes(po_.status)) { res.status(400).json({ error: `Cannot modify lines on a PO with status: ${po_.status}` }); return; }
   const schema = z.array(poLineSchema);
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
@@ -1533,6 +1543,24 @@ router.post("/procurement/receipts", ...tenantWriteMiddleware, async (req: Reque
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
 
   const { lines, ...header } = parsed.data;
+
+  // Validate all poLineIds BEFORE creating any records (transactional integrity)
+  if (lines.length > 0) {
+    const poLineIds = lines.map((l) => l.poLineId).filter(Boolean) as number[];
+    if (poLineIds.length > 0) {
+      const validPoLines = await withTenantDb(tenantId, (db) =>
+        db.select({ id: poLinesTable.id }).from(poLinesTable)
+          .where(and(inArray(poLinesTable.id, poLineIds), eq(poLinesTable.poId, parsed.data.poId), eq(poLinesTable.tenantId, tenantId))));
+      const validIds = new Set(validPoLines.map((pl) => pl.id));
+      const invalidLine = poLineIds.find((lid) => !validIds.has(lid));
+      if (invalidLine) {
+        res.status(400).json({ error: `Line poLineId ${invalidLine} does not belong to PO ${parsed.data.poId}` });
+        return;
+      }
+    }
+  }
+
+  // All validations passed — now persist header + lines atomically
   const [receipt] = await withTenantDb(tenantId, (db) =>
     db.insert(poReceiptsTable).values({
       ...header,
@@ -1547,20 +1575,6 @@ router.post("/procurement/receipts", ...tenantWriteMiddleware, async (req: Reque
   await withTenantDb(tenantId, (db) => db.update(poReceiptsTable).set({ code: genCode("RCV", receiptId) }).where(eq(poReceiptsTable.id, receiptId)));
 
   if (lines.length > 0) {
-    // Security: validate every poLineId belongs to the declared poId and tenant
-    const poLineIds = lines.map((l) => l.poLineId).filter(Boolean) as number[];
-    if (poLineIds.length > 0) {
-      const validPoLines = await withTenantDb(tenantId, (db) =>
-        db.select({ id: poLinesTable.id }).from(poLinesTable)
-          .where(and(inArray(poLinesTable.id, poLineIds), eq(poLinesTable.poId, parsed.data.poId), eq(poLinesTable.tenantId, tenantId))));
-      const validIds = new Set(validPoLines.map((pl) => pl.id));
-      const invalidLine = poLineIds.find((lid) => !validIds.has(lid));
-      if (invalidLine) {
-        res.status(400).json({ error: `Line poLineId ${invalidLine} does not belong to PO ${parsed.data.poId}` });
-        return;
-      }
-    }
-
     await withTenantDb(tenantId, (db) =>
       db.insert(receiptLinesTable).values(lines.map((l) => ({
         ...l,
@@ -2101,6 +2115,77 @@ router.get("/procurement/reports/po-summary", ...tenantUserMiddleware, async (re
       .groupBy(purchaseOrdersTable.status),
   );
   res.json(rows);
+});
+
+// Goods-in-transit: POs sent to supplier but not yet fully received
+router.get("/procurement/reports/goods-in-transit", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { supplierId, from, to } = req.query as Record<string, string>;
+
+  const pos = await withTenantDb(tenantId, (db) =>
+    db.select({
+      id: purchaseOrdersTable.id,
+      code: purchaseOrdersTable.code,
+      supplierId: purchaseOrdersTable.supplierId,
+      supplierName: purchaseOrdersTable.supplierName,
+      status: purchaseOrdersTable.status,
+      total: purchaseOrdersTable.total,
+      currencyCode: purchaseOrdersTable.currencyCode,
+      deliveryDate: purchaseOrdersTable.deliveryDate,
+      createdAt: purchaseOrdersTable.createdAt,
+    })
+      .from(purchaseOrdersTable)
+      .where(and(
+        eq(purchaseOrdersTable.tenantId, tenantId),
+        isNull(purchaseOrdersTable.deletedAt),
+        sql`${purchaseOrdersTable.status} IN ('sent', 'partially_received')`,
+        supplierId ? eq(purchaseOrdersTable.supplierId, Number(supplierId)) : undefined,
+        from ? sql`${purchaseOrdersTable.createdAt} >= ${from}::timestamptz` : undefined,
+        to ? sql`${purchaseOrdersTable.createdAt} <= ${to}::timestamptz` : undefined,
+      ))
+      .orderBy(asc(purchaseOrdersTable.deliveryDate)));
+
+  if (pos.length === 0) { res.json([]); return; }
+
+  // For each PO, calculate total ordered qty vs total received qty across all lines
+  const poIds = pos.map((p) => p.id);
+  const orderedQtys = await withTenantDb(tenantId, (db) =>
+    db.select({
+      poId: poLinesTable.poId,
+      totalOrdered: sql<number>`sum(${poLinesTable.quantity}::numeric)`,
+    })
+      .from(poLinesTable)
+      .where(and(eq(poLinesTable.tenantId, tenantId), inArray(poLinesTable.poId, poIds)))
+      .groupBy(poLinesTable.poId));
+
+  const receivedQtys = await withTenantDb(tenantId, (db) =>
+    db.select({
+      poId: poLinesTable.poId,
+      totalReceived: sql<number>`sum(${receiptLinesTable.receivedQty}::numeric)`,
+    })
+      .from(receiptLinesTable)
+      .innerJoin(poLinesTable, and(eq(receiptLinesTable.poLineId, poLinesTable.id), eq(receiptLinesTable.tenantId, tenantId)))
+      .innerJoin(poReceiptsTable, and(eq(receiptLinesTable.receiptId, poReceiptsTable.id), sql`${poReceiptsTable.status} = 'confirmed'`))
+      .where(and(eq(receiptLinesTable.tenantId, tenantId), inArray(poLinesTable.poId, poIds)))
+      .groupBy(poLinesTable.poId));
+
+  const orderedMap = new Map(orderedQtys.map((r) => [r.poId, Number(r.totalOrdered)]));
+  const receivedMap = new Map(receivedQtys.map((r) => [r.poId, Number(r.totalReceived)]));
+
+  const result = pos.map((po) => {
+    const totalOrdered = orderedMap.get(po.id) ?? 0;
+    const totalReceived = receivedMap.get(po.id) ?? 0;
+    const outstandingQty = Math.max(0, totalOrdered - totalReceived);
+    return {
+      ...po,
+      totalOrdered,
+      totalReceived,
+      outstandingQty,
+      outstandingPct: totalOrdered > 0 ? Math.round((outstandingQty / totalOrdered) * 100) : 0,
+    };
+  });
+
+  res.json(result);
 });
 
 export default router;

@@ -2122,3 +2122,25 @@ export type ReportPoSummaryParams = {
   from?: string;
   to?: string;
 };
+
+export type ReportGoodsInTransitParams = {
+  supplierId?: number;
+  from?: string;
+  to?: string;
+};
+
+export type ReportGoodsInTransit200Item = {
+  id?: number;
+  code?: string;
+  supplierId?: number | null;
+  supplierName?: string | null;
+  status?: string;
+  total?: string | null;
+  currencyCode?: string;
+  deliveryDate?: string | null;
+  createdAt?: string;
+  totalOrdered?: number;
+  totalReceived?: number;
+  outstandingQty?: number;
+  outstandingPct?: number;
+};

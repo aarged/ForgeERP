@@ -118,6 +118,8 @@ import type {
   PurchaseRequisition,
   PurchaseRequisitionDetail,
   ReceiptList,
+  ReportGoodsInTransit200Item,
+  ReportGoodsInTransitParams,
   ReportPoSummaryParams,
   RequisitionLine,
   RequisitionLineInput,
@@ -11125,6 +11127,112 @@ export function useReportPoSummary<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getReportPoSummaryQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Report — goods in transit (sent POs not yet fully received)
+ */
+export const getReportGoodsInTransitUrl = (
+  params?: ReportGoodsInTransitParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/procurement/reports/goods-in-transit?${stringifiedParams}`
+    : `/api/procurement/reports/goods-in-transit`;
+};
+
+export const reportGoodsInTransit = async (
+  params?: ReportGoodsInTransitParams,
+  options?: RequestInit,
+): Promise<ReportGoodsInTransit200Item[]> => {
+  return customFetch<ReportGoodsInTransit200Item[]>(
+    getReportGoodsInTransitUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getReportGoodsInTransitQueryKey = (
+  params?: ReportGoodsInTransitParams,
+) => {
+  return [
+    `/api/procurement/reports/goods-in-transit`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getReportGoodsInTransitQueryOptions = <
+  TData = Awaited<ReturnType<typeof reportGoodsInTransit>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ReportGoodsInTransitParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof reportGoodsInTransit>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getReportGoodsInTransitQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof reportGoodsInTransit>>
+  > = ({ signal }) =>
+    reportGoodsInTransit(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof reportGoodsInTransit>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ReportGoodsInTransitQueryResult = NonNullable<
+  Awaited<ReturnType<typeof reportGoodsInTransit>>
+>;
+export type ReportGoodsInTransitQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Report — goods in transit (sent POs not yet fully received)
+ */
+
+export function useReportGoodsInTransit<
+  TData = Awaited<ReturnType<typeof reportGoodsInTransit>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ReportGoodsInTransitParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof reportGoodsInTransit>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getReportGoodsInTransitQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

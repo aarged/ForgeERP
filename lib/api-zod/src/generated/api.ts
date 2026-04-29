@@ -4074,3 +4074,35 @@ export const ReportPoSummaryResponseItem = zod.object({
   total: zod.number().optional(),
 });
 export const ReportPoSummaryResponse = zod.array(ReportPoSummaryResponseItem);
+
+/**
+ * @summary Report — goods in transit (sent POs not yet fully received)
+ */
+export const ReportGoodsInTransitQueryParams = zod.object({
+  supplierId: zod.coerce.number().optional(),
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+});
+
+export const ReportGoodsInTransitHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportGoodsInTransitResponseItem = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  supplierId: zod.number().nullish(),
+  supplierName: zod.string().nullish(),
+  status: zod.string().optional(),
+  total: zod.string().nullish(),
+  currencyCode: zod.string().optional(),
+  deliveryDate: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  totalOrdered: zod.number().optional(),
+  totalReceived: zod.number().optional(),
+  outstandingQty: zod.number().optional(),
+  outstandingPct: zod.number().optional(),
+});
+export const ReportGoodsInTransitResponse = zod.array(
+  ReportGoodsInTransitResponseItem,
+);

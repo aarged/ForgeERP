@@ -3249,6 +3249,50 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/PoSummaryRow" }
 
+  /procurement/reports/goods-in-transit:
+    get:
+      operationId: reportGoodsInTransit
+      summary: Report — goods in transit (sent POs not yet fully received)
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: supplierId
+          schema: { type: integer }
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Goods-in-transit rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    code: { type: string }
+                    supplierId: { type: integer, nullable: true }
+                    supplierName: { type: string, nullable: true }
+                    status: { type: string }
+                    total: { type: string, nullable: true }
+                    currencyCode: { type: string }
+                    deliveryDate: { type: string, nullable: true }
+                    createdAt: { type: string, format: date-time }
+                    totalOrdered: { type: number }
+                    totalReceived: { type: number }
+                    outstandingQty: { type: number }
+                    outstandingPct: { type: integer }
+
 components:
   securitySchemes:
     clerkAuth:
