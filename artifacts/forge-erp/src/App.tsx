@@ -123,7 +123,7 @@ function HomeRedirect() {
 /**
  * ProtectedRoute renders the component inside the AppShell for signed-in users
  * who have an active tenant membership. Users who are signed in but have no
- * tenant yet (no `role` returned from /auth/me) are redirected to /pending.
+ * tenant yet (no `role` returned from /auth/me) are redirected to /onboarding.
  */
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { data: currentUser, isLoading } = useGetCurrentUser({
@@ -138,7 +138,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
       <Show when="signed-in">
         {isLoading ? null : (
           !currentUser?.role ? (
-            <Redirect to="/pending" />
+            <Redirect to="/onboarding" />
           ) : (
             <AppShell>
               <Component />

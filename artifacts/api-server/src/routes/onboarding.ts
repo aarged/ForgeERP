@@ -23,6 +23,7 @@ import {
 import { writeAuditLog } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { isStripeConfigured, getUncachableStripeClient } from "../lib/stripe";
+import { sendEmail, buildWelcomeEmail } from "../lib/email";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
@@ -600,6 +601,60 @@ router.post(
       isActive: "true",
     });
 
+    // ── Stripe: create customer + activate subscription ───────────────────────
+    const planTierForStripe = step4?.planTier ?? "starter";
+    const stripePaymentMethodId = step4?.stripePaymentMethodId;
+    let stripeCustomerId: string | null = null;
+    let stripeSubscriptionId: string | null = null;
+
+    if (isStripeConfigured() && planTierForStripe !== "starter" && stripePaymentMethodId) {
+      const priceLookup: Record<string, string | undefined> = {
+        starter: process.env.STRIPE_PRICE_STARTER,
+        growth: process.env.STRIPE_PRICE_GROWTH,
+        enterprise: process.env.STRIPE_PRICE_ENTERPRISE,
+      };
+      const priceId = priceLookup[planTierForStripe];
+      try {
+        const stripe = await getUncachableStripeClient();
+
+        // Create Stripe customer
+        const customer = await stripe.customers.create({
+          email: userEmail,
+          name: step1.companyName,
+          metadata: { tenantId: String(tenant.id), clerkUserId: clerkId },
+        });
+        stripeCustomerId = customer.id;
+
+        // Attach payment method to customer
+        await stripe.paymentMethods.attach(stripePaymentMethodId, { customer: stripeCustomerId });
+        await stripe.customers.update(stripeCustomerId, {
+          invoice_settings: { default_payment_method: stripePaymentMethodId },
+        });
+
+        // Create subscription
+        if (priceId) {
+          const sub = await stripe.subscriptions.create({
+            customer: stripeCustomerId,
+            items: [{ price: priceId }],
+            default_payment_method: stripePaymentMethodId,
+            expand: ["latest_invoice.payment_intent"],
+          });
+          stripeSubscriptionId = sub.id;
+        } else {
+          logger.warn({ planTierForStripe }, "No Stripe price ID configured for plan tier — subscription not created");
+        }
+
+        // Persist Stripe IDs
+        await adminDb.update(tenantsTable)
+          .set({ stripeCustomerId, stripeSubscriptionId })
+          .where(eq(tenantsTable.id, tenant.id));
+
+        await writeAuditLog({ req, actorClerkId: clerkId, actorEmail: userEmail, tenantId: tenant.id, action: "tenant.stripe_activated", entityType: "tenant", entityId: tenant.id, newValues: { stripeCustomerId, stripeSubscriptionId, planTier: planTierForStripe } });
+      } catch (err) {
+        logger.error({ err, tenantId: tenant.id, planTierForStripe }, "Stripe activation failed during onboarding — continuing without billing");
+      }
+    }
+
     // ── Create warehouses ──────────────────────────────────────────────────────
     if (step2?.warehouses && step2.warehouses.length > 0) {
       await adminDb.insert(warehousesTable).values(
@@ -749,6 +804,22 @@ router.post(
         await clerk.users.updateUser(clerkId, { publicMetadata: { ...existing, tenantId: tenant.id } });
       } catch (err) {
         logger.warn({ err, clerkId, tenantId: tenant.id }, "Failed to backfill Clerk metadata");
+      }
+    })();
+
+    // Send welcome email (fire-and-forget — fails gracefully if SMTP not configured)
+    void (async () => {
+      try {
+        const loginUrl = `${req.protocol}://${req.get("host")}/forge-erp/dashboard`;
+        const emailContent = buildWelcomeEmail({
+          firstName,
+          companyName: tenant.name,
+          planTier: tenant.planTier ?? "starter",
+          loginUrl,
+        });
+        await sendEmail({ to: userEmail, ...emailContent });
+      } catch (err) {
+        logger.warn({ err, tenantId: tenant.id, userEmail }, "Failed to send welcome email");
       }
     })();
 
