@@ -94,7 +94,7 @@ function JournalTab() {
   const form = useForm({
     defaultValues: {
       memo: "",
-      postedAt: new Date().toISOString().split("T")[0],
+      postingDate: new Date().toISOString().split("T")[0],
       lines: [
         { accountCode: "", accountName: "", debit: 0, credit: 0, description: "" },
         { accountCode: "", accountName: "", debit: 0, credit: 0, description: "" }
@@ -114,12 +114,17 @@ function JournalTab() {
       return;
     }
     try {
-      await postMut.mutateAsync({ data: { 
+      const result = await postMut.mutateAsync({ data: { 
         memo: vals.memo, 
         postingDate: vals.postingDate,
         lines: vals.lines.filter((l: any) => l.accountCode) 
       }});
-      toast({ title: "Journal entry posted" });
+      const r = result as { requiresApproval?: boolean; approvalThreshold?: number };
+      if (r?.requiresApproval) {
+        toast({ title: "Journal saved — pending approval", description: `Journals over $${(r.approvalThreshold ?? 10000).toLocaleString()} require manager approval before posting.` });
+      } else {
+        toast({ title: "Journal entry posted" });
+      }
       setShowCreate(false);
       form.reset();
       qc.invalidateQueries({ queryKey: getGetFinanceJournalsQueryKey({}) });
@@ -249,7 +254,7 @@ function JournalTab() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Posting Date *</Label>
-                <Input type="date" {...form.register("postedAt", { required: true })} />
+                <Input type="date" {...form.register("postingDate", { required: true })} />
               </div>
               <div>
                 <Label>Memo *</Label>
@@ -371,6 +376,7 @@ function TrialBalanceTab() {
               <TableHead>Account Code</TableHead>
               <TableHead>Account Name</TableHead>
               <TableHead>Type</TableHead>
+              <TableHead className="text-right">Opening Balance</TableHead>
               <TableHead className="text-right">Period Debit</TableHead>
               <TableHead className="text-right">Period Credit</TableHead>
               <TableHead className="text-right">Closing Balance</TableHead>
@@ -378,23 +384,24 @@ function TrialBalanceTab() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8">Loading trial balance...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8">Loading trial balance...</TableCell></TableRow>
             ) : !data?.accounts?.length ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8">No activity found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8">No activity found</TableCell></TableRow>
             ) : (
               <>
                 {data.accounts.map((a: any) => (
                   <TableRow key={a.accountId}>
                     <TableCell className="font-mono">{a.accountCode}</TableCell>
                     <TableCell className="font-medium">{a.accountName}</TableCell>
-                    <TableCell className="capitalize">{a.accountType?.replace("_", " ")}</TableCell>
+                    <TableCell className="capitalize">{String(a.accountType ?? "").replace("_", " ")}</TableCell>
+                    <TableCell className="text-right font-mono">{fmt(Math.abs(Number(a.openingBalance ?? 0)))} {Number(a.openingBalance ?? 0) >= 0 ? "DR" : "CR"}</TableCell>
                     <TableCell className="text-right font-mono">{fmt(a.periodDebit)}</TableCell>
                     <TableCell className="text-right font-mono">{fmt(a.periodCredit)}</TableCell>
-                    <TableCell className="text-right font-mono font-medium">{fmt(Math.abs(a.closingBalance))} {a.closingBalance >= 0 ? "DR" : "CR"}</TableCell>
+                    <TableCell className="text-right font-mono font-medium">{fmt(Math.abs(Number(a.closingBalance ?? 0)))} {Number(a.closingBalance ?? 0) >= 0 ? "DR" : "CR"}</TableCell>
                   </TableRow>
                 ))}
                 <TableRow className="bg-muted/50 font-bold border-t-2 border-primary">
-                  <TableCell colSpan={3} className="text-right">Totals</TableCell>
+                  <TableCell colSpan={4} className="text-right">Totals</TableCell>
                   <TableCell className="text-right font-mono">{fmt(data.totals?.debit)}</TableCell>
                   <TableCell className="text-right font-mono">{fmt(data.totals?.credit)}</TableCell>
                   <TableCell></TableCell>

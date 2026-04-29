@@ -58,6 +58,7 @@ router.get("/finance/journals", ...tenantUserMiddleware, async (req: Request, re
         toDate ? lte(glPostingsTable.createdAt, new Date(toDate)) : undefined,
         entityType ? eq(glPostingsTable.entityType, entityType) : undefined,
         status ? eq(glPostingsTable.status, status) : undefined,
+        accountCode ? sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${glPostingsTable.lines}) AS ln WHERE ln->>'accountCode' = ${accountCode})` : undefined,
       )
     );
     return (sort === "asc" ? q.orderBy(asc(glPostingsTable.createdAt)) : q.orderBy(desc(glPostingsTable.createdAt)))
@@ -72,6 +73,7 @@ router.get("/finance/journals", ...tenantUserMiddleware, async (req: Request, re
         toDate ? lte(glPostingsTable.createdAt, new Date(toDate)) : undefined,
         entityType ? eq(glPostingsTable.entityType, entityType) : undefined,
         status ? eq(glPostingsTable.status, status) : undefined,
+        accountCode ? sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${glPostingsTable.lines}) AS ln WHERE ln->>'accountCode' = ${accountCode})` : undefined,
       )
     )
   );
@@ -120,7 +122,7 @@ const manualJournalSchema = z.object({
  * Create a balanced manual journal entry.
  */
 router.post("/finance/journals", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const { tenantId, clerkUserId, userEmail, userRole } = req as TenantRequest;
   const parsed = manualJournalSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
   const d = parsed.data;
@@ -132,6 +134,9 @@ router.post("/finance/journals", ...tenantWriteMiddleware, async (req: Request, 
     return;
   }
 
+  // Journals above the approval threshold require manager/admin approval before posting
+  const APPROVAL_THRESHOLD = 10_000;
+  const requiresApproval = totalDebit > APPROVAL_THRESHOLD && !["admin", "super_admin"].includes(userRole);
   const postingDate = d.postingDate ? new Date(d.postingDate) : new Date();
   const result = await withTenantDb(tenantId, async (db) => {
     const [posting] = await db.insert(glPostingsTable).values({
@@ -139,10 +144,10 @@ router.post("/finance/journals", ...tenantWriteMiddleware, async (req: Request, 
       code: "MJE-TEMP",
       entityType: "manual_journal",
       entityId: 0,
-      status: "posted",
+      status: requiresApproval ? "draft" : "posted",
       postedByClerkId: clerkUserId,
       postedByEmail: userEmail ?? undefined,
-      postedAt: postingDate,
+      postedAt: requiresApproval ? null : postingDate,
       notes: d.memo,
       lines: d.lines as unknown as typeof glPostingsTable.$inferInsert["lines"],
       totalDebit: String(totalDebit),
@@ -155,7 +160,7 @@ router.post("/finance/journals", ...tenantWriteMiddleware, async (req: Request, 
   });
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "finance.manual_journal_created", entityType: "gl_posting", entityId: String(result.id), newValues: d });
-  res.status(201).json(result);
+  res.status(201).json({ ...result, requiresApproval, approvalThreshold: APPROVAL_THRESHOLD });
 });
 
 /**
@@ -214,50 +219,68 @@ router.get("/finance/trial-balance", ...tenantUserMiddleware, async (req: Reques
   const { tenantId } = req as TenantRequest;
   const { fromDate, toDate } = req.query as Record<string, string>;
 
-  const [accounts, periodMovements] = await Promise.all([
+  type MovSummary = Array<{ accountCode: string; totalDebit: string; totalCredit: string }>;
+  const [accounts, openingMovements, periodMovements] = await Promise.all([
     withTenantDb(tenantId, (db) =>
       db.select({ id: glAccountsTable.id, code: glAccountsTable.code, name: glAccountsTable.name, accountType: glAccountsTable.accountType })
         .from(glAccountsTable)
         .where(and(eq(glAccountsTable.tenantId, tenantId), isNull(glAccountsTable.deletedAt), eq(glAccountsTable.isActive, true)))
         .orderBy(asc(glAccountsTable.code))
     ),
+    // Opening balance = sum of all movements BEFORE fromDate
+    withTenantDb(tenantId, async (db) => {
+      if (!fromDate) return [] as MovSummary;
+      const rows = await db.execute(sql`
+        SELECT line->>'accountCode' AS "accountCode",
+               SUM((line->>'debit')::numeric) AS "totalDebit",
+               SUM((line->>'credit')::numeric) AS "totalCredit"
+        FROM ${glPostingsTable}, jsonb_array_elements(${glPostingsTable.lines}) AS line
+        WHERE ${glPostingsTable.tenantId} = ${tenantId}
+          AND ${glPostingsTable.status} = 'posted'
+          AND ${glPostingsTable.createdAt} < ${new Date(fromDate)}
+        GROUP BY line->>'accountCode'
+      `) as unknown as MovSummary;
+      return rows;
+    }),
+    // Period movements
     withTenantDb(tenantId, async (db) => {
       const rows = await db.execute(sql`
-        SELECT
-          line->>'accountCode' AS "accountCode",
-          SUM((line->>'debit')::numeric) AS "totalDebit",
-          SUM((line->>'credit')::numeric) AS "totalCredit"
-        FROM ${glPostingsTable},
-             jsonb_array_elements(${glPostingsTable.lines}) AS line
+        SELECT line->>'accountCode' AS "accountCode",
+               SUM((line->>'debit')::numeric) AS "totalDebit",
+               SUM((line->>'credit')::numeric) AS "totalCredit"
+        FROM ${glPostingsTable}, jsonb_array_elements(${glPostingsTable.lines}) AS line
         WHERE ${glPostingsTable.tenantId} = ${tenantId}
           AND ${glPostingsTable.status} = 'posted'
           ${fromDate ? sql`AND ${glPostingsTable.createdAt} >= ${new Date(fromDate)}` : sql``}
           ${toDate ? sql`AND ${glPostingsTable.createdAt} <= ${new Date(toDate)}` : sql``}
         GROUP BY line->>'accountCode'
-      `) as unknown as Array<{ accountCode: string; totalDebit: number; totalCredit: number }>;
+      `) as unknown as MovSummary;
       return rows;
     }),
   ]);
 
-  const movementMap = new Map<string, { dr: number; cr: number }>();
+  const openMap = new Map<string, number>();
+  for (const row of openingMovements) {
+    openMap.set(row.accountCode, Number(row.totalDebit ?? 0) - Number(row.totalCredit ?? 0));
+  }
+
+  const periodMap = new Map<string, { dr: number; cr: number }>();
   for (const row of periodMovements) {
-    movementMap.set(row.accountCode, {
-      dr: Number(row.totalDebit ?? 0),
-      cr: Number(row.totalCredit ?? 0),
-    });
+    periodMap.set(row.accountCode, { dr: Number(row.totalDebit ?? 0), cr: Number(row.totalCredit ?? 0) });
   }
 
   const trialBalance = accounts.map(acc => {
-    const mov = movementMap.get(acc.code) ?? { dr: 0, cr: 0 };
-    const closing = mov.dr - mov.cr;
+    const opening = openMap.get(acc.code ?? "") ?? 0;
+    const { dr, cr } = periodMap.get(acc.code ?? "") ?? { dr: 0, cr: 0 };
     return {
       accountId: acc.id,
       accountCode: acc.code,
       accountName: acc.name,
       accountType: acc.accountType,
-      periodDebit: mov.dr,
-      periodCredit: mov.cr,
-      closingBalance: closing,
+      openingBalance: opening,
+      periodDebit: dr,
+      periodCredit: cr,
+      closingBalance: opening + dr - cr,
     };
   });
 

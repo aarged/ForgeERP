@@ -5,7 +5,11 @@ import {
   useGetInventoryReportsSlowMoving,
   useGetInventoryReportsStocktakeVariance,
   getGetInventoryReportsStocktakeVarianceQueryKey,
-  useListWarehouses
+  useListWarehouses,
+  useReportPoSummary,
+  useReportSupplierPerformance,
+  useReportSalesByPeriod,
+  useReportSalesByItem,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -322,6 +326,198 @@ function StocktakeVarianceTab() {
   );
 }
 
+interface PoSummaryRow { status: string; count: number; total: number; }
+interface SupplierRow { supplierId: number | null; supplierName: string | null; totalOrders: number; totalValue: number; avgOrderValue: number; }
+interface SalesPeriodRow { period: string; totalRevenue: string; invoiceCount: number; orderCount: number; }
+interface SalesItemRow { itemId: number | null; itemCode: string | null; itemName: string | null; totalQty: string; totalRevenue: string; invoiceCount: number; }
+
+function ProcurementPoSummaryTab() {
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const { data, isLoading } = useReportPoSummary(
+    { from: fromDate || undefined, to: toDate || undefined }
+  );
+  const rows: PoSummaryRow[] = (data as PoSummaryRow[] | undefined) ?? [];
+  const grandTotal = rows.reduce((s, r) => s + Number(r.total ?? 0), 0);
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 items-center">
+        <Label className="whitespace-nowrap">From</Label>
+        <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        <Label className="whitespace-nowrap">To</Label>
+        <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Count</TableHead>
+              <TableHead className="text-right">Total Value</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={3} className="text-center py-8">Loading report...</TableCell></TableRow>
+            ) : !rows.length ? (
+              <TableRow><TableCell colSpan={3} className="text-center py-8">No purchase orders found</TableCell></TableRow>
+            ) : (
+              <>
+                {rows.map((r, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Badge variant="outline" className="capitalize">{r.status.replace(/_/g, " ")}</Badge></TableCell>
+                    <TableCell className="text-right font-mono">{r.count}</TableCell>
+                    <TableCell className="text-right font-mono font-medium">{fmt(r.total, true)}</TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="bg-muted/50 font-bold">
+                  <TableCell colSpan={2} className="text-right">Grand Total</TableCell>
+                  <TableCell className="text-right font-mono text-lg text-primary">{fmt(grandTotal, true)}</TableCell>
+                </TableRow>
+              </>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function SupplierSpendTab() {
+  const { data, isLoading } = useReportSupplierPerformance();
+  const rows: SupplierRow[] = (data as SupplierRow[] | undefined) ?? [];
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Supplier</TableHead>
+            <TableHead className="text-right">Total Orders</TableHead>
+            <TableHead className="text-right">Total Spend</TableHead>
+            <TableHead className="text-right">Avg Order Value</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {isLoading ? (
+            <TableRow><TableCell colSpan={4} className="text-center py-8">Loading report...</TableCell></TableRow>
+          ) : !rows.length ? (
+            <TableRow><TableCell colSpan={4} className="text-center py-8">No supplier data found</TableCell></TableRow>
+          ) : rows.map((r, i) => (
+            <TableRow key={i}>
+              <TableCell className="font-medium">{r.supplierName ?? "—"}</TableCell>
+              <TableCell className="text-right font-mono">{r.totalOrders}</TableCell>
+              <TableCell className="text-right font-mono font-medium">{fmt(r.totalValue, true)}</TableCell>
+              <TableCell className="text-right font-mono">{fmt(r.avgOrderValue, true)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function SalesByPeriodTab() {
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const { data, isLoading } = useReportSalesByPeriod(
+    { fromDate: fromDate || undefined, toDate: toDate || undefined }
+  );
+  const rows: SalesPeriodRow[] = (data as SalesPeriodRow[] | undefined) ?? [];
+  const grandRevenue = rows.reduce((s, r) => s + Number(r.totalRevenue ?? 0), 0);
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 items-center">
+        <Label className="whitespace-nowrap">From</Label>
+        <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        <Label className="whitespace-nowrap">To</Label>
+        <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Period</TableHead>
+              <TableHead className="text-right">Invoices</TableHead>
+              <TableHead className="text-right">Orders</TableHead>
+              <TableHead className="text-right">Revenue</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={4} className="text-center py-8">Loading report...</TableCell></TableRow>
+            ) : !rows.length ? (
+              <TableRow><TableCell colSpan={4} className="text-center py-8">No sales data found</TableCell></TableRow>
+            ) : (
+              <>
+                {rows.map((r, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-mono font-medium">{r.period}</TableCell>
+                    <TableCell className="text-right font-mono">{r.invoiceCount}</TableCell>
+                    <TableCell className="text-right font-mono">{r.orderCount}</TableCell>
+                    <TableCell className="text-right font-mono font-medium">{fmt(Number(r.totalRevenue), true)}</TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="bg-muted/50 font-bold">
+                  <TableCell colSpan={3} className="text-right">Total Revenue</TableCell>
+                  <TableCell className="text-right font-mono text-lg text-primary">{fmt(grandRevenue, true)}</TableCell>
+                </TableRow>
+              </>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function SalesByItemTab() {
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const { data, isLoading } = useReportSalesByItem(
+    { fromDate: fromDate || undefined, toDate: toDate || undefined }
+  );
+  const rows: SalesItemRow[] = (data as SalesItemRow[] | undefined) ?? [];
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 items-center">
+        <Label className="whitespace-nowrap">From</Label>
+        <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        <Label className="whitespace-nowrap">To</Label>
+        <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Item</TableHead>
+              <TableHead className="text-right">Qty Sold</TableHead>
+              <TableHead className="text-right">Invoices</TableHead>
+              <TableHead className="text-right">Revenue</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={4} className="text-center py-8">Loading report...</TableCell></TableRow>
+            ) : !rows.length ? (
+              <TableRow><TableCell colSpan={4} className="text-center py-8">No sales data found</TableCell></TableRow>
+            ) : rows.map((r, i) => (
+              <TableRow key={i}>
+                <TableCell>
+                  <div className="font-mono font-medium">{r.itemCode ?? "—"}</div>
+                  <div className="text-sm text-muted-foreground">{r.itemName ?? "—"}</div>
+                </TableCell>
+                <TableCell className="text-right font-mono">{fmt(Number(r.totalQty))}</TableCell>
+                <TableCell className="text-right font-mono">{r.invoiceCount}</TableCell>
+                <TableCell className="text-right font-mono font-medium">{fmt(Number(r.totalRevenue), true)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 export default function Reports() {
   return (
     <div className="space-y-6">
@@ -356,15 +552,29 @@ export default function Reports() {
         </TabsContent>
         
         <TabsContent value="procurement">
-          <div className="py-12 text-center border rounded-md border-dashed text-muted-foreground">
-            Procurement reports are available via API and being connected to the UI.
-          </div>
+          <Tabs defaultValue="po-summary" className="w-full">
+            <div className="border-b mb-4 pb-2">
+              <TabsList className="bg-transparent h-8 p-0">
+                <TabsTrigger value="po-summary" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">PO Summary</TabsTrigger>
+                <TabsTrigger value="supplier-performance" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">Supplier Spend</TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value="po-summary"><ProcurementPoSummaryTab /></TabsContent>
+            <TabsContent value="supplier-performance"><SupplierSpendTab /></TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="sales">
-          <div className="py-12 text-center border rounded-md border-dashed text-muted-foreground">
-            Sales reports are available via API and being connected to the UI.
-          </div>
+          <Tabs defaultValue="by-period" className="w-full">
+            <div className="border-b mb-4 pb-2">
+              <TabsList className="bg-transparent h-8 p-0">
+                <TabsTrigger value="by-period" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">Revenue by Period</TabsTrigger>
+                <TabsTrigger value="by-item" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">Top Products</TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value="by-period"><SalesByPeriodTab /></TabsContent>
+            <TabsContent value="by-item"><SalesByItemTab /></TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
     </div>

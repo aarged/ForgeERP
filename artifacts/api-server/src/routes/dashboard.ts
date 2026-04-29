@@ -258,7 +258,11 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
             .from(purchaseRequisitionsTable).where(and(eq(purchaseRequisitionsTable.tenantId, tenantId), isNull(purchaseRequisitionsTable.deletedAt), eq(purchaseRequisitionsTable.status, "pending_approval")))
             .orderBy(desc(purchaseRequisitionsTable.createdAt)).limit(lim)),
       ]);
-      res.json({ type, data: [...pos.map(p => ({ ...p, entityType: "purchase_order" })), ...reqs.map(r => ({ ...r, entityType: "requisition" }))] }); return;
+      const combined = [
+        ...pos.map(p => ({ type: "purchase_order", code: p.code, requestedBy: p.supplierName ?? "—", amount: Number(p.total ?? 0), createdAt: p.createdAt })),
+        ...reqs.map(r => ({ type: "requisition", code: r.code, requestedBy: r.requestedByEmail ?? "—", amount: Number(r.totalEstimated ?? 0), createdAt: r.createdAt })),
+      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      res.json({ type, data: combined }); return;
     }
     case "top-items": {
       const rows = await withTenantDb(tenantId, async (db) =>
@@ -289,7 +293,7 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
     }
     case "gl-activity": {
       const rows = await withTenantDb(tenantId, (db) =>
-        db.select({ id: glPostingsTable.id, code: glPostingsTable.code, entityType: glPostingsTable.entityType, totalDebit: glPostingsTable.totalDebit, status: glPostingsTable.status, createdAt: glPostingsTable.createdAt })
+        db.select({ id: glPostingsTable.id, code: glPostingsTable.code, entityType: glPostingsTable.entityType, totalDebit: glPostingsTable.totalDebit, status: glPostingsTable.status, postedAt: glPostingsTable.postedAt, notes: glPostingsTable.notes, createdAt: glPostingsTable.createdAt })
           .from(glPostingsTable).where(and(eq(glPostingsTable.tenantId, tenantId), eq(glPostingsTable.status, "posted")))
           .orderBy(desc(glPostingsTable.createdAt)).limit(lim));
       res.json({ type, data: rows }); return;
