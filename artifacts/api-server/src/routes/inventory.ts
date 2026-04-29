@@ -238,7 +238,19 @@ router.get("/inventory/stock", ...tenantUserMiddleware, async (req: Request, res
       qtyReserved: inventoryStockTable.qtyReserved,
       qtyAvailable: sql<string>`${inventoryStockTable.qtyOnHand} - ${inventoryStockTable.qtyReserved}`,
       averageCost: inventoryStockTable.averageCost,
-      stockValue: sql<string>`${inventoryStockTable.qtyOnHand} * COALESCE(${inventoryStockTable.averageCost}, ${itemsTable.unitCost}, 0)`,
+      stockValue: sql<string>`CASE
+        WHEN ${itemsTable.costingMethod} = 'fifo' THEN COALESCE((
+          SELECT SUM(cl.qty_remaining::numeric * cl.unit_cost::numeric)
+          FROM cost_layers cl
+          WHERE cl.tenant_id = ${inventoryStockTable.tenantId}
+            AND cl.item_id = ${inventoryStockTable.itemId}
+            AND cl.warehouse_id = ${inventoryStockTable.warehouseId}
+            AND (cl.location_id IS NULL AND ${inventoryStockTable.locationId} IS NULL OR cl.location_id = ${inventoryStockTable.locationId})
+            AND (cl.lot_number IS NULL AND ${inventoryStockTable.lotNumber} IS NULL OR cl.lot_number = ${inventoryStockTable.lotNumber})
+        ), 0)
+        WHEN ${itemsTable.costingMethod} = 'standard' THEN ${inventoryStockTable.qtyOnHand}::numeric * COALESCE(${itemsTable.unitCost}::numeric, 0)
+        ELSE ${inventoryStockTable.qtyOnHand}::numeric * COALESCE(${inventoryStockTable.averageCost}::numeric, ${itemsTable.unitCost}::numeric, 0)
+      END`,
       lastMovementAt: inventoryStockTable.lastMovementAt,
     })
     .from(inventoryStockTable)
@@ -741,7 +753,7 @@ router.post("/inventory/transfers/:id/receive", ...tenantWriteMiddleware, async 
       receivedAt: new Date(),
     }).where(eq(inventoryTransfersTable.id, transferId));
 
-    return { inMovementId: inMovement.id, transferId, status: "received" };
+    return { inboundMovementId: inMovement.id, transferId, status: "received" };
   });
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "inventory.transfer_received", entityType: "inventory_transfer", entityId: String(transferId) });
@@ -786,7 +798,7 @@ router.post("/inventory/receive", ...tenantWriteMiddleware, async (req: Request,
     const [movement] = await db.insert(inventoryMovementsTable).values({
       tenantId, itemId: d.itemId, itemCode: item.code, itemName: item.name,
       warehouseId: d.warehouseId, locationId: d.locationId ?? undefined,
-      movementType: "receive",
+      movementType: "receipt",
       quantity: String(d.quantity),
       unitCost: d.unitCost != null ? String(d.unitCost) : undefined,
       lotNumber: d.lotNumber ?? undefined,
@@ -1823,15 +1835,72 @@ router.post("/inventory/landed-costs", ...tenantWriteMiddleware, async (req: Req
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
 
-  const [lc] = await withTenantDb(tenantId, (db) =>
-    db.insert(landedCostAllocationsTable).values({
-      tenantId, ...parsed.data,
-      totalLandedCost: String(parsed.data.totalLandedCost),
-      allocatedAmount: parsed.data.allocatedAmount != null ? String(parsed.data.allocatedAmount) : undefined,
-    } as typeof landedCostAllocationsTable.$inferInsert).returning());
+  const d = parsed.data;
+  const allocatedAmount = d.allocatedAmount ?? d.totalLandedCost;
 
-  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: undefined, tenantId, action: "landed_cost.created", entityType: "landed_cost_allocation", entityId: String(lc.id) });
-  res.status(201).json(lc);
+  const result = await withTenantDb(tenantId, async (db) => {
+    const [lc] = await db.insert(landedCostAllocationsTable).values({
+      tenantId, ...d,
+      totalLandedCost: String(d.totalLandedCost),
+      allocatedAmount: String(allocatedAmount),
+      isPosted: true,
+      postedAt: new Date(),
+    } as typeof landedCostAllocationsTable.$inferInsert).returning();
+
+    // ── Apply landed cost to cost layers from the receipt movement ────────────
+    const layers = await db.select().from(costLayersTable)
+      .where(and(
+        eq(costLayersTable.tenantId, tenantId),
+        eq(costLayersTable.movementId, d.receiptId),
+        gt(costLayersTable.qtyOriginal, "0"),
+      ));
+
+    if (layers.length > 0) {
+      if (d.allocationMethod === "qty") {
+        const totalQty = layers.reduce((s, l) => s + Number(l.qtyOriginal), 0);
+        for (const layer of layers) {
+          const proportion = Number(layer.qtyOriginal) / totalQty;
+          const addedPerUnit = (allocatedAmount * proportion) / Number(layer.qtyOriginal);
+          await db.update(costLayersTable)
+            .set({ unitCost: sql`(${costLayersTable.unitCost}::numeric + ${String(addedPerUnit.toFixed(6))}::numeric)` })
+            .where(eq(costLayersTable.id, layer.id));
+        }
+      } else {
+        // value-based (default): proportional to layer value
+        const totalValue = layers.reduce((s, l) => s + Number(l.qtyOriginal) * Number(l.unitCost), 0);
+        for (const layer of layers) {
+          if (totalValue === 0) break;
+          const layerValue = Number(layer.qtyOriginal) * Number(layer.unitCost);
+          const proportion = layerValue / totalValue;
+          const addedPerUnit = (allocatedAmount * proportion) / Number(layer.qtyOriginal);
+          await db.update(costLayersTable)
+            .set({ unitCost: sql`(${costLayersTable.unitCost}::numeric + ${String(addedPerUnit.toFixed(6))}::numeric)` })
+            .where(eq(costLayersTable.id, layer.id));
+        }
+      }
+    }
+
+    // ── GL posting for landed cost accrual ───────────────────────────────────
+    if (d.glAccountId) {
+      const [glAcc] = await db.select({ code: glAccountsTable.code, name: glAccountsTable.name })
+        .from(glAccountsTable)
+        .where(and(eq(glAccountsTable.id, d.glAccountId), eq(glAccountsTable.tenantId, tenantId)))
+        .limit(1);
+      if (glAcc) {
+        const amount = Number(allocatedAmount);
+        await createInventoryGlPosting(
+          db, tenantId, "landed_cost", lc.id, `LC-${lc.id}`,
+          clerkUserId, undefined,
+          [{ accountCode: glAcc.code, accountName: glAcc.name, debit: amount, credit: 0, description: `Landed cost (${d.costType}): ${d.description ?? ""}`.trim() }],
+        );
+      }
+    }
+
+    return lc;
+  });
+
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: undefined, tenantId, action: "landed_cost.created", entityType: "landed_cost_allocation", entityId: String(result.id) });
+  res.status(201).json(result);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

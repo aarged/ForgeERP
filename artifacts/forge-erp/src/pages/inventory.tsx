@@ -45,6 +45,16 @@ import {
   getListSerialNumbersQueryKey,
   getGetSerialNumberQueryKey,
   getListInventoryMovementsQueryKey,
+  type InventoryAdjustment,
+  type InventoryAdjustmentLinesItem,
+  type CreateInventoryTransfer201,
+  type CreateStocktakeRun201,
+  type PostStocktakeRun200,
+  type StocktakeRun,
+  type StocktakeLine,
+  type CreateCycleCount201,
+  type CycleCountTask,
+  type CycleCountTaskLinesItem,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -536,11 +546,11 @@ function AdjustmentsTab() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {((detail as unknown as { lines: AdjLine[] }).lines ?? []).map((l, i) => (
+                    {((detail as InventoryAdjustment)?.lines ?? []).map((l: InventoryAdjustmentLinesItem, i) => (
                       <TableRow key={i}>
                         <TableCell>{l.itemCode}</TableCell>
                         <TableCell>{l.warehouseId}</TableCell>
-                        <TableCell>{(l as unknown as { lotNumber?: string }).lotNumber ?? "—"}</TableCell>
+                        <TableCell>{l.lotNumber ?? "—"}</TableCell>
                         <TableCell className={`text-right font-mono font-semibold ${Number(l.qtyAdjusted) < 0 ? "text-red-600" : "text-green-700"}`}>
                           {Number(l.qtyAdjusted) > 0 ? "+" : ""}{fmt(l.qtyAdjusted, 4)}
                         </TableCell>
@@ -582,7 +592,7 @@ function TransfersTab() {
   async function onSubmit(vals: TransferForm) {
     try {
       const res = await createMut.mutateAsync({ data: { ...vals, itemId: Number(vals.itemId), fromWarehouseId: Number(vals.fromWarehouseId), toWarehouseId: Number(vals.toWarehouseId) } });
-      toast({ title: `Transfer ${(res as unknown as { transferCode: string }).transferCode} created` });
+      toast({ title: `Transfer ${(res as CreateInventoryTransfer201).transferCode} created` });
       setShowCreate(false);
       form.reset();
       qc.invalidateQueries({ queryKey: getListInventoryTransfersQueryKey() });
@@ -871,7 +881,7 @@ function StocktakeTab() {
   async function onCreate(vals: { warehouseId: number; notes: string }) {
     try {
       const res = await createMut.mutateAsync({ data: { warehouseId: Number(vals.warehouseId), notes: vals.notes || undefined } });
-      toast({ title: `Stocktake ${(res as unknown as { code: string }).code} created with ${(res as unknown as { lineCount: number }).lineCount} lines` });
+      toast({ title: `Stocktake ${(res as CreateStocktakeRun201).code} created with ${(res as CreateStocktakeRun201).lineCount} lines` });
       setShowCreate(false);
       form.reset();
       invalidate();
@@ -896,7 +906,7 @@ function StocktakeTab() {
     if (detailId === null) return;
     try {
       const res = await postMut.mutateAsync({ id: detailId, data: {} });
-      toast({ title: `Stocktake posted — ${(res as unknown as { movementsPosted: number }).movementsPosted} variances adjusted` });
+      toast({ title: `Stocktake posted — ${(res as PostStocktakeRun200).movementsPosted} variances adjusted` });
       setDetailId(null);
       invalidate();
     } catch (e: unknown) {
@@ -905,7 +915,7 @@ function StocktakeTab() {
   }
 
   const rows = list?.data ?? [];
-  const lines = (detail as unknown as { lines?: Array<{ id: number; itemCode?: string; itemName?: string; locationId?: number; lotNumber?: string; systemQty: string; countedQty?: string; varianceQty?: string; varianceValue?: string }> } | undefined)?.lines ?? [];
+  const lines: StocktakeLine[] = (detail as StocktakeRun | undefined)?.lines ?? [];
 
   return (
     <div className="space-y-4">
@@ -1026,7 +1036,7 @@ function StocktakeTab() {
                     </TableCell>
                     <TableCell>
                       {(detail as { status?: string })?.status !== "posted" && (
-                        <Button size="sm" variant="ghost" onClick={() => { setEditingLine({ lineId: l.id, currentQty: l.countedQty ?? l.systemQty }); setCountedQty(l.countedQty ?? l.systemQty); }}>
+                        <Button size="sm" variant="ghost" onClick={() => { setEditingLine({ lineId: l.id ?? 0, currentQty: l.countedQty ?? l.systemQty ?? "" }); setCountedQty(l.countedQty ?? l.systemQty ?? ""); }}>
                           Edit
                         </Button>
                       )}
@@ -1073,7 +1083,7 @@ function CycleCountsTab() {
   async function onCreate(vals: { warehouseId: number; notes: string; assignedToName: string; dueDate: string }) {
     try {
       const res = await createMut.mutateAsync({ data: { warehouseId: Number(vals.warehouseId), notes: vals.notes || undefined, assignedToName: vals.assignedToName || undefined, dueDate: vals.dueDate || undefined } });
-      toast({ title: `Cycle count ${(res as unknown as { code: string }).code} created` });
+      toast({ title: `Cycle count ${(res as CreateCycleCount201).code} created` });
       setShowCreate(false);
       form.reset();
       invalidate();
@@ -1105,7 +1115,7 @@ function CycleCountsTab() {
   }
 
   const rows = list?.data ?? [];
-  const lines = (detail as unknown as { lines?: Array<{ id: number; itemCode?: string; itemName?: string; lotNumber?: string; systemQty: string; countedQty?: string; varianceQty?: string }> } | undefined)?.lines ?? [];
+  const lines: CycleCountTaskLinesItem[] = (detail as CycleCountTask | undefined)?.lines ?? [];
 
   return (
     <div className="space-y-4">
@@ -1216,7 +1226,7 @@ function CycleCountsTab() {
   );
 }
 
-function CycleCountLines({ lines, onUpdateLine, status }: { lines: Array<{ id: number; itemCode?: string; itemName?: string; lotNumber?: string; systemQty: string; countedQty?: string; varianceQty?: string }>; onUpdateLine: (lineId: number, qty: string) => void; status: string }) {
+function CycleCountLines({ lines, onUpdateLine, status }: { lines: Array<{ id?: number; itemCode?: string | null; itemName?: string | null; lotNumber?: string | null; systemQty?: string; countedQty?: string | null; varianceQty?: string | null }>; onUpdateLine: (lineId: number, qty: string) => void; status: string }) {
   const [editing, setEditing] = useState<{ id: number; qty: string } | null>(null);
   return (
     <div className="rounded-md border">
@@ -1243,10 +1253,10 @@ function CycleCountLines({ lines, onUpdateLine, status }: { lines: Array<{ id: n
               <TableCell className="text-xs">{l.lotNumber ?? "—"}</TableCell>
               <TableCell className="text-right font-mono text-sm">{fmt(l.systemQty, 4)}</TableCell>
               <TableCell className="text-right font-mono text-sm">
-                {editing?.id === l.id ? (
+                {editing !== null && editing.id === l.id ? (
                   <div className="flex gap-1 justify-end">
-                    <Input type="number" step="0.0001" value={editing.qty} onChange={(e) => setEditing({ id: l.id, qty: e.target.value })} className="w-24 h-7 text-xs" />
-                    <Button size="sm" className="h-7 text-xs" onClick={() => { onUpdateLine(l.id, editing.qty); setEditing(null); }}>✓</Button>
+                    <Input type="number" step="0.0001" value={editing.qty} onChange={(e) => setEditing({ id: l.id ?? 0, qty: e.target.value })} className="w-24 h-7 text-xs" />
+                    <Button size="sm" className="h-7 text-xs" onClick={() => { onUpdateLine(l.id ?? 0, editing.qty); setEditing(null); }}>✓</Button>
                     <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditing(null)}>✕</Button>
                   </div>
                 ) : l.countedQty != null ? fmt(l.countedQty, 4) : <span className="text-muted-foreground">—</span>}
@@ -1256,7 +1266,7 @@ function CycleCountLines({ lines, onUpdateLine, status }: { lines: Array<{ id: n
               </TableCell>
               {status !== "completed" && (
                 <TableCell>
-                  <Button size="sm" variant="ghost" onClick={() => setEditing({ id: l.id, qty: l.countedQty ?? l.systemQty })}>Edit</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditing({ id: l.id ?? 0, qty: l.countedQty ?? l.systemQty ?? "" })}>Edit</Button>
                 </TableCell>
               )}
             </TableRow>
