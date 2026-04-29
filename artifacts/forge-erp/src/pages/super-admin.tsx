@@ -10,12 +10,19 @@ import {
   useSyncTenantStripe,
   useCreateTenantSubscription,
   useGetTenantInvoices,
+  useListAdminTenantMembers,
+  useUpdateAdminTenantMember,
   getListAdminTenantsQueryKey,
   getGetAdminKpiQueryKey,
   getGetTenantInvoicesQueryKey,
   getGetAdminTenantQueryKey,
+  getListAdminTenantMembersQueryKey,
 } from "@workspace/api-client-react";
-import type { AdminTenant } from "@workspace/api-client-react";
+import type {
+  AdminTenant,
+  AdminTenantMember,
+  UpdateMemberBody,
+} from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -263,6 +270,187 @@ function ConfirmDialog({
   );
 }
 
+// ── Tenant members card ───────────────────────────────────────────────────────
+
+const ROLE_OPTIONS: Array<AdminTenantMember["role"]> = [
+  "tenant_admin",
+  "purchaser",
+  "warehouse",
+  "approver",
+  "accountant",
+  "viewer",
+  "super_admin",
+];
+
+function RoleBadge({ role }: { role: string }) {
+  const styles: Record<string, string> = {
+    super_admin:
+      "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
+    tenant_admin:
+      "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
+    purchaser:
+      "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+    warehouse:
+      "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+    approver:
+      "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+    accountant:
+      "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
+    viewer: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+        styles[role] ?? "bg-muted text-muted-foreground",
+      )}
+    >
+      {role.replace("_", " ")}
+    </span>
+  );
+}
+
+function TenantMembersCard({
+  tenantId,
+  open,
+}: {
+  tenantId: number;
+  open: boolean;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: members, isLoading } = useListAdminTenantMembers(tenantId, {
+    query: {
+      queryKey: getListAdminTenantMembersQueryKey(tenantId),
+      enabled: open && tenantId > 0,
+    },
+  });
+
+  const updateMember = useUpdateAdminTenantMember({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Member updated" });
+        void queryClient.invalidateQueries({
+          queryKey: getListAdminTenantMembersQueryKey(tenantId),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: getListAdminTenantsQueryKey(),
+        });
+      },
+      onError: () => {
+        toast({
+          title: "Error",
+          description: "Failed to update member",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  function handleUpdate(membershipId: number, data: UpdateMemberBody) {
+    updateMember.mutate({ id: tenantId, membershipId, data });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <Users className="h-4 w-4" />
+          Members
+          {members && (
+            <span className="text-xs font-normal text-muted-foreground">
+              ({members.length})
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        ) : !members || members.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            No members yet. Members are added when users complete onboarding.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {members.map((m) => (
+              <div
+                key={m.id}
+                className={cn(
+                  "rounded-md border p-2.5 text-sm space-y-2",
+                  !m.isActive && "opacity-60 bg-muted/40",
+                )}
+                data-testid={`member-row-${m.id}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">
+                      {[m.firstName, m.lastName].filter(Boolean).join(" ") ||
+                        m.email}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {m.email}
+                    </p>
+                  </div>
+                  <RoleBadge role={m.role} />
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <Select
+                    value={m.role}
+                    onValueChange={(v) =>
+                      handleUpdate(m.id, {
+                        role: v as AdminTenantMember["role"],
+                      })
+                    }
+                    disabled={updateMember.isPending}
+                  >
+                    <SelectTrigger
+                      className="h-7 text-xs flex-1"
+                      data-testid={`member-role-select-${m.id}`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROLE_OPTIONS.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {role.replace("_", " ")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant={m.isActive ? "outline" : "default"}
+                    size="sm"
+                    className="h-7 text-xs whitespace-nowrap"
+                    onClick={() =>
+                      handleUpdate(m.id, { isActive: !m.isActive })
+                    }
+                    disabled={updateMember.isPending}
+                    data-testid={`member-toggle-active-${m.id}`}
+                  >
+                    {m.isActive ? (
+                      <>
+                        <Ban className="mr-1 h-3 w-3" />
+                        Deactivate
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="mr-1 h-3 w-3" />
+                        Reactivate
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Tenant detail sheet ───────────────────────────────────────────────────────
 
 function TenantDetailSheet({
@@ -423,6 +611,8 @@ function TenantDetailSheet({
               </Button>
             )}
           </div>
+
+          <TenantMembersCard tenantId={tenant.id} open={open} />
 
           <Card>
             <CardHeader className="pb-2">

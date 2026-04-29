@@ -831,6 +831,139 @@ router.get(
   },
 );
 
+// ── GET /admin/tenants/:id/members ────────────────────────────────────────────
+
+router.get(
+  "/admin/tenants/:id/members",
+  ...superAdminOnly,
+  async (req: Request, res: Response): Promise<void> => {
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid tenant id" });
+      return;
+    }
+
+    const [tenant] = await adminDb
+      .select({ id: tenantsTable.id, deletedAt: tenantsTable.deletedAt })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, id))
+      .limit(1);
+
+    if (!tenant || tenant.deletedAt) {
+      res.status(404).json({ error: "Tenant not found" });
+      return;
+    }
+
+    const members = await adminDb
+      .select()
+      .from(tenantMembershipsTable)
+      .where(eq(tenantMembershipsTable.tenantId, id))
+      .orderBy(tenantMembershipsTable.joinedAt);
+
+    res.json(
+      members.map((m) => ({
+        id: m.id,
+        clerkId: m.clerkId,
+        email: m.email,
+        firstName: m.firstName ?? null,
+        lastName: m.lastName ?? null,
+        role: m.role,
+        isActive: m.isActive === "true",
+        joinedAt: m.joinedAt.toISOString(),
+      })),
+    );
+  },
+);
+
+// ── PATCH /admin/tenants/:id/members/:membershipId ────────────────────────────
+
+const updateMemberSchema = z.object({
+  role: z
+    .enum([
+      "super_admin",
+      "tenant_admin",
+      "purchaser",
+      "warehouse",
+      "approver",
+      "accountant",
+      "viewer",
+    ])
+    .optional(),
+  isActive: z.boolean().optional(),
+});
+
+router.patch(
+  "/admin/tenants/:id/members/:membershipId",
+  ...superAdminOnly,
+  async (req: Request, res: Response): Promise<void> => {
+    const actor = req as TenantRequest;
+    const id = Number(req.params.id);
+    const membershipId = Number(req.params.membershipId);
+    if (isNaN(id) || isNaN(membershipId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const parsed = updateMemberSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request body", details: parsed.error.issues });
+      return;
+    }
+
+    if (parsed.data.role === undefined && parsed.data.isActive === undefined) {
+      res.status(400).json({ error: "At least one of role or isActive must be provided" });
+      return;
+    }
+
+    const [existing] = await adminDb
+      .select()
+      .from(tenantMembershipsTable)
+      .where(
+        sql`${tenantMembershipsTable.id} = ${membershipId} AND ${tenantMembershipsTable.tenantId} = ${id}`,
+      )
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).json({ error: "Member not found" });
+      return;
+    }
+
+    const updateFields: Partial<typeof tenantMembershipsTable.$inferInsert> = {};
+    if (parsed.data.role !== undefined) updateFields.role = parsed.data.role;
+    if (parsed.data.isActive !== undefined)
+      updateFields.isActive = parsed.data.isActive ? "true" : "false";
+
+    const [updated] = await adminDb
+      .update(tenantMembershipsTable)
+      .set(updateFields)
+      .where(eq(tenantMembershipsTable.id, membershipId))
+      .returning();
+
+    await writeAuditLog({
+      req,
+      actorClerkId: actor.clerkUserId,
+      actorEmail: actor.userEmail,
+      tenantId: id,
+      action: "tenant_member.updated",
+      entityType: "tenant_membership",
+      entityId: membershipId,
+      oldValues: { role: existing.role, isActive: existing.isActive === "true" },
+      newValues: parsed.data,
+    });
+
+    res.json({
+      id: updated!.id,
+      clerkId: updated!.clerkId,
+      email: updated!.email,
+      firstName: updated!.firstName ?? null,
+      lastName: updated!.lastName ?? null,
+      role: updated!.role,
+      isActive: updated!.isActive === "true",
+      joinedAt: updated!.joinedAt.toISOString(),
+    });
+  },
+);
+
 // ── GET /admin/audit-logs ─────────────────────────────────────────────────────
 
 router.get(

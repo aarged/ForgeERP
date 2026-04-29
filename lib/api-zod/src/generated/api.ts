@@ -405,6 +405,77 @@ export const CreateOnboardingTenantResponse = zod.object({
 });
 
 /**
+ * @summary List members of a tenant
+ */
+export const ListAdminTenantMembersParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListAdminTenantMembersResponseItem = zod.object({
+  id: zod.number(),
+  clerkId: zod.string(),
+  email: zod.string(),
+  firstName: zod.string().nullish(),
+  lastName: zod.string().nullish(),
+  role: zod.enum([
+    "super_admin",
+    "tenant_admin",
+    "purchaser",
+    "warehouse",
+    "approver",
+    "accountant",
+    "viewer",
+  ]),
+  isActive: zod.boolean(),
+  joinedAt: zod.string(),
+});
+export const ListAdminTenantMembersResponse = zod.array(
+  ListAdminTenantMembersResponseItem,
+);
+
+/**
+ * @summary Update a tenant member's role or active status
+ */
+export const UpdateAdminTenantMemberParams = zod.object({
+  id: zod.coerce.number(),
+  membershipId: zod.coerce.number(),
+});
+
+export const UpdateAdminTenantMemberBody = zod.object({
+  role: zod
+    .enum([
+      "super_admin",
+      "tenant_admin",
+      "purchaser",
+      "warehouse",
+      "approver",
+      "accountant",
+      "viewer",
+    ])
+    .optional(),
+  isActive: zod.boolean().optional(),
+});
+
+export const UpdateAdminTenantMemberResponse = zod.object({
+  id: zod.number(),
+  clerkId: zod.string(),
+  email: zod.string(),
+  firstName: zod.string().nullish(),
+  lastName: zod.string().nullish(),
+  role: zod.enum([
+    "super_admin",
+    "tenant_admin",
+    "purchaser",
+    "warehouse",
+    "approver",
+    "accountant",
+    "viewer",
+  ]),
+  isActive: zod.boolean(),
+  joinedAt: zod.string(),
+});
+
+/**
  * Returns up to 100 most recent audit log entries, optionally filtered by tenant
  * @summary Get audit logs
  */

@@ -21,6 +21,7 @@ import type {
   AdminTenant,
   AdminTenantCreated,
   AdminTenantDetail,
+  AdminTenantMember,
   AuditLog,
   CreateSubscriptionBody,
   CreateTenantBody,
@@ -35,6 +36,7 @@ import type {
   SubscriptionResult,
   Tenant,
   TenantMember,
+  UpdateMemberBody,
   UpdateTenantBody,
   UpdateUserBody,
 } from "./api.schemas";
@@ -1279,6 +1281,188 @@ export const useCreateOnboardingTenant = <
   TContext
 > => {
   return useMutation(getCreateOnboardingTenantMutationOptions(options));
+};
+
+/**
+ * @summary List members of a tenant
+ */
+export const getListAdminTenantMembersUrl = (id: number) => {
+  return `/api/admin/tenants/${id}/members`;
+};
+
+export const listAdminTenantMembers = async (
+  id: number,
+  options?: RequestInit,
+): Promise<AdminTenantMember[]> => {
+  return customFetch<AdminTenantMember[]>(getListAdminTenantMembersUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminTenantMembersQueryKey = (id: number) => {
+  return [`/api/admin/tenants/${id}/members`] as const;
+};
+
+export const getListAdminTenantMembersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminTenantMembers>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAdminTenantMembers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAdminTenantMembersQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAdminTenantMembers>>
+  > = ({ signal }) => listAdminTenantMembers(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminTenantMembers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAdminTenantMembersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAdminTenantMembers>>
+>;
+export type ListAdminTenantMembersQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary List members of a tenant
+ */
+
+export function useListAdminTenantMembers<
+  TData = Awaited<ReturnType<typeof listAdminTenantMembers>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAdminTenantMembers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAdminTenantMembersQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a tenant member's role or active status
+ */
+export const getUpdateAdminTenantMemberUrl = (
+  id: number,
+  membershipId: number,
+) => {
+  return `/api/admin/tenants/${id}/members/${membershipId}`;
+};
+
+export const updateAdminTenantMember = async (
+  id: number,
+  membershipId: number,
+  updateMemberBody: UpdateMemberBody,
+  options?: RequestInit,
+): Promise<AdminTenantMember> => {
+  return customFetch<AdminTenantMember>(
+    getUpdateAdminTenantMemberUrl(id, membershipId),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updateMemberBody),
+    },
+  );
+};
+
+export const getUpdateAdminTenantMemberMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAdminTenantMember>>,
+    TError,
+    { id: number; membershipId: number; data: BodyType<UpdateMemberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAdminTenantMember>>,
+  TError,
+  { id: number; membershipId: number; data: BodyType<UpdateMemberBody> },
+  TContext
+> => {
+  const mutationKey = ["updateAdminTenantMember"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAdminTenantMember>>,
+    { id: number; membershipId: number; data: BodyType<UpdateMemberBody> }
+  > = (props) => {
+    const { id, membershipId, data } = props ?? {};
+
+    return updateAdminTenantMember(id, membershipId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAdminTenantMemberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAdminTenantMember>>
+>;
+export type UpdateAdminTenantMemberMutationBody = BodyType<UpdateMemberBody>;
+export type UpdateAdminTenantMemberMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a tenant member's role or active status
+ */
+export const useUpdateAdminTenantMember = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAdminTenantMember>>,
+    TError,
+    { id: number; membershipId: number; data: BodyType<UpdateMemberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAdminTenantMember>>,
+  TError,
+  { id: number; membershipId: number; data: BodyType<UpdateMemberBody> },
+  TContext
+> => {
+  return useMutation(getUpdateAdminTenantMemberMutationOptions(options));
 };
 
 /**

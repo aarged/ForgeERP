@@ -533,6 +533,103 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/tenants/{id}/members:
+    get:
+      operationId: listAdminTenantMembers
+      tags: [admin]
+      summary: List members of a tenant
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of tenant members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminTenantMember"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/tenants/{id}/members/{membershipId}:
+    patch:
+      operationId: updateAdminTenantMember
+      tags: [admin]
+      summary: Update a tenant member's role or active status
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberBody"
+      responses:
+        "200":
+          description: Updated member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTenantMember"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/audit-logs:
     get:
       operationId: getAdminAuditLogs
@@ -910,6 +1007,57 @@ components:
           type: string
         industryType:
           type: string
+
+    AdminTenantMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        clerkId:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum:
+            - super_admin
+            - tenant_admin
+            - purchaser
+            - warehouse
+            - approver
+            - accountant
+            - viewer
+        isActive:
+          type: boolean
+        joinedAt:
+          type: string
+      required:
+        - id
+        - clerkId
+        - email
+        - role
+        - isActive
+        - joinedAt
+
+    UpdateMemberBody:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+            - super_admin
+            - tenant_admin
+            - purchaser
+            - warehouse
+            - approver
+            - accountant
+            - viewer
+        isActive:
+          type: boolean
 
     StripeSyncResult:
       type: object

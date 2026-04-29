@@ -324,6 +324,50 @@ export interface UpdateTenantBody {
   industryType?: string;
 }
 
+export type AdminTenantMemberRole =
+  (typeof AdminTenantMemberRole)[keyof typeof AdminTenantMemberRole];
+
+export const AdminTenantMemberRole = {
+  super_admin: "super_admin",
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+export interface AdminTenantMember {
+  id: number;
+  clerkId: string;
+  email: string;
+  /** @nullable */
+  firstName?: string | null;
+  /** @nullable */
+  lastName?: string | null;
+  role: AdminTenantMemberRole;
+  isActive: boolean;
+  joinedAt: string;
+}
+
+export type UpdateMemberBodyRole =
+  (typeof UpdateMemberBodyRole)[keyof typeof UpdateMemberBodyRole];
+
+export const UpdateMemberBodyRole = {
+  super_admin: "super_admin",
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+export interface UpdateMemberBody {
+  role?: UpdateMemberBodyRole;
+  isActive?: boolean;
+}
+
 export interface StripeSyncResult {
   stripeCustomerId: string;
 }

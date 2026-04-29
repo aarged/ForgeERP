@@ -72,6 +72,8 @@ Connection URLs:
 - `POST /api/admin/tenants/:id/stripe-sync` — Create Stripe customer for tenant
 - `POST /api/admin/tenants/:id/stripe-subscription` — Create or update Stripe subscription (set STRIPE_PRICE_STARTER/GROWTH/ENTERPRISE env vars)
 - `GET /api/admin/tenants/:id/invoices` — List Stripe invoices for tenant
+- `GET /api/admin/tenants/:id/members` — List a tenant's members (active and inactive)
+- `PATCH /api/admin/tenants/:id/members/:membershipId` — Update a member's role and/or active status
 - `GET /api/admin/audit-logs` — Global audit log
 
 ### Onboarding (signed-in users without a tenant)
