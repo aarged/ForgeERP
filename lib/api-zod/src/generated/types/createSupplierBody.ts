@@ -30,6 +30,10 @@ export interface CreateSupplierBody {
   currency?: string;
   pricingTier?: string;
   creditLimit?: number;
+  /** On-time delivery % (0-100) */
+  onTimeDeliveryPct?: number;
+  /** Fill rate % (0-100) */
+  fillRatePct?: number;
   isActive?: boolean;
   notes?: string;
 }

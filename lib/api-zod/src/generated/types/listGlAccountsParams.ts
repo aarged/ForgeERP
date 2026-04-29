@@ -5,11 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ListGlAccountsDir } from "./listGlAccountsDir";
 
 export type ListGlAccountsParams = {
   q?: string;
   page?: number;
   limit?: number;
   accountType?: string;
+  sort?: string;
+  dir?: ListGlAccountsDir;
   activeOnly?: string;
 };

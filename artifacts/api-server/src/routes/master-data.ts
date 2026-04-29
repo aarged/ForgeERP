@@ -4,6 +4,7 @@ import type { AnyColumn } from "drizzle-orm";
 import {
   itemsTable,
   itemVariantsTable,
+  itemUnitsTable,
   itemAttributesTable,
   itemLocationsTable,
   itemCrossReferencesTable,
@@ -422,6 +423,203 @@ router.post(
 );
 
 // ════════════════════════════════════════════════════════════════════════════
+//  ITEM UNITS (UoM)
+// ════════════════════════════════════════════════════════════════════════════
+
+router.get(
+  "/master-data/items/:itemId/units",
+  ...tenantUserMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId } = req as TenantRequest;
+    const itemId = Number(req.params.itemId);
+    if (!itemId) { res.status(400).json({ error: "Invalid itemId" }); return; }
+    const units = await withTenantDb(tenantId, (db) =>
+      db.select().from(itemUnitsTable)
+        .where(and(eq(itemUnitsTable.itemId, itemId), eq(itemUnitsTable.tenantId, tenantId)))
+        .orderBy(asc(itemUnitsTable.unitCode)),
+    );
+    res.json({ units });
+  },
+);
+
+router.post(
+  "/master-data/items/:itemId/units",
+  ...tenantWriteMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+    const itemId = Number(req.params.itemId);
+    if (!itemId) { res.status(400).json({ error: "Invalid itemId" }); return; }
+    const schema = z.object({
+      unitCode: z.string().min(1).max(20),
+      unitName: z.string().min(1).max(100),
+      conversionFactor: z.coerce.number().positive().default(1),
+      isBase: z.boolean().default(false),
+      barcode: z.string().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+    const { conversionFactor: cfNum, ...restParsed } = parsed.data;
+    const [unit] = await withTenantDb(tenantId, (db) =>
+      db.insert(itemUnitsTable).values({
+        tenantId, itemId,
+        ...restParsed,
+        conversionFactor: String(cfNum ?? 1),
+      } as typeof itemUnitsTable.$inferInsert).returning(),
+    );
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "item_unit.created", entityType: "item", entityId: String(itemId), newValues: parsed.data });
+    res.status(201).json(unit);
+  },
+);
+
+router.patch(
+  "/master-data/items/:itemId/units/:unitId",
+  ...tenantWriteMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+    const itemId = Number(req.params.itemId);
+    const unitId = Number(req.params.unitId);
+    if (!itemId || !unitId) { res.status(400).json({ error: "Invalid ID" }); return; }
+    const schema = z.object({
+      unitCode: z.string().min(1).max(20).optional(),
+      unitName: z.string().min(1).max(100).optional(),
+      conversionFactor: z.coerce.number().positive().optional(),
+      isBase: z.boolean().optional(),
+      barcode: z.string().nullable().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+    const updateData: Record<string, unknown> = { ...parsed.data };
+    if (parsed.data.conversionFactor !== undefined) updateData.conversionFactor = String(parsed.data.conversionFactor);
+    const [unit] = await withTenantDb(tenantId, (db) =>
+      db.update(itemUnitsTable).set(updateData).where(and(eq(itemUnitsTable.id, unitId), eq(itemUnitsTable.itemId, itemId), eq(itemUnitsTable.tenantId, tenantId))).returning(),
+    );
+    if (!unit) { res.status(404).json({ error: "Unit not found" }); return; }
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "item_unit.updated", entityType: "item", entityId: String(itemId), newValues: parsed.data });
+    res.json(unit);
+  },
+);
+
+router.delete(
+  "/master-data/items/:itemId/units/:unitId",
+  ...tenantWriteMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+    const itemId = Number(req.params.itemId);
+    const unitId = Number(req.params.unitId);
+    if (!itemId || !unitId) { res.status(400).json({ error: "Invalid ID" }); return; }
+    await withTenantDb(tenantId, (db) =>
+      db.delete(itemUnitsTable).where(and(eq(itemUnitsTable.id, unitId), eq(itemUnitsTable.itemId, itemId), eq(itemUnitsTable.tenantId, tenantId))),
+    );
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "item_unit.deleted", entityType: "item", entityId: String(itemId), newValues: { unitId } });
+    res.status(204).send();
+  },
+);
+
+// UoM conversion endpoint
+router.get(
+  "/master-data/items/:itemId/convert",
+  ...tenantUserMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId } = req as TenantRequest;
+    const itemId = Number(req.params.itemId);
+    const fromUom = String(req.query.fromUom || "");
+    const toUom = String(req.query.toUom || "");
+    const qty = Number(req.query.qty || 1);
+    if (!itemId || !fromUom || !toUom) { res.status(400).json({ error: "itemId, fromUom, toUom required" }); return; }
+    const units = await withTenantDb(tenantId, (db) =>
+      db.select().from(itemUnitsTable).where(and(eq(itemUnitsTable.itemId, itemId), eq(itemUnitsTable.tenantId, tenantId))),
+    );
+    const from = units.find((u) => u.unitCode === fromUom);
+    const to = units.find((u) => u.unitCode === toUom);
+    if (!from || !to) { res.status(400).json({ error: "Unknown unit code for this item" }); return; }
+    // Convert: qty (fromUom) → base → toUom
+    const baseQty = qty * Number(from.conversionFactor);
+    const result = baseQty / Number(to.conversionFactor);
+    res.json({ fromUom, toUom, fromQty: qty, toQty: result, factor: Number(from.conversionFactor) / Number(to.conversionFactor) });
+  },
+);
+
+// ════════════════════════════════════════════════════════════════════════════
+//  ITEM LOCATIONS (warehouse stocking locations per item)
+// ════════════════════════════════════════════════════════════════════════════
+
+router.post(
+  "/master-data/items/:itemId/locations",
+  ...tenantWriteMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+    const itemId = Number(req.params.itemId);
+    if (!itemId) { res.status(400).json({ error: "Invalid itemId" }); return; }
+    const schema = z.object({
+      warehouseId: z.number().int().positive(),
+      locationId: z.number().int().optional(),
+      reorderPoint: z.coerce.number().optional(),
+      reorderQty: z.coerce.number().optional(),
+      maxStock: z.coerce.number().optional(),
+      isPreferred: z.boolean().default(false),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+    const insertData: Record<string, unknown> = { tenantId, itemId, ...parsed.data };
+    if (parsed.data.reorderPoint !== undefined) insertData.reorderPoint = String(parsed.data.reorderPoint);
+    if (parsed.data.reorderQty !== undefined) insertData.reorderQty = String(parsed.data.reorderQty);
+    if (parsed.data.maxStock !== undefined) insertData.maxStock = String(parsed.data.maxStock);
+    const [loc] = await withTenantDb(tenantId, (db) =>
+      db.insert(itemLocationsTable).values(insertData as typeof itemLocationsTable.$inferInsert).returning(),
+    );
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "item_location.created", entityType: "item", entityId: String(itemId), newValues: parsed.data });
+    res.status(201).json(loc);
+  },
+);
+
+router.patch(
+  "/master-data/items/:itemId/locations/:locId",
+  ...tenantWriteMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+    const itemId = Number(req.params.itemId);
+    const locId = Number(req.params.locId);
+    if (!itemId || !locId) { res.status(400).json({ error: "Invalid ID" }); return; }
+    const schema = z.object({
+      warehouseId: z.number().int().optional(),
+      locationId: z.number().int().nullable().optional(),
+      reorderPoint: z.coerce.number().nullable().optional(),
+      reorderQty: z.coerce.number().nullable().optional(),
+      maxStock: z.coerce.number().nullable().optional(),
+      isPreferred: z.boolean().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+    const updateData: Record<string, unknown> = { ...parsed.data };
+    if (parsed.data.reorderPoint !== undefined) updateData.reorderPoint = parsed.data.reorderPoint !== null ? String(parsed.data.reorderPoint) : null;
+    if (parsed.data.reorderQty !== undefined) updateData.reorderQty = parsed.data.reorderQty !== null ? String(parsed.data.reorderQty) : null;
+    if (parsed.data.maxStock !== undefined) updateData.maxStock = parsed.data.maxStock !== null ? String(parsed.data.maxStock) : null;
+    const [loc] = await withTenantDb(tenantId, (db) =>
+      db.update(itemLocationsTable).set(updateData).where(and(eq(itemLocationsTable.id, locId), eq(itemLocationsTable.itemId, itemId), eq(itemLocationsTable.tenantId, tenantId))).returning(),
+    );
+    if (!loc) { res.status(404).json({ error: "Item location not found" }); return; }
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "item_location.updated", entityType: "item", entityId: String(itemId), newValues: parsed.data });
+    res.json(loc);
+  },
+);
+
+router.delete(
+  "/master-data/items/:itemId/locations/:locId",
+  ...tenantWriteMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+    const itemId = Number(req.params.itemId);
+    const locId = Number(req.params.locId);
+    if (!itemId || !locId) { res.status(400).json({ error: "Invalid ID" }); return; }
+    await withTenantDb(tenantId, (db) =>
+      db.delete(itemLocationsTable).where(and(eq(itemLocationsTable.id, locId), eq(itemLocationsTable.itemId, itemId), eq(itemLocationsTable.tenantId, tenantId))),
+    );
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "item_location.deleted", entityType: "item", entityId: String(itemId), newValues: { locId } });
+    res.status(204).send();
+  },
+);
+
+// ════════════════════════════════════════════════════════════════════════════
 //  SUPPLIERS
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -430,9 +628,16 @@ router.get(
   ...tenantUserMiddleware,
   async (req: Request, res: Response): Promise<void> => {
     const { tenantId } = req as TenantRequest;
-    const { limit, offset, sortDir } = parsePagination(req.query);
+    const { limit, offset, sortField, sortDir } = parsePagination(req.query);
     const search = parseSearch(req.query);
     const activeOnly = req.query.activeOnly !== "false";
+
+    const supplierSortCols: Record<string, AnyColumn> = {
+      code: suppliersTable.code, name: suppliersTable.name,
+      city: suppliersTable.city, country: suppliersTable.country,
+      paymentTerms: suppliersTable.paymentTerms, createdAt: suppliersTable.createdAt,
+    };
+    const supplierSortCol = supplierSortCols[sortField] ?? suppliersTable.name;
 
     const rows = await withTenantDb(tenantId, (db) => {
       let q = db.select().from(suppliersTable).where(
@@ -451,8 +656,8 @@ router.get(
       ).limit(limit + 1).offset(offset);
 
       return sortDir === "asc"
-        ? q.orderBy(asc(suppliersTable.name))
-        : q.orderBy(desc(suppliersTable.name));
+        ? q.orderBy(asc(supplierSortCol))
+        : q.orderBy(desc(supplierSortCol));
     });
 
     const hasMore = rows.length > limit;
@@ -510,6 +715,8 @@ const supplierSchema = z.object({
   currency: z.string().default("USD"),
   pricingTier: z.string().optional(),
   creditLimit: z.coerce.number().optional(),
+  onTimeDeliveryPct: z.coerce.number().min(0).max(100).optional(),
+  fillRatePct: z.coerce.number().min(0).max(100).optional(),
   isActive: z.boolean().default(true),
   notes: z.string().optional(),
 });
@@ -652,9 +859,16 @@ router.get(
   ...tenantUserMiddleware,
   async (req: Request, res: Response): Promise<void> => {
     const { tenantId } = req as TenantRequest;
-    const { limit, offset, sortDir } = parsePagination(req.query);
+    const { limit, offset, sortField, sortDir } = parsePagination(req.query);
     const search = parseSearch(req.query);
     const activeOnly = req.query.activeOnly !== "false";
+
+    const customerSortCols: Record<string, AnyColumn> = {
+      code: customersTable.code, name: customersTable.name,
+      billingCity: customersTable.billingCity, paymentTerms: customersTable.paymentTerms,
+      creditLimit: customersTable.creditLimit, createdAt: customersTable.createdAt,
+    };
+    const customerSortCol = customerSortCols[sortField] ?? customersTable.name;
 
     const rows = await withTenantDb(tenantId, (db) => {
       let q = db.select().from(customersTable).where(
@@ -673,8 +887,8 @@ router.get(
       ).limit(limit + 1).offset(offset);
 
       return sortDir === "asc"
-        ? q.orderBy(asc(customersTable.name))
-        : q.orderBy(desc(customersTable.name));
+        ? q.orderBy(asc(customerSortCol))
+        : q.orderBy(desc(customerSortCol));
     });
 
     const hasMore = rows.length > limit;
@@ -866,20 +1080,27 @@ router.get(
   ...tenantUserMiddleware,
   async (req: Request, res: Response): Promise<void> => {
     const { tenantId } = req as TenantRequest;
-    const { limit, offset } = parsePagination(req.query);
+    const { limit, offset, sortField, sortDir } = parsePagination(req.query);
     const search = parseSearch(req.query);
     const activeOnly = req.query.activeOnly !== "false";
 
-    const rows = await withTenantDb(tenantId, (db) =>
-      db.select().from(warehousesTable).where(
+    const warehouseSortCols: Record<string, AnyColumn> = {
+      name: warehousesTable.name, code: warehousesTable.code,
+      city: warehousesTable.city, state: warehousesTable.state, createdAt: warehousesTable.createdAt,
+    };
+    const warehouseSortCol = warehouseSortCols[sortField] ?? warehousesTable.name;
+
+    const rows = await withTenantDb(tenantId, (db) => {
+      const q = db.select().from(warehousesTable).where(
         and(
           eq(warehousesTable.tenantId, tenantId),
           isNull(warehousesTable.deletedAt),
           activeOnly ? eq(warehousesTable.isActive, true) : undefined,
           search ? or(ilike(warehousesTable.name, `%${search}%`), ilike(warehousesTable.code, `%${search}%`)) : undefined,
         ),
-      ).orderBy(asc(warehousesTable.name)).limit(limit + 1).offset(offset),
-    );
+      ).limit(limit + 1).offset(offset);
+      return sortDir === "asc" ? q.orderBy(asc(warehouseSortCol)) : q.orderBy(desc(warehouseSortCol));
+    });
 
     const hasMore = rows.length > limit;
     res.json({ warehouses: rows.slice(0, limit), hasMore });
@@ -1055,6 +1276,51 @@ router.delete(
   },
 );
 
+// Stock summary for a warehouse (locations + utilisation — full stock ledger TBD in Task 5)
+router.get(
+  "/master-data/warehouses/:warehouseId/stock-summary",
+  ...tenantUserMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId } = req as TenantRequest;
+    const warehouseId = Number(req.params.warehouseId);
+    if (!warehouseId) { res.status(400).json({ error: "Invalid warehouse ID" }); return; }
+
+    const [warehouse, locations] = await Promise.all([
+      withTenantDb(tenantId, (db) =>
+        db.select().from(warehousesTable)
+          .where(and(eq(warehousesTable.id, warehouseId), eq(warehousesTable.tenantId, tenantId), isNull(warehousesTable.deletedAt)))
+          .limit(1),
+      ),
+      withTenantDb(tenantId, (db) =>
+        db.select().from(warehouseLocationsTable)
+          .where(and(eq(warehouseLocationsTable.warehouseId, warehouseId), eq(warehouseLocationsTable.tenantId, tenantId)))
+          .orderBy(asc(warehouseLocationsTable.code)),
+      ),
+    ]);
+
+    if (!warehouse[0]) { res.status(404).json({ error: "Warehouse not found" }); return; }
+
+    const summary = {
+      warehouse: warehouse[0],
+      locationCount: locations.length,
+      activeLocationCount: locations.filter((l) => l.isActive).length,
+      locationsByType: locations.reduce<Record<string, number>>((acc, l) => {
+        const t = l.locationType ?? "other";
+        acc[t] = (acc[t] ?? 0) + 1;
+        return acc;
+      }, {}),
+      locations: locations.map((l) => ({
+        ...l,
+        qtyOnHand: 0,   // placeholder until inventory ledger (Task 5)
+        qtyReserved: 0,
+        qtyAvailable: 0,
+      })),
+    };
+
+    res.json(summary);
+  },
+);
+
 // ════════════════════════════════════════════════════════════════════════════
 //  GL CHART OF ACCOUNTS
 // ════════════════════════════════════════════════════════════════════════════
@@ -1064,10 +1330,16 @@ router.get(
   ...tenantUserMiddleware,
   async (req: Request, res: Response): Promise<void> => {
     const { tenantId } = req as TenantRequest;
-    const { limit, offset, sortDir } = parsePagination(req.query);
+    const { limit, offset, sortField, sortDir } = parsePagination(req.query);
     const search = parseSearch(req.query);
     const accountType = req.query.accountType ? String(req.query.accountType) : undefined;
     const activeOnly = req.query.activeOnly !== "false";
+
+    const glSortCols: Record<string, AnyColumn> = {
+      code: glAccountsTable.code, name: glAccountsTable.name,
+      accountType: glAccountsTable.accountType, createdAt: glAccountsTable.createdAt,
+    };
+    const glSortCol = glSortCols[sortField] ?? glAccountsTable.code;
 
     const rows = await withTenantDb(tenantId, (db) => {
       let q = db.select().from(glAccountsTable).where(
@@ -1086,8 +1358,8 @@ router.get(
       ).limit(limit + 1).offset(offset);
 
       return sortDir === "asc"
-        ? q.orderBy(asc(glAccountsTable.code))
-        : q.orderBy(desc(glAccountsTable.code));
+        ? q.orderBy(asc(glSortCol))
+        : q.orderBy(desc(glSortCol));
     });
 
     const hasMore = rows.length > limit;

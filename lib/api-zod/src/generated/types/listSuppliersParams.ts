@@ -5,10 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ListSuppliersDir } from "./listSuppliersDir";
 
 export type ListSuppliersParams = {
   q?: string;
   page?: number;
   limit?: number;
+  sort?: string;
+  dir?: ListSuppliersDir;
   activeOnly?: string;
 };

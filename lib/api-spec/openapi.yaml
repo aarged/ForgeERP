@@ -1144,6 +1144,166 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /master-data/items/{itemId}/units:
+    get:
+      operationId: listItemUnits
+      tags: [master-data]
+      summary: List UoM units for an item
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Units list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  units:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ItemUnit"
+    post:
+      operationId: createItemUnit
+      tags: [master-data]
+      summary: Add a UoM unit to an item
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateItemUnitBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemUnit"
+
+  /master-data/items/{itemId}/units/{unitId}:
+    patch:
+      operationId: updateItemUnit
+      tags: [master-data]
+      summary: Update a UoM unit
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: integer } }
+        - { name: unitId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateItemUnitBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemUnit"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteItemUnit
+      tags: [master-data]
+      summary: Delete a UoM unit
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: integer } }
+        - { name: unitId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /master-data/items/{itemId}/convert:
+    get:
+      operationId: convertItemUom
+      tags: [master-data]
+      summary: Convert quantity between UoMs for an item
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: integer } }
+        - { name: fromUom, in: query, required: true, schema: { type: string } }
+        - { name: toUom, in: query, required: true, schema: { type: string } }
+        - { name: qty, in: query, schema: { type: number, default: 1 } }
+      responses:
+        "200":
+          description: Conversion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UomConversionResult"
+
+  /master-data/items/{itemId}/locations:
+    post:
+      operationId: createItemLocation
+      tags: [master-data]
+      summary: Add a stocking location to an item
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateItemLocationBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterItemLocation"
+
+  /master-data/items/{itemId}/locations/{locId}:
+    patch:
+      operationId: updateItemLocation
+      tags: [master-data]
+      summary: Update an item stocking location
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: integer } }
+        - { name: locId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateItemLocationBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterItemLocation"
+    delete:
+      operationId: deleteItemLocation
+      tags: [master-data]
+      summary: Remove an item stocking location
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: integer } }
+        - { name: locId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
   /master-data/suppliers:
     get:
       operationId: listSuppliers
@@ -1155,6 +1315,8 @@ paths:
         - { name: q, in: query, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: sort, in: query, schema: { type: string } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc] } }
         - { name: activeOnly, in: query, schema: { type: string } }
       responses:
         "200":
@@ -1332,6 +1494,8 @@ paths:
         - { name: q, in: query, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: sort, in: query, schema: { type: string } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc] } }
         - { name: activeOnly, in: query, schema: { type: string } }
       responses:
         "200":
@@ -1509,6 +1673,8 @@ paths:
         - { name: q, in: query, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: sort, in: query, schema: { type: string } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc] } }
         - { name: activeOnly, in: query, schema: { type: string } }
       responses:
         "200":
@@ -1675,6 +1841,25 @@ paths:
         "204":
           description: Deleted
 
+  /master-data/warehouses/{warehouseId}/stock-summary:
+    get:
+      operationId: getWarehouseStockSummary
+      tags: [master-data]
+      summary: Get stock summary for a warehouse (locations + qty placeholders)
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: warehouseId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Warehouse stock summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WarehouseStockSummary"
+        "404":
+          description: Not found
+
   /master-data/gl-accounts:
     get:
       operationId: listGlAccounts
@@ -1687,6 +1872,8 @@ paths:
         - { name: page, in: query, schema: { type: integer, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, default: 200 } }
         - { name: accountType, in: query, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc] } }
         - { name: activeOnly, in: query, schema: { type: string } }
       responses:
         "200":
@@ -3033,6 +3220,8 @@ components:
         currency: { type: string }
         pricingTier: { type: string }
         creditLimit: { type: number }
+        onTimeDeliveryPct: { type: number, description: "On-time delivery % (0-100)" }
+        fillRatePct: { type: number, description: "Fill rate % (0-100)" }
         isActive: { type: boolean }
         notes: { type: string }
 
@@ -3157,6 +3346,30 @@ components:
         description: { type: string, nullable: true }
         isActive: { type: boolean }
 
+    WarehouseLocationWithStock:
+      allOf:
+        - $ref: "#/components/schemas/WarehouseLocation"
+        - type: object
+          properties:
+            qtyOnHand: { type: number }
+            qtyReserved: { type: number }
+            qtyAvailable: { type: number }
+
+    WarehouseStockSummary:
+      type: object
+      properties:
+        warehouse:
+          $ref: "#/components/schemas/MasterWarehouse"
+        locationCount: { type: integer }
+        activeLocationCount: { type: integer }
+        locationsByType:
+          type: object
+          additionalProperties: { type: integer }
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/WarehouseLocationWithStock"
+
     MasterWarehouseDetail:
       allOf:
         - $ref: "#/components/schemas/MasterWarehouse"
@@ -3278,3 +3491,62 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AuditTrailEntry"
+
+    ItemUnit:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        itemId: { type: integer }
+        unitCode: { type: string }
+        unitName: { type: string }
+        conversionFactor: { type: string }
+        isBase: { type: boolean }
+        barcode: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateItemUnitBody:
+      type: object
+      required: [unitCode, unitName]
+      properties:
+        unitCode: { type: string }
+        unitName: { type: string }
+        conversionFactor: { type: number, default: 1 }
+        isBase: { type: boolean }
+        barcode: { type: string }
+
+    MasterItemLocation:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        itemId: { type: integer }
+        warehouseId: { type: integer }
+        locationId: { type: integer, nullable: true }
+        reorderPoint: { type: string, nullable: true }
+        reorderQty: { type: string, nullable: true }
+        maxStock: { type: string, nullable: true }
+        isPreferred: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateItemLocationBody:
+      type: object
+      required: [warehouseId]
+      properties:
+        warehouseId: { type: integer }
+        locationId: { type: integer }
+        reorderPoint: { type: number }
+        reorderQty: { type: number }
+        maxStock: { type: number }
+        isPreferred: { type: boolean }
+
+    UomConversionResult:
+      type: object
+      properties:
+        fromUom: { type: string }
+        toUom: { type: string }
+        fromQty: { type: number }
+        toQty: { type: number }
+        factor: { type: number }

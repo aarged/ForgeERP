@@ -1014,6 +1014,10 @@ export interface CreateSupplierBody {
   currency?: string;
   pricingTier?: string;
   creditLimit?: number;
+  /** On-time delivery % (0-100) */
+  onTimeDeliveryPct?: number;
+  /** Fill rate % (0-100) */
+  fillRatePct?: number;
   isActive?: boolean;
   notes?: string;
 }
@@ -1118,6 +1122,22 @@ export interface WarehouseLocation {
   locationType?: string;
   description?: string | null;
   isActive?: boolean;
+}
+
+export type WarehouseLocationWithStock = WarehouseLocation & {
+  qtyOnHand?: number;
+  qtyReserved?: number;
+  qtyAvailable?: number;
+};
+
+export type WarehouseStockSummaryLocationsByType = { [key: string]: number };
+
+export interface WarehouseStockSummary {
+  warehouse?: MasterWarehouse;
+  locationCount?: number;
+  activeLocationCount?: number;
+  locationsByType?: WarehouseStockSummaryLocationsByType;
+  locations?: WarehouseLocationWithStock[];
 }
 
 export type MasterWarehouseDetail = MasterWarehouse & {
@@ -1249,6 +1269,58 @@ export interface AuditTrailResponse {
   entries?: AuditTrailEntry[];
 }
 
+export interface ItemUnit {
+  id?: number;
+  tenantId?: number;
+  itemId?: number;
+  unitCode?: string;
+  unitName?: string;
+  conversionFactor?: string;
+  isBase?: boolean;
+  barcode?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateItemUnitBody {
+  unitCode: string;
+  unitName: string;
+  conversionFactor?: number;
+  isBase?: boolean;
+  barcode?: string;
+}
+
+export interface MasterItemLocation {
+  id?: number;
+  tenantId?: number;
+  itemId?: number;
+  warehouseId?: number;
+  locationId?: number | null;
+  reorderPoint?: string | null;
+  reorderQty?: string | null;
+  maxStock?: string | null;
+  isPreferred?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateItemLocationBody {
+  warehouseId: number;
+  locationId?: number;
+  reorderPoint?: number;
+  reorderQty?: number;
+  maxStock?: number;
+  isPreferred?: boolean;
+}
+
+export interface UomConversionResult {
+  fromUom?: string;
+  toUom?: string;
+  fromQty?: number;
+  toQty?: number;
+  factor?: number;
+}
+
 export type UploadOnboardingCsvBodyCsvType =
   (typeof UploadOnboardingCsvBodyCsvType)[keyof typeof UploadOnboardingCsvBodyCsvType];
 
@@ -1285,34 +1357,84 @@ export const ListItemsDir = {
   desc: "desc",
 } as const;
 
+export type ListItemUnits200 = {
+  units?: ItemUnit[];
+};
+
+export type ConvertItemUomParams = {
+  fromUom: string;
+  toUom: string;
+  qty?: number;
+};
+
 export type ListSuppliersParams = {
   q?: string;
   page?: number;
   limit?: number;
+  sort?: string;
+  dir?: ListSuppliersDir;
   activeOnly?: string;
 };
+
+export type ListSuppliersDir =
+  (typeof ListSuppliersDir)[keyof typeof ListSuppliersDir];
+
+export const ListSuppliersDir = {
+  asc: "asc",
+  desc: "desc",
+} as const;
 
 export type ListCustomersParams = {
   q?: string;
   page?: number;
   limit?: number;
+  sort?: string;
+  dir?: ListCustomersDir;
   activeOnly?: string;
 };
+
+export type ListCustomersDir =
+  (typeof ListCustomersDir)[keyof typeof ListCustomersDir];
+
+export const ListCustomersDir = {
+  asc: "asc",
+  desc: "desc",
+} as const;
 
 export type ListWarehousesParams = {
   q?: string;
   page?: number;
   limit?: number;
+  sort?: string;
+  dir?: ListWarehousesDir;
   activeOnly?: string;
 };
+
+export type ListWarehousesDir =
+  (typeof ListWarehousesDir)[keyof typeof ListWarehousesDir];
+
+export const ListWarehousesDir = {
+  asc: "asc",
+  desc: "desc",
+} as const;
 
 export type ListGlAccountsParams = {
   q?: string;
   page?: number;
   limit?: number;
   accountType?: string;
+  sort?: string;
+  dir?: ListGlAccountsDir;
   activeOnly?: string;
 };
+
+export type ListGlAccountsDir =
+  (typeof ListGlAccountsDir)[keyof typeof ListGlAccountsDir];
+
+export const ListGlAccountsDir = {
+  asc: "asc",
+  desc: "desc",
+} as const;
 
 export type GetMasterDataAuditTrailParams = {
   entityType: GetMasterDataAuditTrailEntityType;

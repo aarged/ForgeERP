@@ -110,6 +110,24 @@ export const itemVariantsTable = pgTable("item_variants", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
+// ── Item Units (UoM conversions) ─────────────────────────────────────────────
+export const itemUnitsTable = pgTable("item_units", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  itemId: integer("item_id")
+    .notNull()
+    .references(() => itemsTable.id, { onDelete: "cascade" }),
+  unitCode: text("unit_code").notNull(),
+  unitName: text("unit_name").notNull(),
+  conversionFactor: numeric("conversion_factor", { precision: 18, scale: 6 }).notNull().default("1"),
+  isBase: boolean("is_base").notNull().default(false),
+  barcode: text("barcode"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
 // ── Item Attributes ─────────────────────────────────────────────────────────
 export const itemAttributesTable = pgTable("item_attributes", {
   id: serial("id").primaryKey(),
@@ -305,6 +323,7 @@ export type WarehouseLocation = typeof warehouseLocationsTable.$inferSelect;
 export type Department = typeof departmentsTable.$inferSelect;
 export type Item = typeof itemsTable.$inferSelect;
 export type ItemVariant = typeof itemVariantsTable.$inferSelect;
+export type ItemUnit = typeof itemUnitsTable.$inferSelect;
 export type ItemAttribute = typeof itemAttributesTable.$inferSelect;
 export type ItemLocation = typeof itemLocationsTable.$inferSelect;
 export type ItemCrossReference = typeof itemCrossReferencesTable.$inferSelect;

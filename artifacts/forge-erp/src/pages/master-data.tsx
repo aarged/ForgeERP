@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import * as XLSX from "xlsx";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm, Controller } from "react-hook-form";
@@ -30,9 +31,13 @@ import {
   useImportGlAccountTemplate,
   getListGlAccountsQueryKey,
   useGetMasterDataAuditTrail,
+  useListItemUnits,
+  useCreateItemUnit,
+  useDeleteItemUnit,
 } from "@workspace/api-client-react";
 import type {
   CreateItemBody,
+  CreateItemUnitBody,
   CreateSupplierBody,
   CreateCustomerBody,
   CreateWarehouseBody,
@@ -302,6 +307,22 @@ function exportCSV(rows: Record<string, unknown>[], filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function exportExcel(rows: Record<string, unknown>[], filename: string) {
+  if (!rows.length) return;
+  const filtered = rows.map((r) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r)) {
+      if (["tenantId", "deletedAt"].includes(k)) continue;
+      out[k] = v instanceof Date ? v.toISOString() : (v === null ? "" : v);
+    }
+    return out;
+  });
+  const ws = XLSX.utils.json_to_sheet(filtered);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Data");
+  XLSX.writeFile(wb, filename);
+}
+
 // ─── useInfiniteTable ─────────────────────────────────────────────────────────
 
 interface SortState {
@@ -322,6 +343,80 @@ function useSortToggle(initial: SortState) {
     [],
   );
   return { sort, toggle };
+}
+
+// ─── Item Units Panel ─────────────────────────────────────────────────────────
+
+function ItemUnitsPanel({ itemId }: { itemId: number }) {
+  const { toast } = useToast();
+  const { data, refetch } = useListItemUnits(itemId);
+  const createUnit = useCreateItemUnit();
+  const deleteUnit = useDeleteItemUnit();
+
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<CreateItemUnitBody>({
+    defaultValues: { unitCode: "", unitName: "", conversionFactor: 1, isBase: false },
+  });
+
+  const onSubmit = handleSubmit(async (d) => {
+    try {
+      await createUnit.mutateAsync({ itemId, data: d });
+      toast({ title: "Unit added" });
+      reset({ unitCode: "", unitName: "", conversionFactor: 1, isBase: false });
+      refetch();
+    } catch (e: unknown) {
+      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+    }
+  });
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <h4 className="text-sm font-semibold">Units of Measure</h4>
+      {data?.units && data.units.length > 0 ? (
+        <div className="rounded border divide-y text-sm">
+          {data.units.map((u: { id?: number; unitCode?: string; unitName?: string; conversionFactor?: string; isBase?: boolean }) => (
+            <div key={u.id} className="flex items-center justify-between px-3 py-1.5">
+              <span className="font-mono font-medium">{u.unitCode}</span>
+              <span className="text-muted-foreground text-xs ml-2">{u.unitName}</span>
+              <span className="text-muted-foreground text-xs ml-auto">× {u.conversionFactor}</span>
+              {u.isBase && <Badge variant="outline" className="text-xs ml-2">Base</Badge>}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 ml-2"
+                onClick={async () => {
+                  await deleteUnit.mutateAsync({ itemId, unitId: u.id! });
+                  refetch();
+                }}
+              >
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">No units defined yet.</p>
+      )}
+      <form onSubmit={onSubmit} className="flex gap-2 items-end">
+        <div className="flex-1">
+          <Label className="text-xs mb-1 block">Code (e.g. EA, KG)</Label>
+          <Input {...register("unitCode", { required: true })} placeholder="EA" className="h-8 text-sm" />
+          {errors.unitCode && <p className="text-xs text-destructive">Required</p>}
+        </div>
+        <div className="flex-1">
+          <Label className="text-xs mb-1 block">Name</Label>
+          <Input {...register("unitName", { required: true })} placeholder="Each" className="h-8 text-sm" />
+          {errors.unitName && <p className="text-xs text-destructive">Required</p>}
+        </div>
+        <div className="w-20">
+          <Label className="text-xs mb-1 block">Factor</Label>
+          <Input {...register("conversionFactor", { valueAsNumber: true })} type="number" step="0.0001" placeholder="1" className="h-8 text-sm" />
+        </div>
+        <Button type="submit" size="sm" className="h-8" disabled={createUnit.isPending}>
+          <Plus className="h-3 w-3 mr-1" /> Add
+        </Button>
+      </form>
+    </div>
+  );
 }
 
 // ─── ITEMS TAB ────────────────────────────────────────────────────────────────
@@ -454,6 +549,7 @@ function ItemModal({
             </Button>
           </DialogFooter>
         </form>
+        {isEdit && item?.id && <ItemUnitsPanel itemId={item.id} />}
       </DialogContent>
     </Dialog>
   );
@@ -555,7 +651,10 @@ function ItemsTab({ initialId }: { initialId?: number }) {
         </div>
         <div className="flex gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "items.csv")} disabled={!allRows.length}>
-            <Download className="h-4 w-4 mr-1" /> Export CSV
+            <Download className="h-4 w-4 mr-1" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "items.xlsx")} disabled={!allRows.length}>
+            <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
           <Button onClick={openCreate}><Plus className="h-4 w-4 mr-1" /> New Item</Button>
         </div>
@@ -684,6 +783,8 @@ function SupplierModal({
         creditLimit: supplier?.creditLimit ? Number(supplier.creditLimit) : undefined,
         isActive: supplier?.isActive ?? true,
         notes: supplier?.notes ?? "",
+        onTimeDeliveryPct: supplier?.onTimeDeliveryPct ? Number(supplier.onTimeDeliveryPct) : undefined,
+        fillRatePct: supplier?.fillRatePct ? Number(supplier.fillRatePct) : undefined,
       });
     }
   }, [open, supplier, reset]);
@@ -742,6 +843,14 @@ function SupplierModal({
           <FormField label="Credit Limit">
             <Input {...register("creditLimit", { valueAsNumber: true })} type="number" step="0.01" placeholder="0.00" />
           </FormField>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="On-Time Delivery %">
+              <Input {...register("onTimeDeliveryPct", { valueAsNumber: true })} type="number" min={0} max={100} step="0.1" placeholder="0–100" />
+            </FormField>
+            <FormField label="Fill Rate %">
+              <Input {...register("fillRatePct", { valueAsNumber: true })} type="number" min={0} max={100} step="0.1" placeholder="0–100" />
+            </FormField>
+          </div>
           <FormField label="Notes"><Textarea {...register("notes")} rows={2} /></FormField>
           <div className="flex items-center gap-2">
             <Controller control={control} name="isActive" render={({ field }) => (
@@ -782,7 +891,7 @@ function SuppliersTab({ initialId }: { initialId?: number }) {
 
   useEffect(() => { setPage(1); setAllRows([]); }, [sort.field, sort.dir]);
 
-  const params = { q: debouncedSearch || undefined, page, limit: 25 };
+  const params = { q: debouncedSearch || undefined, page, limit: 25, sort: sort.field, dir: sort.dir as "asc" | "desc" };
   const { data, isLoading } = useListSuppliers(params);
 
   useEffect(() => {
@@ -831,7 +940,10 @@ function SuppliersTab({ initialId }: { initialId?: number }) {
         </div>
         <div className="flex gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "suppliers.csv")} disabled={!allRows.length}>
-            <Download className="h-4 w-4 mr-1" /> Export CSV
+            <Download className="h-4 w-4 mr-1" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "suppliers.xlsx")} disabled={!allRows.length}>
+            <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
           <Button onClick={() => { setEditRow(undefined); setModalOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New Supplier</Button>
         </div>
@@ -1004,7 +1116,7 @@ function CustomersTab({ initialId }: { initialId?: number }) {
   }, [search]);
   useEffect(() => { setPage(1); setAllRows([]); }, [sort.field, sort.dir]);
 
-  const { data, isLoading } = useListCustomers({ q: debouncedSearch || undefined, page, limit: 25 });
+  const { data, isLoading } = useListCustomers({ q: debouncedSearch || undefined, page, limit: 25, sort: sort.field, dir: sort.dir as "asc" | "desc" });
 
   useEffect(() => {
     if (!data?.customers) return;
@@ -1041,7 +1153,10 @@ function CustomersTab({ initialId }: { initialId?: number }) {
         </div>
         <div className="flex gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "customers.csv")} disabled={!allRows.length}>
-            <Download className="h-4 w-4 mr-1" /> Export CSV
+            <Download className="h-4 w-4 mr-1" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "customers.xlsx")} disabled={!allRows.length}>
+            <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
           <Button onClick={() => { setEditRow(undefined); setModalOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New Customer</Button>
         </div>
@@ -1199,7 +1314,7 @@ function WarehousesTab({ initialId }: { initialId?: number }) {
   }, [search]);
   useEffect(() => { setPage(1); setAllRows([]); }, [sort.field, sort.dir]);
 
-  const { data, isLoading } = useListWarehouses({ q: debouncedSearch || undefined, page, limit: 25 });
+  const { data, isLoading } = useListWarehouses({ q: debouncedSearch || undefined, page, limit: 25, sort: sort.field, dir: sort.dir as "asc" | "desc" });
 
   useEffect(() => {
     if (!data?.warehouses) return;
@@ -1236,7 +1351,10 @@ function WarehousesTab({ initialId }: { initialId?: number }) {
         </div>
         <div className="flex gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "warehouses.csv")} disabled={!allRows.length}>
-            <Download className="h-4 w-4 mr-1" /> Export CSV
+            <Download className="h-4 w-4 mr-1" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "warehouses.xlsx")} disabled={!allRows.length}>
+            <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
           <Button onClick={() => { setEditRow(undefined); setModalOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New Warehouse</Button>
         </div>
@@ -1518,7 +1636,10 @@ function GlAccountsTab({ initialId }: { initialId?: number }) {
         </Select>
         <div className="flex gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "gl-accounts.csv")} disabled={!allRows.length}>
-            <Download className="h-4 w-4 mr-1" /> Export CSV
+            <Download className="h-4 w-4 mr-1" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "gl-accounts.xlsx")} disabled={!allRows.length}>
+            <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
           <Button variant="outline" onClick={() => setImportOpen(true)}>
             <Download className="h-4 w-4 mr-1" /> Import Template

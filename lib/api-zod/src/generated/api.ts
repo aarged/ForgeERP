@@ -1099,6 +1099,170 @@ export const SetItemCrossReferencesResponse = zod.array(
 );
 
 /**
+ * @summary List UoM units for an item
+ */
+export const ListItemUnitsParams = zod.object({
+  itemId: zod.coerce.number(),
+});
+
+export const ListItemUnitsResponse = zod.object({
+  units: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        itemId: zod.number().optional(),
+        unitCode: zod.string().optional(),
+        unitName: zod.string().optional(),
+        conversionFactor: zod.string().optional(),
+        isBase: zod.boolean().optional(),
+        barcode: zod.string().nullish(),
+        createdAt: zod.coerce.date().optional(),
+        updatedAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Add a UoM unit to an item
+ */
+export const CreateItemUnitParams = zod.object({
+  itemId: zod.coerce.number(),
+});
+
+export const createItemUnitBodyConversionFactorDefault = 1;
+
+export const CreateItemUnitBody = zod.object({
+  unitCode: zod.string(),
+  unitName: zod.string(),
+  conversionFactor: zod
+    .number()
+    .default(createItemUnitBodyConversionFactorDefault),
+  isBase: zod.boolean().optional(),
+  barcode: zod.string().optional(),
+});
+
+/**
+ * @summary Update a UoM unit
+ */
+export const UpdateItemUnitParams = zod.object({
+  itemId: zod.coerce.number(),
+  unitId: zod.coerce.number(),
+});
+
+export const updateItemUnitBodyConversionFactorDefault = 1;
+
+export const UpdateItemUnitBody = zod.object({
+  unitCode: zod.string(),
+  unitName: zod.string(),
+  conversionFactor: zod
+    .number()
+    .default(updateItemUnitBodyConversionFactorDefault),
+  isBase: zod.boolean().optional(),
+  barcode: zod.string().optional(),
+});
+
+export const UpdateItemUnitResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  itemId: zod.number().optional(),
+  unitCode: zod.string().optional(),
+  unitName: zod.string().optional(),
+  conversionFactor: zod.string().optional(),
+  isBase: zod.boolean().optional(),
+  barcode: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Delete a UoM unit
+ */
+export const DeleteItemUnitParams = zod.object({
+  itemId: zod.coerce.number(),
+  unitId: zod.coerce.number(),
+});
+
+/**
+ * @summary Convert quantity between UoMs for an item
+ */
+export const ConvertItemUomParams = zod.object({
+  itemId: zod.coerce.number(),
+});
+
+export const convertItemUomQueryQtyDefault = 1;
+
+export const ConvertItemUomQueryParams = zod.object({
+  fromUom: zod.coerce.string(),
+  toUom: zod.coerce.string(),
+  qty: zod.coerce.number().default(convertItemUomQueryQtyDefault),
+});
+
+export const ConvertItemUomResponse = zod.object({
+  fromUom: zod.string().optional(),
+  toUom: zod.string().optional(),
+  fromQty: zod.number().optional(),
+  toQty: zod.number().optional(),
+  factor: zod.number().optional(),
+});
+
+/**
+ * @summary Add a stocking location to an item
+ */
+export const CreateItemLocationParams = zod.object({
+  itemId: zod.coerce.number(),
+});
+
+export const CreateItemLocationBody = zod.object({
+  warehouseId: zod.number(),
+  locationId: zod.number().optional(),
+  reorderPoint: zod.number().optional(),
+  reorderQty: zod.number().optional(),
+  maxStock: zod.number().optional(),
+  isPreferred: zod.boolean().optional(),
+});
+
+/**
+ * @summary Update an item stocking location
+ */
+export const UpdateItemLocationParams = zod.object({
+  itemId: zod.coerce.number(),
+  locId: zod.coerce.number(),
+});
+
+export const UpdateItemLocationBody = zod.object({
+  warehouseId: zod.number(),
+  locationId: zod.number().optional(),
+  reorderPoint: zod.number().optional(),
+  reorderQty: zod.number().optional(),
+  maxStock: zod.number().optional(),
+  isPreferred: zod.boolean().optional(),
+});
+
+export const UpdateItemLocationResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  itemId: zod.number().optional(),
+  warehouseId: zod.number().optional(),
+  locationId: zod.number().nullish(),
+  reorderPoint: zod.string().nullish(),
+  reorderQty: zod.string().nullish(),
+  maxStock: zod.string().nullish(),
+  isPreferred: zod.boolean().optional(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Remove an item stocking location
+ */
+export const DeleteItemLocationParams = zod.object({
+  itemId: zod.coerce.number(),
+  locId: zod.coerce.number(),
+});
+
+/**
  * @summary List suppliers
  */
 export const listSuppliersQueryPageDefault = 1;
@@ -1108,6 +1272,8 @@ export const ListSuppliersQueryParams = zod.object({
   q: zod.coerce.string().optional(),
   page: zod.coerce.number().default(listSuppliersQueryPageDefault),
   limit: zod.coerce.number().default(listSuppliersQueryLimitDefault),
+  sort: zod.coerce.string().optional(),
+  dir: zod.enum(["asc", "desc"]).optional(),
   activeOnly: zod.coerce.string().optional(),
 });
 
@@ -1173,6 +1339,11 @@ export const CreateSupplierBody = zod.object({
   currency: zod.string().optional(),
   pricingTier: zod.string().optional(),
   creditLimit: zod.number().optional(),
+  onTimeDeliveryPct: zod
+    .number()
+    .optional()
+    .describe("On-time delivery % (0-100)"),
+  fillRatePct: zod.number().optional().describe("Fill rate % (0-100)"),
   isActive: zod.boolean().optional(),
   notes: zod.string().optional(),
 });
@@ -1262,6 +1433,11 @@ export const UpdateSupplierBody = zod.object({
   currency: zod.string().optional(),
   pricingTier: zod.string().optional(),
   creditLimit: zod.number().optional(),
+  onTimeDeliveryPct: zod
+    .number()
+    .optional()
+    .describe("On-time delivery % (0-100)"),
+  fillRatePct: zod.number().optional().describe("Fill rate % (0-100)"),
   isActive: zod.boolean().optional(),
   notes: zod.string().optional(),
 });
@@ -1363,6 +1539,8 @@ export const ListCustomersQueryParams = zod.object({
   q: zod.coerce.string().optional(),
   page: zod.coerce.number().default(listCustomersQueryPageDefault),
   limit: zod.coerce.number().default(listCustomersQueryLimitDefault),
+  sort: zod.coerce.string().optional(),
+  dir: zod.enum(["asc", "desc"]).optional(),
   activeOnly: zod.coerce.string().optional(),
 });
 
@@ -1620,6 +1798,8 @@ export const ListWarehousesQueryParams = zod.object({
   q: zod.coerce.string().optional(),
   page: zod.coerce.number().default(listWarehousesQueryPageDefault),
   limit: zod.coerce.number().default(listWarehousesQueryLimitDefault),
+  sort: zod.coerce.string().optional(),
+  dir: zod.enum(["asc", "desc"]).optional(),
   activeOnly: zod.coerce.string().optional(),
 });
 
@@ -1802,6 +1982,58 @@ export const DeleteWarehouseLocationParams = zod.object({
 });
 
 /**
+ * @summary Get stock summary for a warehouse (locations + qty placeholders)
+ */
+export const GetWarehouseStockSummaryParams = zod.object({
+  warehouseId: zod.coerce.number(),
+});
+
+export const GetWarehouseStockSummaryResponse = zod.object({
+  warehouse: zod
+    .object({
+      id: zod.number().optional(),
+      tenantId: zod.number().optional(),
+      name: zod.string().optional(),
+      code: zod.string().nullish(),
+      addressLine1: zod.string().nullish(),
+      city: zod.string().nullish(),
+      state: zod.string().nullish(),
+      country: zod.string().nullish(),
+      isDefault: zod.string().optional(),
+      isActive: zod.boolean().optional(),
+      notes: zod.string().nullish(),
+      createdAt: zod.coerce.date().optional(),
+      updatedAt: zod.coerce.date().optional(),
+    })
+    .optional(),
+  locationCount: zod.number().optional(),
+  activeLocationCount: zod.number().optional(),
+  locationsByType: zod.record(zod.string(), zod.number()).optional(),
+  locations: zod
+    .array(
+      zod
+        .object({
+          id: zod.number().optional(),
+          warehouseId: zod.number().optional(),
+          parentId: zod.number().nullish(),
+          code: zod.string().optional(),
+          name: zod.string().optional(),
+          locationType: zod.string().optional(),
+          description: zod.string().nullish(),
+          isActive: zod.boolean().optional(),
+        })
+        .and(
+          zod.object({
+            qtyOnHand: zod.number().optional(),
+            qtyReserved: zod.number().optional(),
+            qtyAvailable: zod.number().optional(),
+          }),
+        ),
+    )
+    .optional(),
+});
+
+/**
  * @summary List GL accounts
  */
 export const listGlAccountsQueryPageDefault = 1;
@@ -1812,6 +2044,8 @@ export const ListGlAccountsQueryParams = zod.object({
   page: zod.coerce.number().default(listGlAccountsQueryPageDefault),
   limit: zod.coerce.number().default(listGlAccountsQueryLimitDefault),
   accountType: zod.coerce.string().optional(),
+  sort: zod.coerce.string().optional(),
+  dir: zod.enum(["asc", "desc"]).optional(),
   activeOnly: zod.coerce.string().optional(),
 });
 
