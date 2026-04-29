@@ -58,6 +58,16 @@ function genCode(prefix: string, id: number): string {
   return `${prefix}-${String(id).padStart(6, "0")}`;
 }
 
+/** Escape user-supplied strings before embedding in HTML to prevent stored XSS. */
+function escapeHtml(s: string | null | undefined): string {
+  return (s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 async function resolveGlAccount(tenantId: number, db: TenantDb | null, fallbackCode: string, fallbackName: string) {
   const query = (d: TenantDb) =>
     d.select({ code: glAccountsTable.code, name: glAccountsTable.name })
@@ -1033,17 +1043,18 @@ router.get("/sales/despatches/:id/pdf", ...tenantUserMiddleware, async (req: Req
   const [despatch] = await withTenantDb(tenantId, (db) => db.select().from(despatchesTable).where(and(eq(despatchesTable.id, id), eq(despatchesTable.tenantId, tenantId))).limit(1));
   if (!despatch) { res.status(404).json({ error: "Despatch not found" }); return; }
   const lines = await withTenantDb(tenantId, (db) => db.select().from(despatchLinesTable).where(and(eq(despatchLinesTable.despatchId, id), eq(despatchLinesTable.tenantId, tenantId))));
-  const lineRows = lines.map((l) => `<tr><td>${l.itemCode ?? ""}</td><td>${l.itemName ?? ""}</td><td style="text-align:right">${Number(l.quantity).toFixed(2)}</td><td>${l.lotNumber ?? ""}</td><td>${l.serialNumber ?? ""}</td><td>${l.notes ?? ""}</td></tr>`).join("");
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Delivery Docket ${despatch.code}</title>
+  const lineRows = lines.map((l) => `<tr><td>${escapeHtml(l.itemCode)}</td><td>${escapeHtml(l.itemName)}</td><td style="text-align:right">${Number(l.quantity).toFixed(2)}</td><td>${escapeHtml(l.lotNumber)}</td><td>${escapeHtml(l.serialNumber)}</td><td>${escapeHtml(l.notes)}</td></tr>`).join("");
+  const safeCode = escapeHtml(despatch.code);
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Delivery Docket ${safeCode}</title>
   <style>body{font-family:Arial,sans-serif;font-size:13px;margin:32px}h1{font-size:20px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#f3f4f6;text-align:left;padding:6px 8px;border:1px solid #e5e7eb}td{padding:6px 8px;border:1px solid #e5e7eb}@media print{body{margin:16px}}</style>
   </head><body onload="window.print()">
   <h1>Delivery Docket</h1>
   <div style="display:flex;gap:48px;margin-bottom:24px">
-    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Docket No.</div><div style="font-weight:600">${despatch.code}</div></div>
-    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Despatch Date</div><div>${despatch.despatchDate ?? new Date().toISOString().split("T")[0]}</div></div>
-    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Sales Order</div><div>SO-${despatch.soId}</div></div>
-    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Carrier</div><div>${despatch.carrier ?? "—"}</div></div>
-    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Tracking</div><div>${despatch.trackingNumber ?? "—"}</div></div>
+    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Docket No.</div><div style="font-weight:600">${safeCode}</div></div>
+    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Despatch Date</div><div>${escapeHtml(despatch.despatchDate ?? new Date().toISOString().split("T")[0])}</div></div>
+    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Sales Order</div><div>SO-${Number(despatch.soId)}</div></div>
+    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Carrier</div><div>${escapeHtml(despatch.carrier) || "—"}</div></div>
+    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Tracking</div><div>${escapeHtml(despatch.trackingNumber) || "—"}</div></div>
   </div>
   <table><thead><tr><th>Item Code</th><th>Description</th><th style="text-align:right">Qty</th><th>Lot/Batch</th><th>Serial</th><th>Notes</th></tr></thead>
   <tbody>${lineRows}</tbody></table>
@@ -1107,15 +1118,17 @@ router.get("/sales/invoices/:id/pdf", ...tenantUserMiddleware, async (req: Reque
   if (!invoice) { res.status(404).json({ error: "Invoice not found" }); return; }
   const linesHtml = lines.map((l) => `
     <tr>
-      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${l.itemCode ?? ""}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${l.description ?? l.itemName ?? ""}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${escapeHtml(l.itemCode)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${escapeHtml(l.description ?? l.itemName)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right">${Number(l.quantity).toFixed(2)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right">${Number(l.unitPrice).toFixed(2)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right">${Number(l.discountPct ?? 0).toFixed(1)}%</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right">${Number(l.taxPct ?? 0).toFixed(1)}%</td>
       <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:500">${Number(l.lineTotal ?? 0).toFixed(2)}</td>
     </tr>`).join("");
-  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Invoice ${invoice.code ?? id}</title>
+  const safeInvoiceCode = escapeHtml(invoice.code ?? `INV-${id}`);
+  const safeCurrency = escapeHtml(invoice.currencyCode ?? "AUD");
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Invoice ${safeInvoiceCode}</title>
   <style>
     body{font-family:Arial,sans-serif;color:#111;margin:0;padding:32px;font-size:14px}
     .header{display:flex;justify-content:space-between;margin-bottom:32px}
@@ -1131,20 +1144,19 @@ router.get("/sales/invoices/:id/pdf", ...tenantUserMiddleware, async (req: Reque
   <div class="header">
     <div>
       <div class="title">TAX INVOICE</div>
-      <div style="margin-top:8px;font-size:20px;font-weight:600">${invoice.code ?? "INV-" + id}</div>
-      <div style="margin-top:4px;color:#6b7280">Date: ${invoice.invoiceDate ?? invoice.createdAt?.toString().slice(0, 10) ?? ""}</div>
-      ${invoice.dueDate ? `<div style="color:#6b7280">Due: ${invoice.dueDate}</div>` : ""}
+      <div style="margin-top:8px;font-size:20px;font-weight:600">${safeInvoiceCode}</div>
+      <div style="margin-top:4px;color:#6b7280">Date: ${escapeHtml(invoice.invoiceDate ?? invoice.createdAt?.toString().slice(0, 10))}</div>
+      ${invoice.dueDate ? `<div style="color:#6b7280">Due: ${escapeHtml(invoice.dueDate)}</div>` : ""}
     </div>
     <div style="text-align:right">
-      <span class="badge">${invoice.status?.toUpperCase() ?? "ISSUED"}</span>
-      ${invoice.soId ? `<div style="margin-top:8px;color:#6b7280">Sales Order: SO-${invoice.soId}</div>` : ""}
+      <span class="badge">${escapeHtml(invoice.status?.toUpperCase() ?? "ISSUED")}</span>
+      ${invoice.soId ? `<div style="margin-top:8px;color:#6b7280">Sales Order: SO-${Number(invoice.soId)}</div>` : ""}
     </div>
   </div>
   <div style="display:flex;gap:48px;margin-bottom:24px">
     <div>
       <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Bill To</div>
-      <div style="font-weight:600">${invoice.customerName ?? ""}</div>
-      ${invoice.customerName ? `<div style="color:#6b7280;font-size:12px">SO-${invoice.soId ?? ""}</div>` : ""}
+      <div style="font-weight:600">${escapeHtml(invoice.customerName)}</div>
     </div>
   </div>
   <table>
@@ -1158,18 +1170,18 @@ router.get("/sales/invoices/:id/pdf", ...tenantUserMiddleware, async (req: Reque
   </table>
   <div style="margin-top:24px;display:flex;justify-content:flex-end">
     <table style="width:280px" class="totals">
-      <tr><td>Subtotal</td><td style="text-align:right">${invoice.currencyCode ?? "AUD"} ${Number(invoice.subtotal ?? 0).toFixed(2)}</td></tr>
-      <tr><td>Tax</td><td style="text-align:right">${invoice.currencyCode ?? "AUD"} ${Number(invoice.taxAmount ?? 0).toFixed(2)}</td></tr>
-      <tr class="grand"><td>Total</td><td style="text-align:right">${invoice.currencyCode ?? "AUD"} ${Number(invoice.total ?? 0).toFixed(2)}</td></tr>
-      ${Number(invoice.paidAmount ?? 0) > 0 ? `<tr><td>Paid</td><td style="text-align:right">${invoice.currencyCode ?? "AUD"} ${Number(invoice.paidAmount).toFixed(2)}</td></tr>
-      <tr class="grand" style="color:#dc2626"><td>Balance Due</td><td style="text-align:right">${invoice.currencyCode ?? "AUD"} ${(Number(invoice.total ?? 0) - Number(invoice.paidAmount ?? 0)).toFixed(2)}</td></tr>` : ""}
+      <tr><td>Subtotal</td><td style="text-align:right">${safeCurrency} ${Number(invoice.subtotal ?? 0).toFixed(2)}</td></tr>
+      <tr><td>Tax</td><td style="text-align:right">${safeCurrency} ${Number(invoice.taxAmount ?? 0).toFixed(2)}</td></tr>
+      <tr class="grand"><td>Total</td><td style="text-align:right">${safeCurrency} ${Number(invoice.total ?? 0).toFixed(2)}</td></tr>
+      ${Number(invoice.paidAmount ?? 0) > 0 ? `<tr><td>Paid</td><td style="text-align:right">${safeCurrency} ${Number(invoice.paidAmount).toFixed(2)}</td></tr>
+      <tr class="grand" style="color:#dc2626"><td>Balance Due</td><td style="text-align:right">${safeCurrency} ${(Number(invoice.total ?? 0) - Number(invoice.paidAmount ?? 0)).toFixed(2)}</td></tr>` : ""}
     </table>
   </div>
-  ${invoice.notes ? `<div style="margin-top:32px;padding:16px;background:#f8fafc;border-radius:8px"><strong>Notes:</strong> ${invoice.notes}</div>` : ""}
+  ${invoice.notes ? `<div style="margin-top:32px;padding:16px;background:#f8fafc;border-radius:8px"><strong>Notes:</strong> ${escapeHtml(invoice.notes)}</div>` : ""}
   <div style="margin-top:40px;text-align:center;font-size:11px;color:#9ca3af">Generated by Forge ERP</div>
   <script>window.onload = () => window.print();</script>
 </body></html>`;
-  res.setHeader("Content-Type", "text/html");
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);
 });
 
@@ -1217,6 +1229,33 @@ router.post("/sales/invoices", ...tenantWriteMiddleware, async (req: Request, re
           error: "Credit limit exceeded",
           detail: `Customer credit limit is ${creditLimit.toFixed(2)}. Outstanding balance ${outstandingBalance.toFixed(2)} plus this invoice ${newInvSubtotal.toFixed(2)} would exceed the limit.`,
           creditLimit, outstandingBalance, newInvoiceTotal: newInvSubtotal,
+        });
+        return;
+      }
+    }
+  }
+
+  // Validate invoice quantities against despatched (but not yet invoiced) quantities
+  const soLineIdsToCheck = [...new Set(parsed.data.lines.filter((l) => l.soLineId).map((l) => l.soLineId!))];
+  if (soLineIdsToCheck.length > 0) {
+    const soLineRows = await withTenantDb(tenantId, (db) =>
+      db.select({ id: soLinesTable.id, itemCode: soLinesTable.itemCode, despatched_qty: soLinesTable.despatched_qty, invoiced_qty: soLinesTable.invoiced_qty })
+        .from(soLinesTable)
+        .where(and(inArray(soLinesTable.id, soLineIdsToCheck), eq(soLinesTable.tenantId, tenantId))));
+    // Group requested quantities by soLineId
+    const requestedByLine = new Map<number, number>();
+    for (const l of parsed.data.lines) {
+      if (l.soLineId) requestedByLine.set(l.soLineId, (requestedByLine.get(l.soLineId) ?? 0) + l.quantity);
+    }
+    for (const row of soLineRows) {
+      const despatchedQty = Number(row.despatched_qty ?? 0);
+      const invoicedQty = Number(row.invoiced_qty ?? 0);
+      const invoiceable = despatchedQty - invoicedQty;
+      const requested = requestedByLine.get(row.id) ?? 0;
+      if (requested > invoiceable + 0.0001) {
+        res.status(422).json({
+          error: "Invoice quantity exceeds despatched quantity",
+          detail: `Item ${row.itemCode ?? row.id}: despatched ${despatchedQty.toFixed(4)}, already invoiced ${invoicedQty.toFixed(4)}, invoiceable ${invoiceable.toFixed(4)}, requested ${requested.toFixed(4)}. Despatch the goods before invoicing.`,
         });
         return;
       }
