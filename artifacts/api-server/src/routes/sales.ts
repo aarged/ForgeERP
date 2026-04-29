@@ -520,11 +520,13 @@ router.post("/sales/quotations/:id/lines", ...tenantWriteMiddleware, async (req:
 
 router.patch("/sales/quotations/:id/lines/:lineId", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
+  const quotationId = Number(req.params.id);
   const lineId = Number(req.params.lineId);
   const parsed = quotationLineSchema.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
   const [updated] = await withTenantDb(tenantId, (db) =>
-    db.update(quotationLinesTable).set({ ...parsed.data, quantity: parsed.data.quantity != null ? String(parsed.data.quantity) : undefined, unitPrice: parsed.data.unitPrice != null ? String(parsed.data.unitPrice) : undefined } as Record<string, unknown>).where(and(eq(quotationLinesTable.id, lineId), eq(quotationLinesTable.tenantId, tenantId))).returning());
+    db.update(quotationLinesTable).set({ ...parsed.data, quantity: parsed.data.quantity != null ? String(parsed.data.quantity) : undefined, unitPrice: parsed.data.unitPrice != null ? String(parsed.data.unitPrice) : undefined } as Record<string, unknown>)
+      .where(and(eq(quotationLinesTable.id, lineId), eq(quotationLinesTable.quotationId, quotationId), eq(quotationLinesTable.tenantId, tenantId))).returning());
   if (!updated) { res.status(404).json({ error: "Line not found" }); return; }
   await updateQuotationTotals(tenantId, updated.quotationId);
   res.json(updated);
@@ -532,8 +534,10 @@ router.patch("/sales/quotations/:id/lines/:lineId", ...tenantWriteMiddleware, as
 
 router.delete("/sales/quotations/:id/lines/:lineId", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
+  const quotationId = Number(req.params.id);
   const lineId = Number(req.params.lineId);
-  const [deleted] = await withTenantDb(tenantId, (db) => db.delete(quotationLinesTable).where(and(eq(quotationLinesTable.id, lineId), eq(quotationLinesTable.tenantId, tenantId))).returning());
+  const [deleted] = await withTenantDb(tenantId, (db) =>
+    db.delete(quotationLinesTable).where(and(eq(quotationLinesTable.id, lineId), eq(quotationLinesTable.quotationId, quotationId), eq(quotationLinesTable.tenantId, tenantId))).returning());
   if (!deleted) { res.status(404).json({ error: "Line not found" }); return; }
   await updateQuotationTotals(tenantId, deleted.quotationId);
   res.status(204).send();
@@ -764,11 +768,13 @@ router.post("/sales/orders/:id/lines", ...tenantWriteMiddleware, async (req: Req
 
 router.patch("/sales/orders/:id/lines/:lineId", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
+  const soId = Number(req.params.id);
   const lineId = Number(req.params.lineId);
   const parsed = soLineSchema.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
   const [updated] = await withTenantDb(tenantId, (db) =>
-    db.update(soLinesTable).set({ ...parsed.data, quantity: parsed.data.quantity != null ? String(parsed.data.quantity) : undefined, unitPrice: parsed.data.unitPrice != null ? String(parsed.data.unitPrice) : undefined } as Record<string, unknown>).where(and(eq(soLinesTable.id, lineId), eq(soLinesTable.tenantId, tenantId))).returning());
+    db.update(soLinesTable).set({ ...parsed.data, quantity: parsed.data.quantity != null ? String(parsed.data.quantity) : undefined, unitPrice: parsed.data.unitPrice != null ? String(parsed.data.unitPrice) : undefined } as Record<string, unknown>)
+      .where(and(eq(soLinesTable.id, lineId), eq(soLinesTable.soId, soId), eq(soLinesTable.tenantId, tenantId))).returning());
   if (!updated) { res.status(404).json({ error: "Line not found" }); return; }
   await updateSoTotals(tenantId, updated.soId);
   res.json(updated);
@@ -776,8 +782,10 @@ router.patch("/sales/orders/:id/lines/:lineId", ...tenantWriteMiddleware, async 
 
 router.delete("/sales/orders/:id/lines/:lineId", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
+  const soId = Number(req.params.id);
   const lineId = Number(req.params.lineId);
-  const [deleted] = await withTenantDb(tenantId, (db) => db.delete(soLinesTable).where(and(eq(soLinesTable.id, lineId), eq(soLinesTable.tenantId, tenantId))).returning());
+  const [deleted] = await withTenantDb(tenantId, (db) =>
+    db.delete(soLinesTable).where(and(eq(soLinesTable.id, lineId), eq(soLinesTable.soId, soId), eq(soLinesTable.tenantId, tenantId))).returning());
   if (!deleted) { res.status(404).json({ error: "Line not found" }); return; }
   await updateSoTotals(tenantId, deleted.soId);
   res.status(204).send();
@@ -1281,7 +1289,7 @@ router.post("/sales/invoices", ...tenantWriteMiddleware, async (req: Request, re
   const soLineIdsToCheck = [...new Set(parsed.data.lines.filter((l) => l.soLineId).map((l) => l.soLineId!))];
   if (soLineIdsToCheck.length > 0) {
     const soLineRows = await withTenantDb(tenantId, (db) =>
-      db.select({ id: soLinesTable.id, itemCode: soLinesTable.itemCode, despatched_qty: soLinesTable.despatched_qty, invoiced_qty: soLinesTable.invoiced_qty })
+      db.select({ id: soLinesTable.id, soId: soLinesTable.soId, itemCode: soLinesTable.itemCode, despatched_qty: soLinesTable.despatched_qty, invoiced_qty: soLinesTable.invoiced_qty })
         .from(soLinesTable)
         .where(and(inArray(soLinesTable.id, soLineIdsToCheck), eq(soLinesTable.tenantId, tenantId))));
     // Group requested quantities by soLineId
@@ -1290,6 +1298,14 @@ router.post("/sales/invoices", ...tenantWriteMiddleware, async (req: Request, re
       if (l.soLineId) requestedByLine.set(l.soLineId, (requestedByLine.get(l.soLineId) ?? 0) + l.quantity);
     }
     for (const row of soLineRows) {
+      // Enforce that invoice lines belong to the invoice's own SO
+      if (row.soId !== parsed.data.soId) {
+        res.status(422).json({
+          error: "Line belongs to a different sales order",
+          detail: `SO line ${row.id} belongs to SO ${row.soId}, not SO ${parsed.data.soId}. Invoice lines must reference lines from the same sales order.`,
+        });
+        return;
+      }
       const despatchedQty = Number(row.despatched_qty ?? 0);
       const invoicedQty = Number(row.invoiced_qty ?? 0);
       const invoiceable = despatchedQty - invoicedQty;
