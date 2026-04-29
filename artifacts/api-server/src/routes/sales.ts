@@ -1067,7 +1067,7 @@ router.get("/sales/invoices/:id/pdf", ...tenantUserMiddleware, async (req: Reque
     <div>
       <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Bill To</div>
       <div style="font-weight:600">${invoice.customerName ?? ""}</div>
-      ${invoice.billingAddress ? `<div style="color:#374151;white-space:pre-line">${invoice.billingAddress}</div>` : ""}
+      ${invoice.customerName ? `<div style="color:#6b7280;font-size:12px">SO-${invoice.soId ?? ""}</div>` : ""}
     </div>
   </div>
   <table>

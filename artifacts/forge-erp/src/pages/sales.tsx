@@ -50,6 +50,8 @@ import {
   useReleaseBackorder,
   useCancelBackorder,
   ListBackordersStatus,
+  useGetAtp,
+  getGetAtpQueryKey,
   useListCustomers,
   useListWarehouses,
   useListItems,
@@ -192,18 +194,42 @@ type LineEditorFormBase = { lines: LineField[] };
 
 type ItemOption = { id: number; code: string; name: string };
 
+/** Shows real-time Available-to-Promise qty for a line item. */
+function AtpBadge({ itemId, warehouseId }: { itemId?: number; warehouseId?: number }) {
+  const { data, isFetching } = useGetAtp(
+    { itemId: itemId!, warehouseId: warehouseId ?? undefined },
+    {
+      query: {
+        enabled: !!itemId,
+        queryKey: getGetAtpQueryKey({ itemId: itemId!, warehouseId: warehouseId ?? undefined }),
+        staleTime: 30_000,
+      },
+    },
+  );
+  if (!itemId) return null;
+  if (isFetching) return <span className="text-xs text-muted-foreground ml-1">ATP…</span>;
+  const atp = data?.atpQty ?? 0;
+  return (
+    <span className={`text-xs font-medium ml-1 ${Number(atp) > 0 ? "text-emerald-600" : "text-red-500"}`}>
+      ATP: {Number(atp).toFixed(0)}
+    </span>
+  );
+}
+
 function LineItemEditor({
   fields,
   control,
   onAdd,
   onRemove,
   items,
+  warehouseId,
 }: {
   fields: LineField[];
   control: Control<LineEditorFormBase>;
   onAdd: () => void;
   onRemove: (idx: number) => void;
   items: ItemOption[];
+  warehouseId?: number;
 }) {
   return (
     <div className="space-y-2">
@@ -233,21 +259,24 @@ function LineItemEditor({
                     control={control}
                     name={`lines.${idx}.itemId`}
                     render={({ field: f }) => (
-                      <Select
-                        value={f.value ? String(f.value) : ""}
-                        onValueChange={(v) => f.onChange(v ? Number(v) : undefined)}
-                      >
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue placeholder="Item..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {items.map((item) => (
-                            <SelectItem key={item.id ?? 0} value={String(item.id)}>
-                              {item.code ?? ""} – {item.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div>
+                        <Select
+                          value={f.value ? String(f.value) : ""}
+                          onValueChange={(v) => f.onChange(v ? Number(v) : undefined)}
+                        >
+                          <SelectTrigger className="h-7 text-xs">
+                            <SelectValue placeholder="Item..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {items.map((item) => (
+                              <SelectItem key={item.id ?? 0} value={String(item.id)}>
+                                {item.code ?? ""} – {item.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <AtpBadge itemId={f.value} warehouseId={warehouseId} />
+                      </div>
                     )}
                   />
                 </TableCell>
@@ -987,6 +1016,7 @@ function SalesOrdersTab() {
 
   const form = useForm<SoForm>({ defaultValues: { lines: [] } });
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "lines" });
+  const soFormWarehouseId = form.watch("warehouseId");
 
   const despatchForm = useForm<DespatchForm>({ defaultValues: { lines: [] } });
   const { fields: despatchFields, remove: removeDespatch } = useFieldArray({
@@ -1323,6 +1353,7 @@ function SalesOrdersTab() {
               items={itemsList}
               onAdd={() => append({ quantity: 1, unitPrice: 0, discountPct: 0, taxPct: 10 })}
               onRemove={remove}
+              warehouseId={soFormWarehouseId}
             />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
