@@ -1866,7 +1866,7 @@ router.post("/procurement/purchase-orders/:id/send", ...tenantWriteMiddleware, a
     return;
   }
 
-  // Resolve supplier email: body param → supplier record → not available
+  // Resolve supplier email: body param → supplier record → required (must be resolvable to dispatch)
   let resolvedEmail = bodyEmail ?? null;
   if (!resolvedEmail && po.supplierId) {
     const [supplier] = await withTenantDb(tenantId, (db) =>
@@ -1876,31 +1876,36 @@ router.post("/procurement/purchase-orders/:id/send", ...tenantWriteMiddleware, a
     resolvedEmail = supplier?.email ?? null;
   }
 
+  // Require a resolvable email before transitioning to "sent" — prevents misleading status
+  if (!resolvedEmail) {
+    res.status(400).json({ error: "No supplier email address available. Provide a supplierEmail in the request body or set an email on the supplier record." });
+    return;
+  }
+
+  // Send PDF email to supplier — PO transitions to "sent" only after email dispatch attempt
+  const lines = await withTenantDb(tenantId, (db) =>
+    db.select().from(poLinesTable)
+      .where(and(eq(poLinesTable.poId, id), eq(poLinesTable.tenantId, tenantId))));
+  const pdfBuffer = await generatePoPdf(po, lines);
+  let emailSent = false;
+  try {
+    emailSent = await sendEmail({
+      to: resolvedEmail,
+      subject: `Purchase Order ${po.code} from Forge ERP`,
+      html: buildPoEmailHtml(po),
+      text: `Dear ${po.supplierName ?? "Supplier"},\n\nPlease find attached Purchase Order ${po.code}.\nTotal: ${Number(po.total).toFixed(2)} ${po.currencyCode}.\n\nThe Forge ERP Team`,
+      attachments: [{ filename: `${po.code}.pdf`, content: pdfBuffer, contentType: "application/pdf" }],
+    });
+  } catch (err) {
+    console.warn("PO email dispatch failed:", err);
+    res.status(502).json({ error: "Email dispatch failed. PO status was not changed.", supplierEmail: resolvedEmail });
+    return;
+  }
+
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(purchaseOrdersTable).set({ status: "sent", sentAt: new Date() })
       .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId))).returning());
   if (!updated) { res.status(404).json({ error: "PO not found" }); return; }
-
-  // Generate PDF and email to supplier
-  let emailSent = false;
-  if (resolvedEmail) {
-    try {
-      const lines = await withTenantDb(tenantId, (db) =>
-        db.select().from(poLinesTable)
-          .where(and(eq(poLinesTable.poId, id), eq(poLinesTable.tenantId, tenantId))));
-      const pdfBuffer = await generatePoPdf(po, lines);
-      emailSent = await sendEmail({
-        to: resolvedEmail,
-        subject: `Purchase Order ${po.code} from Forge ERP`,
-        html: buildPoEmailHtml(po),
-        text: `Dear ${po.supplierName ?? "Supplier"},\n\nPlease find attached Purchase Order ${po.code}.\nTotal: ${Number(po.total).toFixed(2)} ${po.currencyCode}.\n\nThe Forge ERP Team`,
-        attachments: [{ filename: `${po.code}.pdf`, content: pdfBuffer, contentType: "application/pdf" }],
-      });
-    } catch (err) {
-      // Non-fatal — PO is already marked sent; email failure is logged
-      console.warn("PO email dispatch failed:", err);
-    }
-  }
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "purchase_order.sent", entityType: "purchase_order", entityId: String(id), newValues: { supplierEmail: resolvedEmail, emailSent } });
   res.json({ ...updated, supplierEmail: resolvedEmail, emailSent });

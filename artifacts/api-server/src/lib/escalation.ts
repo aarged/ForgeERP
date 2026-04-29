@@ -1,4 +1,4 @@
-import { eq, and, isNull, gte } from "drizzle-orm";
+import { eq, and, isNull, gte, inArray } from "drizzle-orm";
 import {
   adminDb,
   purchaseRequisitionsTable,
@@ -6,6 +6,7 @@ import {
   approvalStepsTable,
   notificationsTable,
   tenantsTable,
+  tenantMembershipsTable,
 } from "@workspace/db";
 import { withTenantDb } from "@workspace/db/rls";
 import { logger } from "./logger";
@@ -14,6 +15,43 @@ const ESCALATION_CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly
 
 function genCode(prefix: string, id: number): string {
   return `${prefix}-${String(id).padStart(6, "0")}`;
+}
+
+/**
+ * Resolve all Clerk IDs that should receive escalation notifications for a step.
+ * Merges explicit approverUserIds with role-based members from tenantMemberships.
+ */
+async function resolveEscalationRecipients(
+  tenantId: number,
+  approverUserIds: string[],
+  approverRoles: string[],
+  fallbackClerkId: string | null,
+): Promise<string[]> {
+  const explicit = approverUserIds.filter(Boolean);
+  let fromRoles: string[] = [];
+
+  if (approverRoles.length > 0) {
+    try {
+      const members = await withTenantDb(tenantId, (db) =>
+        db.select({ clerkId: tenantMembershipsTable.clerkId })
+          .from(tenantMembershipsTable)
+          .where(and(
+            eq(tenantMembershipsTable.tenantId, tenantId),
+            inArray(
+              tenantMembershipsTable.role,
+              approverRoles as ("super_admin" | "tenant_admin" | "purchaser" | "warehouse" | "approver" | "accountant" | "viewer")[],
+            ),
+          )));
+      fromRoles = members.map((m) => m.clerkId);
+    } catch (err) {
+      logger.warn({ err, tenantId }, "[escalation] Failed to resolve role-based approvers");
+    }
+  }
+
+  const resolved = [...new Set([...explicit, ...fromRoles])].filter(Boolean);
+  // If no approvers resolved at all, fall back to the requester/creator
+  if (resolved.length === 0 && fallbackClerkId) return [fallbackClerkId];
+  return resolved;
 }
 
 async function createEscalationNotification(
@@ -74,6 +112,7 @@ async function processRequisitionEscalations(tenantId: number): Promise<void> {
         requestedByClerkId: purchaseRequisitionsTable.requestedByClerkId,
         escalationDays: approvalStepsTable.escalationDays,
         approverUserIds: approvalStepsTable.approverUserIds,
+        approverRoles: approvalStepsTable.approverRoles,
       })
       .from(purchaseRequisitionsTable)
       .leftJoin(
@@ -102,8 +141,12 @@ async function processRequisitionEscalations(tenantId: number): Promise<void> {
     const code = genCode("REQ", req.id);
     logger.info({ tenantId, reqId: req.id, code }, "[escalation] Requisition overdue for approval");
 
-    const adminUserIds = (req.approverUserIds as string[]) ?? [];
-    const notifyIds = adminUserIds.length > 0 ? adminUserIds : [req.requestedByClerkId ?? ""].filter(Boolean);
+    const notifyIds = await resolveEscalationRecipients(
+      tenantId,
+      (req.approverUserIds as string[] | null) ?? [],
+      (req.approverRoles as string[] | null) ?? [],
+      req.requestedByClerkId ?? null,
+    );
 
     for (const uid of notifyIds) {
       await createEscalationNotification(
@@ -131,6 +174,7 @@ async function processPurchaseOrderEscalations(tenantId: number): Promise<void> 
         createdByClerkId: purchaseOrdersTable.createdByClerkId,
         escalationDays: approvalStepsTable.escalationDays,
         approverUserIds: approvalStepsTable.approverUserIds,
+        approverRoles: approvalStepsTable.approverRoles,
       })
       .from(purchaseOrdersTable)
       .leftJoin(
@@ -159,8 +203,12 @@ async function processPurchaseOrderEscalations(tenantId: number): Promise<void> 
     const code = genCode("PO", po.id);
     logger.info({ tenantId, poId: po.id, code }, "[escalation] Purchase Order overdue for approval");
 
-    const adminUserIds = (po.approverUserIds as string[]) ?? [];
-    const notifyIds = adminUserIds.length > 0 ? adminUserIds : [po.createdByClerkId ?? ""].filter(Boolean);
+    const notifyIds = await resolveEscalationRecipients(
+      tenantId,
+      (po.approverUserIds as string[] | null) ?? [],
+      (po.approverRoles as string[] | null) ?? [],
+      po.createdByClerkId ?? null,
+    );
 
     for (const uid of notifyIds) {
       await createEscalationNotification(
