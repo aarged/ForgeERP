@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { applyRLSPolicies } from "@workspace/db/rls";
 import { canAttemptStripeInit, setStripeReady, getStripeSync } from "./lib/stripe";
+import { startEscalationWorker } from "./lib/escalation";
 import { runMigrations } from "stripe-replit-sync";
 
 const rawPort = process.env["PORT"];
@@ -55,6 +56,7 @@ async function bootstrap() {
   }
 
   await initStripe();
+  startEscalationWorker();
 
   app.listen(port, (err) => {
     if (err) {

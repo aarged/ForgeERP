@@ -1,11 +1,18 @@
 import nodemailer from "nodemailer";
 import { logger } from "./logger";
 
+interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+}
+
 interface EmailOptions {
   to: string;
   subject: string;
   html: string;
   text?: string;
+  attachments?: EmailAttachment[];
 }
 
 function isEmailConfigured(): boolean {
@@ -32,7 +39,12 @@ export async function sendEmail(opts: EmailOptions): Promise<boolean> {
   try {
     const transporter = createTransport();
     const from = process.env.SMTP_FROM ?? `"Forge ERP" <noreply@${process.env.SMTP_HOST}>`;
-    await transporter.sendMail({ from, ...opts });
+    const { attachments, ...rest } = opts;
+    await transporter.sendMail({
+      from,
+      ...rest,
+      attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })),
+    });
     logger.info({ to: opts.to, subject: opts.subject }, "[email] Sent successfully");
     return true;
   } catch (err) {

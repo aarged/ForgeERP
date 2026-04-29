@@ -29,6 +29,7 @@ import {
   type TenantRequest,
 } from "../middlewares/tenantContext";
 import { writeAuditLog } from "../lib/audit";
+import { sendEmail } from "../lib/email";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import PDFDocument from "pdfkit";
@@ -167,6 +168,7 @@ async function postInventoryReceipt(tenantId: number, receiptId: number, postedB
           locationId ? eq(inventoryStockTable.locationId, locationId) : isNull(inventoryStockTable.locationId),
           line.lotNumber ? eq(inventoryStockTable.lotNumber, line.lotNumber) : isNull(inventoryStockTable.lotNumber),
           line.batchNumber ? eq(inventoryStockTable.batchNumber, line.batchNumber) : isNull(inventoryStockTable.batchNumber),
+          line.serialNumber ? eq(inventoryStockTable.serialNumber, line.serialNumber) : isNull(inventoryStockTable.serialNumber),
         ))
         .limit(1),
     );
@@ -256,6 +258,7 @@ async function postInventoryReceiptInTx(db: TenantDb, tenantId: number, receiptI
         locationId ? eq(inventoryStockTable.locationId, locationId) : isNull(inventoryStockTable.locationId),
         line.lotNumber ? eq(inventoryStockTable.lotNumber, line.lotNumber) : isNull(inventoryStockTable.lotNumber),
         line.batchNumber ? eq(inventoryStockTable.batchNumber, line.batchNumber) : isNull(inventoryStockTable.batchNumber),
+        line.serialNumber ? eq(inventoryStockTable.serialNumber, line.serialNumber) : isNull(inventoryStockTable.serialNumber),
       )).limit(1))[0];
 
     if (existing) {
@@ -1595,53 +1598,18 @@ router.post("/procurement/purchase-orders/:id/decision", ...approverMiddleware, 
   res.json(updated);
 });
 
-// Mark PO as sent
-router.post("/procurement/purchase-orders/:id/send", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
-  const id = Number(req.params.id);
-  // Enforce state machine: PO must be in "approved" status before it can be sent
-  const [po] = await withTenantDb(tenantId, (db) =>
-    db.select({ status: purchaseOrdersTable.status }).from(purchaseOrdersTable)
-      .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt)))
-      .limit(1));
-  if (!po) { res.status(404).json({ error: "PO not found" }); return; }
-  if (po.status !== "approved") {
-    res.status(400).json({ error: `PO cannot be sent in status: ${po.status}. Only approved POs can be sent to suppliers.` });
-    return;
-  }
-  const [updated] = await withTenantDb(tenantId, (db) =>
-    db.update(purchaseOrdersTable).set({ status: "sent", sentAt: new Date() })
-      .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId))).returning());
-  if (!updated) { res.status(404).json({ error: "PO not found" }); return; }
-  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "purchase_order.sent", entityType: "purchase_order", entityId: String(id) });
-  res.json(updated);
-});
+// ── PDF generation helper ─────────────────────────────────────────────────────
 
-// Generate PO PDF document for supplier dispatch
-router.post("/procurement/purchase-orders/:id/pdf", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
-  const id = Number(req.params.id);
-  const { dispatchEmail } = req.body as { dispatchEmail?: string };
+type PoRecord = typeof purchaseOrdersTable.$inferSelect;
+type PoLineRecord = typeof poLinesTable.$inferSelect;
 
-  const [po] = await withTenantDb(tenantId, (db) =>
-    db.select().from(purchaseOrdersTable)
-      .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt)))
-      .limit(1));
-  if (!po) { res.status(404).json({ error: "PO not found" }); return; }
-
-  const lines = await withTenantDb(tenantId, (db) =>
-    db.select().from(poLinesTable)
-      .where(and(eq(poLinesTable.poId, id), eq(poLinesTable.tenantId, tenantId))));
-
-  // Generate a real PDF using PDFKit
-  const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
+function generatePoPdf(po: PoRecord, lines: PoLineRecord[]): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: "A4" });
     const chunks: Buffer[] = [];
     doc.on("data", (c: Buffer) => chunks.push(c));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
-
-    const pageWidth = doc.page.width - 100; // account for margins
 
     // Header
     doc.fontSize(20).font("Helvetica-Bold").text("PURCHASE ORDER", 50, 50);
@@ -1706,19 +1674,124 @@ router.post("/procurement/purchase-orders/:id/pdf", ...tenantWriteMiddleware, as
 
     doc.end();
   });
+}
 
+function buildPoEmailHtml(po: PoRecord): string {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:sans-serif;background:#f8fafc;padding:32px;margin:0">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#f97316,#ea580c);padding:24px 32px">
+      <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">Forge ERP</span>
+    </div>
+    <div style="padding:32px">
+      <p style="font-size:16px;color:#1e293b;margin-top:0">Dear ${po.supplierName ?? "Supplier"},</p>
+      <p style="font-size:15px;color:#475569;line-height:1.6">
+        Please find attached Purchase Order <strong>${po.code}</strong> from our team.
+        Total value: <strong>${Number(po.total).toFixed(2)} ${po.currencyCode}</strong>.
+      </p>
+      ${po.deliveryDate ? `<p style="font-size:15px;color:#475569">Requested delivery date: <strong>${po.deliveryDate}</strong></p>` : ""}
+      ${po.paymentTerms ? `<p style="font-size:15px;color:#475569">Payment terms: <strong>${po.paymentTerms}</strong></p>` : ""}
+      <p style="font-size:13px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:20px;margin-bottom:0">
+        Please reply to this email to confirm receipt or raise any queries.<br>The Forge ERP Team
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+// Mark PO as sent — transitions to "sent" and dispatches PDF to supplier email
+router.post("/procurement/purchase-orders/:id/send", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const { supplierEmail: bodyEmail } = req.body as { supplierEmail?: string };
+
+  const [po] = await withTenantDb(tenantId, (db) =>
+    db.select().from(purchaseOrdersTable)
+      .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt)))
+      .limit(1));
+  if (!po) { res.status(404).json({ error: "PO not found" }); return; }
+  if (po.status !== "approved") {
+    res.status(400).json({ error: `PO cannot be sent in status: ${po.status}. Only approved POs can be sent to suppliers.` });
+    return;
+  }
+
+  // Resolve supplier email: body param → supplier record → not available
+  let resolvedEmail = bodyEmail ?? null;
+  if (!resolvedEmail && po.supplierId) {
+    const [supplier] = await withTenantDb(tenantId, (db) =>
+      db.select({ email: suppliersTable.email }).from(suppliersTable)
+        .where(and(eq(suppliersTable.id, po.supplierId!), eq(suppliersTable.tenantId, tenantId)))
+        .limit(1));
+    resolvedEmail = supplier?.email ?? null;
+  }
+
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(purchaseOrdersTable).set({ status: "sent", sentAt: new Date() })
+      .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId))).returning());
+  if (!updated) { res.status(404).json({ error: "PO not found" }); return; }
+
+  // Generate PDF and email to supplier
+  let emailSent = false;
+  if (resolvedEmail) {
+    try {
+      const lines = await withTenantDb(tenantId, (db) =>
+        db.select().from(poLinesTable)
+          .where(and(eq(poLinesTable.poId, id), eq(poLinesTable.tenantId, tenantId))));
+      const pdfBuffer = await generatePoPdf(po, lines);
+      emailSent = await sendEmail({
+        to: resolvedEmail,
+        subject: `Purchase Order ${po.code} from Forge ERP`,
+        html: buildPoEmailHtml(po),
+        text: `Dear ${po.supplierName ?? "Supplier"},\n\nPlease find attached Purchase Order ${po.code}.\nTotal: ${Number(po.total).toFixed(2)} ${po.currencyCode}.\n\nThe Forge ERP Team`,
+        attachments: [{ filename: `${po.code}.pdf`, content: pdfBuffer, contentType: "application/pdf" }],
+      });
+    } catch (err) {
+      // Non-fatal — PO is already marked sent; email failure is logged
+      console.warn("PO email dispatch failed:", err);
+    }
+  }
+
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "purchase_order.sent", entityType: "purchase_order", entityId: String(id), newValues: { supplierEmail: resolvedEmail, emailSent } });
+  res.json({ ...updated, supplierEmail: resolvedEmail, emailSent });
+});
+
+// Generate PO PDF and optionally dispatch to a given email address
+router.post("/procurement/purchase-orders/:id/pdf", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const { dispatchEmail } = req.body as { dispatchEmail?: string };
+
+  const [po] = await withTenantDb(tenantId, (db) =>
+    db.select().from(purchaseOrdersTable)
+      .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt)))
+      .limit(1));
+  if (!po) { res.status(404).json({ error: "PO not found" }); return; }
+
+  const lines = await withTenantDb(tenantId, (db) =>
+    db.select().from(poLinesTable)
+      .where(and(eq(poLinesTable.poId, id), eq(poLinesTable.tenantId, tenantId))));
+
+  const pdfBuffer = await generatePoPdf(po, lines);
   const pdfBase64 = pdfBuffer.toString("base64");
   const filename = `${po.code}.pdf`;
 
-  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "purchase_order.pdf_generated", entityType: "purchase_order", entityId: String(id), newValues: { dispatchEmail: dispatchEmail ?? null } });
+  let emailSent = false;
+  if (dispatchEmail) {
+    emailSent = await sendEmail({
+      to: dispatchEmail,
+      subject: `Purchase Order ${po.code} from Forge ERP`,
+      html: buildPoEmailHtml(po),
+      text: `Dear ${po.supplierName ?? "Supplier"},\n\nPlease find attached Purchase Order ${po.code}.\nTotal: ${Number(po.total).toFixed(2)} ${po.currencyCode}.\n\nThe Forge ERP Team`,
+      attachments: [{ filename, content: pdfBuffer, contentType: "application/pdf" }],
+    });
+  }
 
-  // Returns the generated PDF as base64. Actual email delivery requires a configured
-  // email provider integration (SendGrid, SES, etc.) — see task #15 for that roadmap item.
-  res.json({
-    pdfBase64,
-    filename,
-    dispatchEmail: dispatchEmail ?? null,
-  });
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "purchase_order.pdf_generated", entityType: "purchase_order", entityId: String(id), newValues: { dispatchEmail: dispatchEmail ?? null, emailSent } });
+
+  res.json({ pdfBase64, filename, dispatchEmail: dispatchEmail ?? null, emailSent });
 });
 
 // ── Goods Receipt ──────────────────────────────────────────────────────────────
