@@ -73,10 +73,26 @@ export async function applyRLSPolicies(): Promise<void> {
     `);
 
     const tenantScopedTables = [
+      // Core tables
       "tenants",
       "tenant_memberships",
       "audit_logs",
       "roles",
+      // Procurement tables
+      "approval_workflows",
+      "approval_steps",
+      "approval_decisions",
+      "purchase_requisitions",
+      "requisition_lines",
+      "purchase_orders",
+      "po_lines",
+      "po_receipts",
+      "receipt_lines",
+      "po_returns",
+      "po_return_lines",
+      "inventory_stock",
+      "inventory_movements",
+      "gl_postings",
     ];
 
     for (const table of tenantScopedTables) {
@@ -126,6 +142,32 @@ export async function applyRLSPolicies(): Promise<void> {
           OR tenant_id::text = COALESCE(current_setting('app.tenant_id', true), '')
         );
     `);
+
+    // All procurement + inventory + GL tables use the standard tenant_id pattern
+    const standardTenantTables = [
+      "approval_workflows",
+      "approval_steps",
+      "approval_decisions",
+      "purchase_requisitions",
+      "requisition_lines",
+      "purchase_orders",
+      "po_lines",
+      "po_receipts",
+      "receipt_lines",
+      "po_returns",
+      "po_return_lines",
+      "inventory_stock",
+      "inventory_movements",
+      "gl_postings",
+    ];
+    for (const table of standardTenantTables) {
+      await client.query(`
+        DROP POLICY IF EXISTS tenant_isolation ON "${table}";
+        CREATE POLICY tenant_isolation ON "${table}"
+          USING (tenant_id::text = COALESCE(current_setting('app.tenant_id', true), ''))
+          WITH CHECK (tenant_id::text = COALESCE(current_setting('app.tenant_id', true), ''));
+      `);
+    }
 
     await client.query("COMMIT");
   } catch (err) {

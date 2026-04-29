@@ -51,6 +51,13 @@ const tenantAdminMiddleware = [
   requireRole("tenant_admin", "super_admin"),
 ];
 
+// Approval actions are restricted to designated approvers, admins, and super-admins
+const approverMiddleware = [
+  requireAuth,
+  tenantContext,
+  requireRole("approver", "tenant_admin", "super_admin"),
+];
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function genCode(prefix: string, id: number): string {
@@ -136,7 +143,8 @@ async function postInventoryReceipt(tenantId: number, receiptId: number, postedB
     if (existing.length > 0) {
       const cur = existing[0]!;
       const newQty = Number(cur.qtyOnHand) + qty;
-      const curCost = Number(cur.averageCost ?? cur.qtyOnHand === "0" ? line.unitCost ?? 0 : cur.averageCost ?? 0);
+      // curCost = existing average cost (used only when qtyOnHand > 0; newAvgCost handles the 0-stock case)
+      const curCost = Number(cur.averageCost ?? 0);
       const newAvgCost = Number(cur.qtyOnHand) === 0
         ? Number(line.unitCost ?? 0)
         : (Number(cur.qtyOnHand) * curCost + qty * Number(line.unitCost ?? 0)) / newQty;
@@ -249,6 +257,168 @@ async function createGlPosting(tenantId: number, receiptId: number, postedByCler
   );
 
   return posting;
+}
+
+// ── Return / RTV Credit-Note GL Posting ───────────────────────────────────────
+
+async function createReturnGlPosting(tenantId: number, returnId: number, postedByClerkId: string, postedByEmail?: string) {
+  const [ret] = await withTenantDb(tenantId, (db) =>
+    db.select().from(poReturnsTable).where(and(eq(poReturnsTable.id, returnId), eq(poReturnsTable.tenantId, tenantId))).limit(1));
+  if (!ret) return null;
+
+  const lines = await withTenantDb(tenantId, (db) =>
+    db.select().from(poReturnLinesTable).where(and(eq(poReturnLinesTable.returnId, returnId), eq(poReturnLinesTable.tenantId, tenantId))));
+
+  // Credit note: Dr AP 2100 / Cr Inventory 1300 (reverse of goods receipt)
+  let totalValue = 0;
+  const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
+  for (const rl of lines) {
+    if (Number(rl.quantity) <= 0) continue;
+    const lineVal = Number(rl.quantity) * Number(rl.unitCost ?? 0);
+    totalValue += lineVal;
+    glLines.push({
+      accountCode: "1300", accountName: "Inventory",
+      debit: 0, credit: lineVal,
+      description: `RTV of ${rl.itemCode ?? rl.itemName ?? "item"}`,
+    });
+  }
+  if (totalValue === 0) return null;
+  glLines.push({
+    accountCode: "2100", accountName: "Accounts Payable",
+    debit: totalValue, credit: 0,
+    description: `AP credit note for return ${returnId}`,
+  });
+
+  const [posting] = await withTenantDb(tenantId, (db) =>
+    db.insert(glPostingsTable).values({
+      tenantId,
+      code: `GL-RTV-${Date.now()}`,
+      entityType: "po_return",
+      entityId: returnId,
+      status: "posted",
+      postedByClerkId,
+      postedByEmail: postedByEmail ?? undefined,
+      postedAt: new Date(),
+      lines: glLines,
+      totalDebit: totalValue.toFixed(2),
+      totalCredit: totalValue.toFixed(2),
+    } as typeof glPostingsTable.$inferInsert).returning());
+
+  return posting;
+}
+
+// ── Step-Based Approval Engine ────────────────────────────────────────────────
+
+/**
+ * Execute an approval decision, enforcing:
+ * - Entity must be in `pending_approval` state.
+ * - For "approved" decisions: actor must match the step's approverRoles/approverUserIds and must not exceed the step's valueLimit.
+ * - "rejected" and "returned" decisions bypass eligibility checks (any approver-role user can reject).
+ * - On approval, advances to the next step or finalises to "approved".
+ *
+ * Returns `{ newStatus, newStepNum }` — callers must persist these to the entity.
+ */
+async function executeApprovalDecision(opts: {
+  tenantId: number;
+  entityType: "purchase_requisition" | "purchase_order";
+  entityId: number;
+  workflowId: number | null | undefined;
+  currentStepNum: number;
+  entityTotal: string | null | undefined;
+  actorClerkId: string;
+  actorEmail: string;
+  actorRole: string;
+  decision: "approved" | "rejected" | "returned";
+  comment?: string;
+}): Promise<{ newStatus: string; newStepNum: number }> {
+  const { tenantId, entityType, entityId, workflowId, currentStepNum, entityTotal, actorClerkId, actorEmail, actorRole, decision, comment } = opts;
+
+  // Rejection and return bypass step-eligibility checks — any approver-role user can stop
+  if (decision !== "approved") {
+    await withTenantDb(tenantId, (db) =>
+      db.insert(approvalDecisionsTable).values({
+        tenantId,
+        workflowId: workflowId ?? undefined,
+        stepNumber: currentStepNum,
+        entityType,
+        entityId,
+        approverClerkId: actorClerkId,
+        approverEmail: actorEmail,
+        decision,
+        comment,
+      } as typeof approvalDecisionsTable.$inferInsert));
+    return { newStatus: decision === "rejected" ? "rejected" : "returned", newStepNum: currentStepNum };
+  }
+
+  // For approval, load and validate the current step
+  if (workflowId) {
+    const [step] = await withTenantDb(tenantId, (db) =>
+      db.select().from(approvalStepsTable)
+        .where(and(
+          eq(approvalStepsTable.workflowId, workflowId),
+          eq(approvalStepsTable.tenantId, tenantId),
+          eq(approvalStepsTable.stepNumber, currentStepNum),
+        ))
+        .limit(1));
+
+    if (step) {
+      const approverRoles = (step.approverRoles as string[]) ?? [];
+      const approverUserIds = (step.approverUserIds as string[]) ?? [];
+
+      // Eligibility: role match OR user match. Empty lists = any approver-role user.
+      const roleOk = approverRoles.length === 0 || approverRoles.includes(actorRole);
+      const userOk = approverUserIds.length === 0 || approverUserIds.includes(actorClerkId);
+      if (!roleOk && !userOk) {
+        throw Object.assign(
+          new Error("You are not an eligible approver for this step"),
+          { statusCode: 403 },
+        );
+      }
+
+      // Authority / value limit
+      if (step.valueLimit != null && entityTotal != null) {
+        if (Number(entityTotal) > Number(step.valueLimit)) {
+          throw Object.assign(
+            new Error(`Your authority limit for this step is ${step.valueLimit}. The document value exceeds this limit.`),
+            { statusCode: 403 },
+          );
+        }
+      }
+    }
+  }
+
+  // Record the decision
+  await withTenantDb(tenantId, (db) =>
+    db.insert(approvalDecisionsTable).values({
+      tenantId,
+      workflowId: workflowId ?? undefined,
+      stepNumber: currentStepNum,
+      entityType,
+      entityId,
+      approverClerkId: actorClerkId,
+      approverEmail: actorEmail,
+      decision: "approved",
+      comment,
+    } as typeof approvalDecisionsTable.$inferInsert));
+
+  // Check for subsequent steps
+  if (workflowId) {
+    const [nextStep] = await withTenantDb(tenantId, (db) =>
+      db.select().from(approvalStepsTable)
+        .where(and(
+          eq(approvalStepsTable.workflowId, workflowId),
+          eq(approvalStepsTable.tenantId, tenantId),
+          sql`${approvalStepsTable.stepNumber} > ${currentStepNum}`,
+        ))
+        .orderBy(asc(approvalStepsTable.stepNumber))
+        .limit(1));
+
+    if (nextStep) {
+      return { newStatus: "pending_approval", newStepNum: nextStep.stepNumber };
+    }
+  }
+
+  return { newStatus: "approved", newStepNum: 0 };
 }
 
 // ── Approval Workflows ────────────────────────────────────────────────────────
@@ -559,14 +729,13 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
   res.json(updated);
 });
 
-// Approve/reject/return
-router.post("/procurement/requisitions/:id/decision", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+// Approve/reject/return — restricted to approver, tenant_admin, super_admin
+router.post("/procurement/requisitions/:id/decision", ...approverMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail, userRole } = req as TenantRequest;
   const id = Number(req.params.id);
   const schema = z.object({
     decision: z.enum(["approved", "rejected", "returned"]),
     comment: z.string().optional(),
-    stepNumber: z.number().int().default(1),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
@@ -574,29 +743,38 @@ router.post("/procurement/requisitions/:id/decision", ...tenantWriteMiddleware, 
   const [req_] = await withTenantDb(tenantId, (db) =>
     db.select().from(purchaseRequisitionsTable).where(and(eq(purchaseRequisitionsTable.id, id), eq(purchaseRequisitionsTable.tenantId, tenantId))).limit(1));
   if (!req_) { res.status(404).json({ error: "Requisition not found" }); return; }
+  if (req_.status !== "pending_approval") {
+    res.status(400).json({ error: `Requisition is not awaiting approval (current status: ${req_.status})` });
+    return;
+  }
 
-  await withTenantDb(tenantId, (db) =>
-    db.insert(approvalDecisionsTable).values({
+  let result: { newStatus: string; newStepNum: number };
+  try {
+    result = await executeApprovalDecision({
       tenantId,
-      workflowId: req_.approvalWorkflowId ?? undefined,
-      stepNumber: parsed.data.stepNumber,
       entityType: "purchase_requisition",
       entityId: id,
-      approverClerkId: clerkUserId,
-      approverEmail: userEmail,
+      workflowId: req_.approvalWorkflowId,
+      currentStepNum: req_.currentApprovalStep ?? 1,
+      entityTotal: req_.totalEstimated,
+      actorClerkId: clerkUserId,
+      actorEmail: userEmail,
+      actorRole: userRole,
       decision: parsed.data.decision,
       comment: parsed.data.comment,
-    } as typeof approvalDecisionsTable.$inferInsert),
-  );
-
-  let newStatus = req_.status;
-  if (parsed.data.decision === "approved") newStatus = "approved";
-  else if (parsed.data.decision === "rejected") newStatus = "rejected";
-  else if (parsed.data.decision === "returned") newStatus = "returned";
+    });
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message: string };
+    res.status(e.statusCode ?? 500).json({ error: e.message });
+    return;
+  }
 
   const [updated] = await withTenantDb(tenantId, (db) =>
-    db.update(purchaseRequisitionsTable).set({ status: newStatus }).where(and(eq(purchaseRequisitionsTable.id, id), eq(purchaseRequisitionsTable.tenantId, tenantId))).returning());
-  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: `requisition.${parsed.data.decision}`, entityType: "purchase_requisition", entityId: String(id), newValues: { decision: parsed.data.decision, comment: parsed.data.comment } });
+    db.update(purchaseRequisitionsTable)
+      .set({ status: result.newStatus, currentApprovalStep: result.newStepNum || undefined })
+      .where(and(eq(purchaseRequisitionsTable.id, id), eq(purchaseRequisitionsTable.tenantId, tenantId)))
+      .returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: `requisition.${parsed.data.decision}`, entityType: "purchase_requisition", entityId: String(id), newValues: { decision: parsed.data.decision, comment: parsed.data.comment, newStatus: result.newStatus } });
   res.json(updated);
 });
 
@@ -889,14 +1067,13 @@ router.post("/procurement/purchase-orders/:id/submit", ...tenantWriteMiddleware,
   res.json(updated);
 });
 
-// Approve/reject/return PO
-router.post("/procurement/purchase-orders/:id/decision", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+// Approve/reject/return PO — restricted to approver, tenant_admin, super_admin
+router.post("/procurement/purchase-orders/:id/decision", ...approverMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail, userRole } = req as TenantRequest;
   const id = Number(req.params.id);
   const schema = z.object({
     decision: z.enum(["approved", "rejected", "returned"]),
     comment: z.string().optional(),
-    stepNumber: z.number().int().default(1),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
@@ -904,28 +1081,38 @@ router.post("/procurement/purchase-orders/:id/decision", ...tenantWriteMiddlewar
   const [po] = await withTenantDb(tenantId, (db) =>
     db.select().from(purchaseOrdersTable).where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId))).limit(1));
   if (!po) { res.status(404).json({ error: "PO not found" }); return; }
+  if (po.status !== "pending_approval") {
+    res.status(400).json({ error: `Purchase order is not awaiting approval (current status: ${po.status})` });
+    return;
+  }
 
-  await withTenantDb(tenantId, (db) =>
-    db.insert(approvalDecisionsTable).values({
+  let result: { newStatus: string; newStepNum: number };
+  try {
+    result = await executeApprovalDecision({
       tenantId,
-      workflowId: po.approvalWorkflowId ?? undefined,
-      stepNumber: parsed.data.stepNumber,
       entityType: "purchase_order",
       entityId: id,
-      approverClerkId: clerkUserId,
-      approverEmail: userEmail,
+      workflowId: po.approvalWorkflowId,
+      currentStepNum: po.currentApprovalStep ?? 1,
+      entityTotal: po.total,
+      actorClerkId: clerkUserId,
+      actorEmail: userEmail,
+      actorRole: userRole,
       decision: parsed.data.decision,
       comment: parsed.data.comment,
-    } as typeof approvalDecisionsTable.$inferInsert));
-
-  let newStatus = po.status;
-  if (parsed.data.decision === "approved") newStatus = "approved";
-  else if (parsed.data.decision === "rejected") newStatus = "rejected";
-  else if (parsed.data.decision === "returned") newStatus = "returned";
+    });
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message: string };
+    res.status(e.statusCode ?? 500).json({ error: e.message });
+    return;
+  }
 
   const [updated] = await withTenantDb(tenantId, (db) =>
-    db.update(purchaseOrdersTable).set({ status: newStatus }).where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId))).returning());
-  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: `purchase_order.${parsed.data.decision}`, entityType: "purchase_order", entityId: String(id), newValues: { decision: parsed.data.decision, comment: parsed.data.comment } });
+    db.update(purchaseOrdersTable)
+      .set({ status: result.newStatus, currentApprovalStep: result.newStepNum || undefined })
+      .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId)))
+      .returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: `purchase_order.${parsed.data.decision}`, entityType: "purchase_order", entityId: String(id), newValues: { decision: parsed.data.decision, comment: parsed.data.comment, newStatus: result.newStatus } });
   res.json(updated);
 });
 
@@ -1215,6 +1402,10 @@ router.post("/procurement/returns/:id/confirm", ...tenantWriteMiddleware, async 
 
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(poReturnsTable).set({ status: "confirmed" }).where(and(eq(poReturnsTable.id, id), eq(poReturnsTable.tenantId, tenantId))).returning());
+
+  // Post credit-note GL entry: Dr AP 2100 / Cr Inventory 1300
+  await createReturnGlPosting(tenantId, id, clerkUserId, userEmail);
+
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_return.confirmed", entityType: "po_return", entityId: String(id) });
   res.json(updated);
 });
@@ -1305,9 +1496,11 @@ router.get("/procurement/reports/open-pos", ...tenantUserMiddleware, async (req:
 });
 
 // Approval dashboard — pending items for the current user
-router.get("/procurement/reports/pending-approvals", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId } = req as TenantRequest;
-  const [reqs, pos] = await Promise.all([
+router.get("/procurement/reports/pending-approvals", ...approverMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userRole } = req as TenantRequest;
+
+  // Fetch all pending entities for this tenant
+  const [allReqs, allPos] = await Promise.all([
     withTenantDb(tenantId, (db) =>
       db.select().from(purchaseRequisitionsTable)
         .where(and(eq(purchaseRequisitionsTable.tenantId, tenantId), eq(purchaseRequisitionsTable.status, "pending_approval"), isNull(purchaseRequisitionsTable.deletedAt)))),
@@ -1315,10 +1508,56 @@ router.get("/procurement/reports/pending-approvals", ...tenantUserMiddleware, as
       db.select().from(purchaseOrdersTable)
         .where(and(eq(purchaseOrdersTable.tenantId, tenantId), eq(purchaseOrdersTable.status, "pending_approval"), isNull(purchaseOrdersTable.deletedAt)))),
   ]);
+
+  // Admins and super_admin see all pending items; approvers see only items on steps they can act on
+  if (userRole === "tenant_admin" || userRole === "super_admin") {
+    return void res.json({
+      pendingRequisitions: allReqs,
+      pendingPurchaseOrders: allPos,
+      totalPending: allReqs.length + allPos.length,
+    });
+  }
+
+  // Collect workflow IDs for filtering by step eligibility
+  const workflowIds = [
+    ...new Set([
+      ...allReqs.map((r) => r.approvalWorkflowId).filter(Boolean),
+      ...allPos.map((p) => p.approvalWorkflowId).filter(Boolean),
+    ]),
+  ] as number[];
+
+  let eligibleSteps: Array<{ workflowId: number; stepNumber: number }> = [];
+  if (workflowIds.length > 0) {
+    const steps = await withTenantDb(tenantId, (db) =>
+      db.select({
+        workflowId: approvalStepsTable.workflowId,
+        stepNumber: approvalStepsTable.stepNumber,
+        approverRoles: approvalStepsTable.approverRoles,
+        approverUserIds: approvalStepsTable.approverUserIds,
+      })
+        .from(approvalStepsTable)
+        .where(and(eq(approvalStepsTable.tenantId, tenantId), inArray(approvalStepsTable.workflowId, workflowIds))));
+
+    eligibleSteps = steps.filter((s) => {
+      const roles = (s.approverRoles as string[]) ?? [];
+      const userIds = (s.approverUserIds as string[]) ?? [];
+      return (roles.length === 0 || roles.includes(userRole)) &&
+             (userIds.length === 0 || userIds.includes(clerkUserId));
+    });
+  }
+
+  const isEligible = (workflowId: number | null | undefined, stepNum: number | null | undefined) => {
+    if (!workflowId) return true; // No workflow = open to any approver
+    return eligibleSteps.some((s) => s.workflowId === workflowId && s.stepNumber === (stepNum ?? 1));
+  };
+
+  const pendingRequisitions = allReqs.filter((r) => isEligible(r.approvalWorkflowId, r.currentApprovalStep));
+  const pendingPurchaseOrders = allPos.filter((p) => isEligible(p.approvalWorkflowId, p.currentApprovalStep));
+
   res.json({
-    pendingRequisitions: reqs,
-    pendingPurchaseOrders: pos,
-    totalPending: reqs.length + pos.length,
+    pendingRequisitions,
+    pendingPurchaseOrders,
+    totalPending: pendingRequisitions.length + pendingPurchaseOrders.length,
   });
 });
 
