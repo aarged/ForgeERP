@@ -218,12 +218,24 @@ async function updateStockLevel(
   let computedUnitCost: number | null = null;
   if (quantity > 0) {
     computedUnitCost = unitCost; // Inbound: use provided cost
+    if (computedUnitCost == null && costingMethod === "standard") {
+      const [stdItem] = await db.select({ unitCost: itemsTable.unitCost })
+        .from(itemsTable).where(and(eq(itemsTable.id, itemId), eq(itemsTable.tenantId, tenantId))).limit(1);
+      computedUnitCost = stdItem?.unitCost != null ? Number(stdItem.unitCost) : 0;
+    }
   } else if (costingMethod === "fifo") {
     computedUnitCost = fifoComputedCost; // FIFO: weighted avg of consumed layers
   } else if (costingMethod === "avco") {
     computedUnitCost = avcoCostBefore; // AVCO: cost at time of outbound
   } else {
-    computedUnitCost = unitCost; // Standard: caller must supply standard cost
+    // Standard outbound: caller may supply, else look up item standard cost (fallback 0)
+    if (unitCost != null) {
+      computedUnitCost = unitCost;
+    } else {
+      const [stdItem] = await db.select({ unitCost: itemsTable.unitCost })
+        .from(itemsTable).where(and(eq(itemsTable.id, itemId), eq(itemsTable.tenantId, tenantId))).limit(1);
+      computedUnitCost = stdItem?.unitCost != null ? Number(stdItem.unitCost) : 0;
+    }
   }
 
   return { computedUnitCost };
@@ -843,10 +855,19 @@ router.post("/inventory/transfers/:id/receive", ...tenantWriteMiddleware, async 
     // Serial number tracking: update serial to available at destination on receive
     if (transfer.lotNumber) { /* lot-tracked, no serial update */ }
 
-    // GL posting for transfer receive (inbound leg)
+    // GL posting for transfer receive (inbound leg) — fall back to outbound movement cost,
+    // then transfer.unitCost, then 0, so a posting is always attempted when an inv account exists.
     const receiveInvGl = await lookupInventoryGlAccount(db, tenantId);
-    if (receiveInvGl && transferInCost !== null) {
-      const inValue = Number(transfer.quantity) * transferInCost;
+    let resolvedInCost = transferInCost;
+    if (resolvedInCost == null && transfer.outMovementId != null) {
+      const [srcMv] = await db.select({ unitCost: inventoryMovementsTable.unitCost })
+        .from(inventoryMovementsTable)
+        .where(and(eq(inventoryMovementsTable.id, transfer.outMovementId), eq(inventoryMovementsTable.tenantId, tenantId))).limit(1);
+      if (srcMv?.unitCost != null) resolvedInCost = Number(srcMv.unitCost);
+    }
+    if (resolvedInCost == null && transfer.unitCost != null) resolvedInCost = Number(transfer.unitCost);
+    if (receiveInvGl && resolvedInCost != null && resolvedInCost > 0) {
+      const inValue = Number(transfer.quantity) * resolvedInCost;
       const glPostingId = await createInventoryGlPosting(db, tenantId, "inventory_transfer", inMovement.id, transfer.code ?? `TRF-${transferId}`,
         clerkUserId, userEmail ?? undefined,
         [
@@ -1002,15 +1023,22 @@ router.post("/inventory/issue", ...tenantWriteMiddleware, async (req: Request, r
 
     const issueCode = genCode("ISS", movement.id);
     await db.update(inventoryMovementsTable).set({ refCode: issueCode }).where(eq(inventoryMovementsTable.id, movement.id));
-    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, -d.quantity, null, d.lotNumber ?? null, movement.id, costingMethod);
+    const { computedUnitCost: issueCost } = await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, -d.quantity, null, d.lotNumber ?? null, movement.id, costingMethod);
 
-    // Create GL posting: Debit issue account, Credit inventory
+    // Persist consumed-layer cost (FIFO weighted avg / AVCO pre-move avg / standard) on the movement
+    const effectiveIssueCost = issueCost ?? unitCost;
+    if (effectiveIssueCost > 0) {
+      await db.update(inventoryMovementsTable).set({ unitCost: String(effectiveIssueCost) }).where(eq(inventoryMovementsTable.id, movement.id));
+    }
+
+    // Create GL posting: Debit issue account, Credit inventory (use real consumed cost)
     let glPostingId: number | null = null;
-    if (unitCost > 0 && glAcc) {
-      const value = d.quantity * unitCost;
+    const invGlAcc = await lookupInventoryGlAccount(db, tenantId);
+    if (effectiveIssueCost > 0 && glAcc && invGlAcc) {
+      const value = d.quantity * effectiveIssueCost;
       glPostingId = await createInventoryGlPosting(db, tenantId, "inventory_issue", movement.id, issueCode, clerkUserId, userEmail, [
         { accountCode: glAcc.code, accountName: glAcc.name, debit: value, credit: 0, description: `Issue: ${item?.code} x${d.quantity}` },
-        { accountCode: "1300", accountName: "Inventory Asset", debit: 0, credit: value, description: `Stock issued to ${glAcc.name}` },
+        { accountCode: invGlAcc.code, accountName: invGlAcc.name, debit: 0, credit: value, description: `Stock issued to ${glAcc.name}` },
       ]);
       if (glPostingId) {
         await db.update(inventoryMovementsTable).set({ glPostingId }).where(eq(inventoryMovementsTable.id, movement.id));
@@ -1270,7 +1298,8 @@ router.post("/inventory/build", ...tenantWriteMiddleware, async (req: Request, r
       await trackSerialNumber(db, tenantId, d.finishedSerialNumber, d.finishedItemId, d.finishedWarehouseId, d.finishedLocationId ?? null, finMovement.id, "inbound");
     }
 
-    // GL posting for build: DR finished goods inventory, CR component inventory
+    // GL posting for build: DR finished goods inventory, CR component inventory.
+    // Stamp glPostingId on EVERY movement (components + finished) for full traceability.
     const buildGlAcc = await lookupInventoryGlAccount(db, tenantId);
     if (buildGlAcc && totalComponentCost > 0) {
       const buildRef = `BLD-${finMovement.id}`;
@@ -1279,7 +1308,10 @@ router.post("/inventory/build", ...tenantWriteMiddleware, async (req: Request, r
         { accountCode: buildGlAcc.code, accountName: `${buildGlAcc.name} (Components)`, debit: 0, credit: totalComponentCost, description: `Component consumption for build ${buildRef}` },
       ]);
       if (finGlId) {
-        await db.update(inventoryMovementsTable).set({ glPostingId: finGlId }).where(eq(inventoryMovementsTable.id, finMovement.id));
+        for (const mvId of movementIds) {
+          await db.update(inventoryMovementsTable).set({ glPostingId: finGlId })
+            .where(and(eq(inventoryMovementsTable.id, mvId), eq(inventoryMovementsTable.tenantId, tenantId)));
+        }
       }
     }
 
