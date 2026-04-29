@@ -11,28 +11,29 @@ if (!process.env.DATABASE_URL) {
 }
 
 /**
- * Application DB pool.
+ * Application DB pool uses the `forge_app` role (no BYPASSRLS) so that
+ * PostgreSQL RLS policies are enforced for all tenant-scoped queries.
  *
- * In production, use FORGE_APP_DB_URL to connect with the `forge_app` role
- * which does NOT have BYPASSRLS privilege. This ensures PostgreSQL RLS policies
- * are fully enforced at the DB level for all application queries.
+ * Connection URL is built from DATABASE_URL + FORGE_APP_DB_PASSWORD secret:
+ *   DATABASE_URL  → postgresql://postgres:<pw>@host/db?...
+ *   App URL       → postgresql://forge_app:<FORGE_APP_DB_PASSWORD>@host/db?...
  *
- * DATABASE_URL (typically postgres superuser) is reserved for admin operations
- * such as schema migrations and setup scripts.
- *
- * To set up: create the forge_app role and set FORGE_APP_DB_URL to:
- *   postgresql://forge_app:<password>@<host>/<db>?sslmode=disable
+ * Falls back to DATABASE_URL if FORGE_APP_DB_PASSWORD is not set (dev/CI).
+ * adminPool always uses DATABASE_URL (superuser) for RLS setup and bootstrap queries.
  */
-const appDbUrl = process.env.FORGE_APP_DB_URL ?? process.env.DATABASE_URL;
+function buildAppDbUrl(): string {
+  const password = process.env.FORGE_APP_DB_PASSWORD;
+  if (!password) return process.env.DATABASE_URL!;
+  return process.env.DATABASE_URL!.replace(/\/\/[^:]*:[^@]*@/, `//forge_app:${password}@`);
+}
+
+const appDbUrl = buildAppDbUrl();
 
 export const pool = new Pool({ connectionString: appDbUrl });
 export const adminPool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle(pool, { schema });
 
-/**
- * Creates a new pg.Pool with the app-user connection string.
- * Use this in tests or tools that need a dedicated pool that enforces RLS.
- */
+/** Creates a new Pool using the app-user connection string (RLS enforced). */
 export function createAppPool() {
   return new Pool({ connectionString: appDbUrl });
 }
