@@ -93,6 +93,7 @@ export async function applyRLSPolicies(): Promise<void> {
       "inventory_stock",
       "inventory_movements",
       "gl_postings",
+      "notifications",
     ];
 
     for (const table of tenantScopedTables) {
@@ -159,6 +160,7 @@ export async function applyRLSPolicies(): Promise<void> {
       "inventory_stock",
       "inventory_movements",
       "gl_postings",
+      "notifications",
     ];
     for (const table of standardTenantTables) {
       await client.query(`

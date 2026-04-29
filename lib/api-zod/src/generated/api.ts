@@ -4106,3 +4106,78 @@ export const ReportGoodsInTransitResponseItem = zod.object({
 export const ReportGoodsInTransitResponse = zod.array(
   ReportGoodsInTransitResponseItem,
 );
+
+/**
+ * @summary List notifications for the current user
+ */
+export const ListNotificationsQueryParams = zod.object({
+  unreadOnly: zod.enum(["true", "false"]).optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListNotificationsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListNotificationsResponse = zod.object({
+  notifications: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        recipientClerkId: zod.string().optional(),
+        type: zod.string().optional(),
+        title: zod.string().optional(),
+        message: zod.string().optional(),
+        entityType: zod.string().nullish(),
+        entityId: zod.number().nullish(),
+        entityCode: zod.string().nullish(),
+        isRead: zod.boolean().optional(),
+        createdAt: zod.coerce.date().optional(),
+        readAt: zod.coerce.date().nullish(),
+      }),
+    )
+    .optional(),
+  total: zod.number().optional(),
+  unreadCount: zod.number().optional(),
+  page: zod.number().optional(),
+  limit: zod.number().optional(),
+});
+
+/**
+ * @summary Mark all unread notifications as read
+ */
+export const MarkAllNotificationsReadHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const MarkAllNotificationsReadResponse = zod.object({
+  ok: zod.boolean().optional(),
+});
+
+/**
+ * @summary Mark a single notification as read
+ */
+export const MarkNotificationReadParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const MarkNotificationReadHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const MarkNotificationReadResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  recipientClerkId: zod.string().optional(),
+  type: zod.string().optional(),
+  title: zod.string().optional(),
+  message: zod.string().optional(),
+  entityType: zod.string().nullish(),
+  entityId: zod.number().nullish(),
+  entityCode: zod.string().nullish(),
+  isRead: zod.boolean().optional(),
+  createdAt: zod.coerce.date().optional(),
+  readAt: zod.coerce.date().nullish(),
+});

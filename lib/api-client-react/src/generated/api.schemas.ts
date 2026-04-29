@@ -1878,6 +1878,21 @@ export interface PoSummaryRow {
   total?: number;
 }
 
+export interface Notification {
+  id?: number;
+  tenantId?: number;
+  recipientClerkId?: string;
+  type?: string;
+  title?: string;
+  message?: string;
+  entityType?: string | null;
+  entityId?: number | null;
+  entityCode?: string | null;
+  isRead?: boolean;
+  createdAt?: string;
+  readAt?: string | null;
+}
+
 export type UploadOnboardingCsvBodyCsvType =
   (typeof UploadOnboardingCsvBodyCsvType)[keyof typeof UploadOnboardingCsvBodyCsvType];
 
@@ -2143,4 +2158,30 @@ export type ReportGoodsInTransit200Item = {
   totalReceived?: number;
   outstandingQty?: number;
   outstandingPct?: number;
+};
+
+export type ListNotificationsParams = {
+  unreadOnly?: ListNotificationsUnreadOnly;
+  page?: number;
+  limit?: number;
+};
+
+export type ListNotificationsUnreadOnly =
+  (typeof ListNotificationsUnreadOnly)[keyof typeof ListNotificationsUnreadOnly];
+
+export const ListNotificationsUnreadOnly = {
+  true: "true",
+  false: "false",
+} as const;
+
+export type ListNotifications200 = {
+  notifications?: Notification[];
+  total?: number;
+  unreadCount?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type MarkAllNotificationsRead200 = {
+  ok?: boolean;
 };

@@ -2178,7 +2178,7 @@ paths:
       operationId: listApprovalWorkflows
       summary: List approval workflows
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2196,7 +2196,7 @@ paths:
       operationId: createApprovalWorkflow
       summary: Create approval workflow
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2219,7 +2219,7 @@ paths:
       operationId: updateApprovalWorkflow
       summary: Update approval workflow
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2246,7 +2246,7 @@ paths:
       operationId: listApprovalSteps
       summary: List approval steps for a workflow
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2268,7 +2268,7 @@ paths:
       operationId: createApprovalStep
       summary: Create approval step
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2295,7 +2295,7 @@ paths:
       operationId: deleteApprovalStep
       summary: Delete approval step
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2317,7 +2317,7 @@ paths:
       operationId: listRequisitions
       summary: List purchase requisitions
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2345,7 +2345,7 @@ paths:
       operationId: createRequisition
       summary: Create purchase requisition
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2368,7 +2368,7 @@ paths:
       operationId: getRequisition
       summary: Get purchase requisition
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2388,7 +2388,7 @@ paths:
       operationId: updateRequisition
       summary: Update purchase requisition
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2413,7 +2413,7 @@ paths:
       operationId: deleteRequisition
       summary: Delete purchase requisition
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2431,7 +2431,7 @@ paths:
       operationId: updateRequisitionLines
       summary: Replace all lines on a requisition
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2462,7 +2462,7 @@ paths:
       operationId: submitRequisition
       summary: Submit requisition for approval
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2484,7 +2484,7 @@ paths:
       operationId: decideRequisition
       summary: Approve/reject/return a requisition
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2511,7 +2511,7 @@ paths:
       operationId: convertRequisitionToPo
       summary: Convert approved requisition to purchase order
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2533,7 +2533,7 @@ paths:
       operationId: listPurchaseOrders
       summary: List purchase orders
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2564,7 +2564,7 @@ paths:
       operationId: createPurchaseOrder
       summary: Create purchase order
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2587,7 +2587,7 @@ paths:
       operationId: getPurchaseOrder
       summary: Get purchase order with lines and receipts
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2607,7 +2607,7 @@ paths:
       operationId: updatePurchaseOrder
       summary: Update purchase order
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2632,7 +2632,7 @@ paths:
       operationId: deletePurchaseOrder
       summary: Delete purchase order
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2650,7 +2650,7 @@ paths:
       operationId: updatePoLines
       summary: Replace all lines on a purchase order
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2681,7 +2681,7 @@ paths:
       operationId: submitPurchaseOrder
       summary: Submit PO for approval
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2703,7 +2703,7 @@ paths:
       operationId: decidePurchaseOrder
       summary: Approve/reject/return a PO
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2730,7 +2730,7 @@ paths:
       operationId: sendPurchaseOrder
       summary: Mark PO as sent to supplier (only allowed from approved status)
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2752,7 +2752,7 @@ paths:
       operationId: generatePurchaseOrderPdf
       summary: Generate PO PDF document for supplier dispatch
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2789,7 +2789,7 @@ paths:
       operationId: listReceipts
       summary: List goods receipts
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2817,7 +2817,7 @@ paths:
       operationId: createReceipt
       summary: Create goods receipt
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2840,7 +2840,7 @@ paths:
       operationId: getReceipt
       summary: Get goods receipt with lines
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2860,7 +2860,7 @@ paths:
       operationId: updateReceipt
       summary: Update a draft receipt
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2891,7 +2891,7 @@ paths:
       operationId: deleteReceipt
       summary: Delete a draft receipt
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2910,7 +2910,7 @@ paths:
       operationId: getReceiptGlPreview
       summary: Preview GL entries that would be posted for a receipt (no commit)
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2946,7 +2946,7 @@ paths:
       operationId: confirmReceipt
       summary: Confirm receipt, post inventory and GL
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2968,7 +2968,7 @@ paths:
       operationId: listReturns
       summary: List returns to vendor
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -2996,7 +2996,7 @@ paths:
       operationId: createReturn
       summary: Create return to vendor
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3019,7 +3019,7 @@ paths:
       operationId: getReturn
       summary: Get return to vendor with lines
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3039,7 +3039,7 @@ paths:
       operationId: updateReturn
       summary: Update a draft return to vendor
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3069,7 +3069,7 @@ paths:
       operationId: deleteReturn
       summary: Delete a draft return to vendor
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3088,7 +3088,7 @@ paths:
       operationId: confirmReturn
       summary: Confirm return to vendor, reverse inventory
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3110,7 +3110,7 @@ paths:
       operationId: listGlPostings
       summary: List GL postings
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3140,7 +3140,7 @@ paths:
       operationId: listInventoryStock
       summary: Query inventory stock levels
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3170,7 +3170,7 @@ paths:
       operationId: reportOpenPos
       summary: Report — open purchase orders
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3190,7 +3190,7 @@ paths:
       operationId: reportPendingApprovals
       summary: Report — pending approvals for current user
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3208,7 +3208,7 @@ paths:
       operationId: reportSupplierPerformance
       summary: Report — supplier performance
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3228,7 +3228,7 @@ paths:
       operationId: reportPoSummary
       summary: Report — PO summary by status
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3254,7 +3254,7 @@ paths:
       operationId: reportGoodsInTransit
       summary: Report — goods in transit (sent POs not yet fully received)
       tags: [Procurement]
-      security: [{ bearerAuth: [] }]
+      security: [{ clerkAuth: [] }]
       parameters:
         - in: header
           name: x-tenant-id
@@ -3292,6 +3292,85 @@ paths:
                     totalReceived: { type: number }
                     outstandingQty: { type: number }
                     outstandingPct: { type: integer }
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      summary: List notifications for the current user
+      tags: [Notifications]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: unreadOnly
+          schema: { type: string, enum: ["true", "false"] }
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: limit
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Paginated notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items: { $ref: "#/components/schemas/Notification" }
+                  total: { type: integer }
+                  unreadCount: { type: integer }
+                  page: { type: integer }
+                  limit: { type: integer }
+
+  /notifications/read-all:
+    patch:
+      operationId: markAllNotificationsRead
+      summary: Mark all unread notifications as read
+      tags: [Notifications]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+
+  /notifications/{id}/read:
+    patch:
+      operationId: markNotificationRead
+      summary: Mark a single notification as read
+      tags: [Notifications]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Updated notification
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
 
 components:
   securitySchemes:
@@ -5380,3 +5459,19 @@ components:
         status: { type: string }
         count: { type: integer }
         total: { type: number }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        recipientClerkId: { type: string }
+        type: { type: string }
+        title: { type: string }
+        message: { type: string }
+        entityType: { type: string, nullable: true }
+        entityId: { type: integer, nullable: true }
+        entityCode: { type: string, nullable: true }
+        isRead: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        readAt: { type: string, format: date-time, nullable: true }

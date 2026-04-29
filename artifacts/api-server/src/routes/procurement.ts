@@ -19,6 +19,7 @@ import {
   warehousesTable,
   itemsTable,
   glAccountsTable,
+  notificationsTable,
 } from "@workspace/db";
 import { withTenantDb } from "@workspace/db/rls";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -60,6 +61,33 @@ const approverMiddleware = [
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+async function createNotification(
+  tenantId: number,
+  recipientClerkId: string,
+  type: string,
+  title: string,
+  message: string,
+  opts: { entityType?: string; entityId?: number; entityCode?: string } = {},
+): Promise<void> {
+  try {
+    await withTenantDb(tenantId, (db) =>
+      db.insert(notificationsTable).values({
+        tenantId,
+        recipientClerkId,
+        type,
+        title,
+        message,
+        entityType: opts.entityType,
+        entityId: opts.entityId,
+        entityCode: opts.entityCode,
+        isRead: false,
+      }),
+    );
+  } catch {
+    // Notification failures are non-blocking — never let them crash a business transaction
+  }
+}
 
 function genCode(prefix: string, id: number): string {
   return `${prefix}-${String(id).padStart(6, "0")}`;
@@ -897,6 +925,29 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
       .returning(),
   );
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "requisition.submitted", entityType: "purchase_requisition", entityId: String(id) });
+
+  // Notify: if a workflow was assigned, tell step-1 approvers; otherwise confirm auto-approval to submitter
+  if (workflow) {
+    const step1 = await withTenantDb(tenantId, (db) =>
+      db.select().from(approvalStepsTable)
+        .where(and(eq(approvalStepsTable.workflowId, workflow.id), eq(approvalStepsTable.stepNumber, 1), eq(approvalStepsTable.tenantId, tenantId)))
+        .limit(1));
+    if (step1[0]) {
+      const approverIds: string[] = (step1[0].approverUserIds ?? []) as string[];
+      await Promise.all(approverIds.map((uid) =>
+        createNotification(tenantId, uid, "approval_required",
+          "Requisition requires your approval",
+          `Purchase Requisition ${genCode("REQ", id)} has been submitted and is awaiting your approval.`,
+          { entityType: "purchase_requisition", entityId: id, entityCode: genCode("REQ", id) }),
+      ));
+    }
+  } else {
+    await createNotification(tenantId, clerkUserId, "decision_made",
+      "Requisition auto-approved",
+      `Purchase Requisition ${genCode("REQ", id)} was auto-approved (no approval workflow required).`,
+      { entityType: "purchase_requisition", entityId: id, entityCode: genCode("REQ", id) });
+  }
+
   res.json(updated);
 });
 
@@ -947,12 +998,45 @@ router.post("/procurement/requisitions/:id/decision", ...approverMiddleware, asy
       .returning());
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: `requisition.${parsed.data.decision}`, entityType: "purchase_requisition", entityId: String(id), newValues: { decision: parsed.data.decision, comment: parsed.data.comment, newStatus: result.newStatus } });
 
+  // Notify requester of the decision outcome
+  if (req_.requestedByClerkId) {
+    const decisionLabel = parsed.data.decision === "approved" ? "approved" : parsed.data.decision === "rejected" ? "rejected" : "returned for revision";
+    await createNotification(tenantId, req_.requestedByClerkId, "decision_made",
+      `Requisition ${decisionLabel}`,
+      `Purchase Requisition ${genCode("REQ", id)} has been ${decisionLabel}.${parsed.data.comment ? ` Comment: ${parsed.data.comment}` : ""}`,
+      { entityType: "purchase_requisition", entityId: id, entityCode: genCode("REQ", id) });
+  }
+
+  // If advancing to next step (still pending_approval), notify next step approvers
+  if (result.newStatus === "pending_approval" && result.newStepNum > 0 && req_.approvalWorkflowId) {
+    const nextStep = await withTenantDb(tenantId, (db) =>
+      db.select().from(approvalStepsTable)
+        .where(and(eq(approvalStepsTable.workflowId, req_.approvalWorkflowId!), eq(approvalStepsTable.stepNumber, result.newStepNum), eq(approvalStepsTable.tenantId, tenantId)))
+        .limit(1));
+    if (nextStep[0]) {
+      const approverIds: string[] = (nextStep[0].approverUserIds ?? []) as string[];
+      await Promise.all(approverIds.map((uid) =>
+        createNotification(tenantId, uid, "approval_required",
+          "Requisition requires your approval",
+          `Purchase Requisition ${genCode("REQ", id)} has advanced to step ${result.newStepNum} and is awaiting your approval.`,
+          { entityType: "purchase_requisition", entityId: id, entityCode: genCode("REQ", id) }),
+      ));
+    }
+  }
+
   // Auto-convert to a draft PO when the requisition reaches final "approved" state
   let autoPo: { id: number } | undefined;
   if (result.newStatus === "approved") {
     const poId = await createPoFromRequisition(tenantId, id, clerkUserId, userEmail);
     if (poId) {
       await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "requisition.auto_converted_to_po", entityType: "purchase_requisition", entityId: String(id), newValues: { poId } });
+      // Notify requester that a PO was auto-created
+      if (req_.requestedByClerkId) {
+        await createNotification(tenantId, req_.requestedByClerkId, "po_auto_created",
+          "Purchase Order auto-created",
+          `Purchase Order was automatically created from approved Requisition ${genCode("REQ", id)}.`,
+          { entityType: "purchase_requisition", entityId: id, entityCode: genCode("REQ", id) });
+      }
       autoPo = { id: poId };
     }
   }
@@ -1298,6 +1382,29 @@ router.post("/procurement/purchase-orders/:id/submit", ...tenantWriteMiddleware,
       .set({ status: workflow ? "pending_approval" : "approved", approvalWorkflowId: workflow?.id ?? undefined, currentApprovalStep: workflow ? 1 : 0 })
       .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId))).returning());
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "purchase_order.submitted", entityType: "purchase_order", entityId: String(id) });
+
+  // Notify step-1 approvers or confirm auto-approval to submitter
+  if (workflow) {
+    const step1 = await withTenantDb(tenantId, (db) =>
+      db.select().from(approvalStepsTable)
+        .where(and(eq(approvalStepsTable.workflowId, workflow.id), eq(approvalStepsTable.stepNumber, 1), eq(approvalStepsTable.tenantId, tenantId)))
+        .limit(1));
+    if (step1[0]) {
+      const approverIds: string[] = (step1[0].approverUserIds ?? []) as string[];
+      await Promise.all(approverIds.map((uid) =>
+        createNotification(tenantId, uid, "approval_required",
+          "Purchase Order requires your approval",
+          `Purchase Order ${genCode("PO", id)} has been submitted and is awaiting your approval.`,
+          { entityType: "purchase_order", entityId: id, entityCode: genCode("PO", id) }),
+      ));
+    }
+  } else {
+    await createNotification(tenantId, clerkUserId, "decision_made",
+      "Purchase Order auto-approved",
+      `Purchase Order ${genCode("PO", id)} was auto-approved (no approval workflow required).`,
+      { entityType: "purchase_order", entityId: id, entityCode: genCode("PO", id) });
+  }
+
   res.json(updated);
 });
 
@@ -1347,6 +1454,33 @@ router.post("/procurement/purchase-orders/:id/decision", ...approverMiddleware, 
       .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId)))
       .returning());
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: `purchase_order.${parsed.data.decision}`, entityType: "purchase_order", entityId: String(id), newValues: { decision: parsed.data.decision, comment: parsed.data.comment, newStatus: result.newStatus } });
+
+  // Notify PO creator of the decision outcome
+  if (po.createdByClerkId) {
+    const decisionLabel = parsed.data.decision === "approved" ? "approved" : parsed.data.decision === "rejected" ? "rejected" : "returned for revision";
+    await createNotification(tenantId, po.createdByClerkId, "decision_made",
+      `Purchase Order ${decisionLabel}`,
+      `Purchase Order ${genCode("PO", id)} has been ${decisionLabel}.${parsed.data.comment ? ` Comment: ${parsed.data.comment}` : ""}`,
+      { entityType: "purchase_order", entityId: id, entityCode: genCode("PO", id) });
+  }
+
+  // If advancing to next step, notify next step approvers
+  if (result.newStatus === "pending_approval" && result.newStepNum > 0 && po.approvalWorkflowId) {
+    const nextStep = await withTenantDb(tenantId, (db) =>
+      db.select().from(approvalStepsTable)
+        .where(and(eq(approvalStepsTable.workflowId, po.approvalWorkflowId!), eq(approvalStepsTable.stepNumber, result.newStepNum), eq(approvalStepsTable.tenantId, tenantId)))
+        .limit(1));
+    if (nextStep[0]) {
+      const approverIds: string[] = (nextStep[0].approverUserIds ?? []) as string[];
+      await Promise.all(approverIds.map((uid) =>
+        createNotification(tenantId, uid, "approval_required",
+          "Purchase Order requires your approval",
+          `Purchase Order ${genCode("PO", id)} has advanced to step ${result.newStepNum} and is awaiting your approval.`,
+          { entityType: "purchase_order", entityId: id, entityCode: genCode("PO", id) }),
+      ));
+    }
+  }
+
   res.json(updated);
 });
 
@@ -1543,6 +1677,18 @@ router.post("/procurement/receipts", ...tenantWriteMiddleware, async (req: Reque
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
 
   const { lines, ...header } = parsed.data;
+
+  // Ensure the PO is in a receivable state before creating any records
+  const [receivingPo] = await withTenantDb(tenantId, (db) =>
+    db.select({ id: purchaseOrdersTable.id, status: purchaseOrdersTable.status })
+      .from(purchaseOrdersTable)
+      .where(and(eq(purchaseOrdersTable.id, parsed.data.poId), eq(purchaseOrdersTable.tenantId, tenantId)))
+      .limit(1));
+  if (!receivingPo) { res.status(404).json({ error: "Purchase order not found" }); return; }
+  if (!["approved", "sent", "partially_received"].includes(receivingPo.status)) {
+    res.status(400).json({ error: `Cannot receive goods against a PO with status: ${receivingPo.status}` });
+    return;
+  }
 
   // Validate all poLineIds BEFORE creating any records (transactional integrity)
   if (lines.length > 0) {
@@ -2186,6 +2332,61 @@ router.get("/procurement/reports/goods-in-transit", ...tenantUserMiddleware, asy
   });
 
   res.json(result);
+});
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+router.get("/notifications", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId } = req as TenantRequest;
+  const { unreadOnly, page = "1", limit = "25" } = req.query as Record<string, string>;
+  const pg = Math.max(1, Number(page));
+  const lim = Math.min(100, Math.max(1, Number(limit)));
+  const offset = (pg - 1) * lim;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select().from(notificationsTable)
+      .where(and(
+        eq(notificationsTable.tenantId, tenantId),
+        eq(notificationsTable.recipientClerkId, clerkUserId),
+        unreadOnly === "true" ? eq(notificationsTable.isRead, false) : undefined,
+      ))
+      .orderBy(desc(notificationsTable.createdAt))
+      .limit(lim).offset(offset));
+  const [countRow] = await withTenantDb(tenantId, (db) =>
+    db.select({ count: sql<number>`count(*)` }).from(notificationsTable)
+      .where(and(
+        eq(notificationsTable.tenantId, tenantId),
+        eq(notificationsTable.recipientClerkId, clerkUserId),
+        unreadOnly === "true" ? eq(notificationsTable.isRead, false) : undefined,
+      )));
+  const [unreadRow] = await withTenantDb(tenantId, (db) =>
+    db.select({ count: sql<number>`count(*)` }).from(notificationsTable)
+      .where(and(
+        eq(notificationsTable.tenantId, tenantId),
+        eq(notificationsTable.recipientClerkId, clerkUserId),
+        eq(notificationsTable.isRead, false),
+      )));
+  res.json({ notifications: rows, total: Number(countRow?.count ?? 0), unreadCount: Number(unreadRow?.count ?? 0), page: pg, limit: lim });
+});
+
+router.patch("/notifications/:id/read", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(notificationsTable)
+      .set({ isRead: true, readAt: new Date() })
+      .where(and(eq(notificationsTable.id, id), eq(notificationsTable.tenantId, tenantId), eq(notificationsTable.recipientClerkId, clerkUserId)))
+      .returning());
+  if (!updated) { res.status(404).json({ error: "Notification not found" }); return; }
+  res.json(updated);
+});
+
+router.patch("/notifications/read-all", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId } = req as TenantRequest;
+  await withTenantDb(tenantId, (db) =>
+    db.update(notificationsTable)
+      .set({ isRead: true, readAt: new Date() })
+      .where(and(eq(notificationsTable.tenantId, tenantId), eq(notificationsTable.recipientClerkId, clerkUserId), eq(notificationsTable.isRead, false))));
+  res.json({ ok: true });
 });
 
 export default router;

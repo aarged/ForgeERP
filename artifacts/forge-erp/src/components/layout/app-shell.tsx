@@ -2,6 +2,7 @@ import { useUser } from "@clerk/react";
 import { Link, useLocation } from "wouter";
 import {
   BarChart3,
+  Bell,
   ChevronDown,
   Command,
   Database,
@@ -19,7 +20,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { useClerk } from "@clerk/react";
-import { useGetCurrentUser } from "@workspace/api-client-react";
+import { useGetCurrentUser, useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead } from "@workspace/api-client-react";
 import { getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 
 import {
@@ -51,6 +52,75 @@ import {
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+type NotifItem = { id: number; title: string; message: string; isRead: boolean; createdAt?: string; entityType?: string | null; entityCode?: string | null };
+
+function NotificationBell() {
+  const [open, setOpen] = useState(false);
+  const { data, refetch } = useListNotifications({}) as { data: { notifications?: NotifItem[]; unreadCount?: number } | undefined; refetch: () => void };
+  const markRead = useMarkNotificationRead();
+  const markAll = useMarkAllNotificationsRead();
+
+  const notifications: NotifItem[] = data?.notifications ?? [];
+  const unreadCount = data?.unreadCount ?? 0;
+
+  function handleOpen(o: boolean) {
+    setOpen(o);
+    if (o) refetch();
+  }
+
+  return (
+    <Popover open={open} onOpenChange={handleOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" className="relative">
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <Badge className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px] rounded-full">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 p-0" align="end">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <span className="font-semibold text-sm">Notifications</span>
+          {unreadCount > 0 && (
+            <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => markAll.mutate(undefined, { onSuccess: () => refetch() })}>
+              Mark all read
+            </Button>
+          )}
+        </div>
+        <ScrollArea className="h-80">
+          {notifications.length === 0 ? (
+            <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">No notifications</div>
+          ) : (
+            <div className="divide-y">
+              {notifications.map((n) => (
+                <div
+                  key={n.id}
+                  className={`px-4 py-3 cursor-pointer hover:bg-accent transition-colors ${!n.isRead ? "bg-primary/5" : ""}`}
+                  onClick={() => { if (!n.isRead) markRead.mutate({ id: n.id }, { onSuccess: () => refetch() }); }}
+                >
+                  <div className="flex items-start gap-2">
+                    {!n.isRead && <div className="mt-1.5 h-2 w-2 rounded-full bg-primary flex-shrink-0" />}
+                    <div className={!n.isRead ? "" : "ml-4"}>
+                      <p className="text-sm font-medium leading-tight">{n.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>
+                      {n.entityCode && <p className="text-xs text-primary mt-0.5">{n.entityCode}</p>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 const COMMAND_ITEMS = [
   { label: "Go to Dashboard", href: "/dashboard" },
@@ -300,6 +370,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background px-4 sm:px-6">
           <SidebarTrigger className="-ml-1" />
           <div className="flex-1" />
+          <NotificationBell />
         </header>
         <div className="flex-1 p-4 sm:p-6 lg:p-8">{children}</div>
       </main>
