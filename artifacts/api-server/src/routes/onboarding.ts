@@ -507,6 +507,16 @@ router.post(
 
     const { step1, step2, step3, step4, step5 } = parsed.data;
 
+    // Enforce payment method for paid plans when Stripe is configured
+    const requestedPlan = step4?.planTier ?? "starter";
+    if (isStripeConfigured() && requestedPlan !== "starter" && !step4?.stripePaymentMethodId) {
+      res.status(400).json({
+        error: "A payment method is required to activate a paid plan.",
+        code: "PAYMENT_METHOD_REQUIRED",
+      });
+      return;
+    }
+
     // Idempotency: if already onboarded, return existing tenant
     const existingMembership = await adminDb
       .select({
@@ -651,7 +661,12 @@ router.post(
 
         await writeAuditLog({ req, actorClerkId: clerkId, actorEmail: userEmail, tenantId: tenant.id, action: "tenant.stripe_activated", entityType: "tenant", entityId: tenant.id, newValues: { stripeCustomerId, stripeSubscriptionId, planTier: planTierForStripe } });
       } catch (err) {
-        logger.error({ err, tenantId: tenant.id, planTierForStripe }, "Stripe activation failed during onboarding — continuing without billing");
+        logger.error({ err, tenantId: tenant.id, planTierForStripe }, "Stripe activation failed during onboarding — downgrading to starter plan");
+        // Downgrade to starter so an unpaid paid plan is never left active
+        await adminDb.update(tenantsTable)
+          .set({ planTier: "starter" })
+          .where(eq(tenantsTable.id, tenant.id));
+        await writeAuditLog({ req, actorClerkId: clerkId, actorEmail: userEmail, tenantId: tenant.id, action: "tenant.stripe_activation_failed", entityType: "tenant", entityId: tenant.id, newValues: { originalPlan: planTierForStripe, downgradedTo: "starter", error: err instanceof Error ? err.message : String(err) } });
       }
     }
 
