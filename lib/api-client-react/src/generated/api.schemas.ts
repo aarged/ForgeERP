@@ -1900,6 +1900,566 @@ export interface Notification {
   readAt?: string | null;
 }
 
+export interface Quotation {
+  id?: number;
+  tenantId?: number;
+  code?: string;
+  customerId?: number | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  customerRef?: string | null;
+  expiryDate?: string | null;
+  requestedDate?: string | null;
+  currencyCode?: string;
+  paymentTerms?: string | null;
+  status?: string;
+  subtotal?: string;
+  taxAmount?: string;
+  total?: string;
+  notes?: string | null;
+  convertedSoId?: number | null;
+  sentAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface QuotationLine {
+  id?: number;
+  quotationId?: number;
+  lineNumber?: number;
+  lineType?: string;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  description?: string | null;
+  quantity?: string;
+  unitPrice?: string;
+  discountPct?: string | null;
+  taxPct?: string | null;
+  lineTotal?: string;
+  notes?: string | null;
+}
+
+export type QuotationLineInputLineType =
+  (typeof QuotationLineInputLineType)[keyof typeof QuotationLineInputLineType];
+
+export const QuotationLineInputLineType = {
+  stock: "stock",
+  service: "service",
+  charge: "charge",
+  comment: "comment",
+} as const;
+
+export interface QuotationLineInput {
+  lineNumber?: number;
+  lineType?: QuotationLineInputLineType;
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  description?: string;
+  quantity?: number;
+  unitOfMeasure?: string;
+  unitPrice?: number;
+  discountPct?: number;
+  taxPct?: number;
+  glAccountId?: number;
+  notes?: string;
+}
+
+export type QuotationDetail = Quotation & {
+  lines?: QuotationLine[];
+};
+
+export interface QuotationListResponse {
+  data?: Quotation[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export interface CreateQuotationBody {
+  customerId?: number;
+  customerName?: string;
+  customerEmail?: string;
+  customerRef?: string;
+  expiryDate?: string;
+  requestedDate?: string;
+  currencyCode?: string;
+  paymentTerms?: string;
+  notes?: string;
+  internalNotes?: string;
+  lines?: QuotationLineInput[];
+}
+
+export interface UpdateQuotationBody {
+  customerName?: string;
+  customerEmail?: string;
+  customerRef?: string;
+  expiryDate?: string;
+  requestedDate?: string;
+  paymentTerms?: string;
+  notes?: string;
+  internalNotes?: string;
+}
+
+export interface SalesOrder {
+  id?: number;
+  tenantId?: number;
+  code?: string;
+  quotationId?: number | null;
+  customerId?: number | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  customerRef?: string | null;
+  warehouseId?: number | null;
+  requestedDate?: string | null;
+  scheduledDate?: string | null;
+  currencyCode?: string;
+  paymentTerms?: string | null;
+  status?: string;
+  subtotal?: string;
+  taxAmount?: string;
+  total?: string;
+  notes?: string | null;
+  confirmedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SoLine {
+  id?: number;
+  soId?: number;
+  lineNumber?: number;
+  lineType?: string;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  description?: string | null;
+  quantity?: string;
+  despatched_qty?: string;
+  invoiced_qty?: string;
+  unitPrice?: string;
+  discountPct?: string | null;
+  taxPct?: string | null;
+  lineTotal?: string;
+  notes?: string | null;
+}
+
+export type SoLineInputLineType =
+  (typeof SoLineInputLineType)[keyof typeof SoLineInputLineType];
+
+export const SoLineInputLineType = {
+  stock: "stock",
+  service: "service",
+  charge: "charge",
+  comment: "comment",
+} as const;
+
+export interface SoLineInput {
+  lineNumber?: number;
+  lineType?: SoLineInputLineType;
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  description?: string;
+  quantity?: number;
+  unitOfMeasure?: string;
+  unitPrice?: number;
+  discountPct?: number;
+  taxPct?: number;
+  glAccountId?: number;
+  notes?: string;
+}
+
+export type SalesOrderDetail = SalesOrder & {
+  lines?: SoLine[];
+};
+
+export interface SalesOrderListResponse {
+  data?: SalesOrder[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export interface CreateSalesOrderBody {
+  customerId?: number;
+  customerName?: string;
+  customerEmail?: string;
+  customerRef?: string;
+  warehouseId?: number;
+  requestedDate?: string;
+  scheduledDate?: string;
+  currencyCode?: string;
+  paymentTerms?: string;
+  notes?: string;
+  internalNotes?: string;
+  lines?: SoLineInput[];
+}
+
+export interface UpdateSalesOrderBody {
+  customerName?: string;
+  customerEmail?: string;
+  customerRef?: string;
+  warehouseId?: number;
+  requestedDate?: string;
+  scheduledDate?: string;
+  paymentTerms?: string;
+  notes?: string;
+  internalNotes?: string;
+}
+
+export interface PickSlip {
+  id?: number;
+  code?: string;
+  soId?: number;
+  warehouseId?: number | null;
+  status?: string;
+  notes?: string | null;
+  createdAt?: string;
+}
+
+export interface PickSlipLine {
+  id?: number;
+  pickSlipId?: number;
+  soLineId?: number;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  locationId?: number | null;
+  requiredQty?: string;
+  pickedQty?: string;
+  lotNumber?: string | null;
+}
+
+export type PickSlipDetail = PickSlip & {
+  lines?: PickSlipLine[];
+};
+
+export interface PickSlipListResponse {
+  data?: PickSlip[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export type CreatePickSlipBodyLinesItem = {
+  soLineId: number;
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  locationId?: number;
+  requiredQty: number;
+  lotNumber?: string;
+  serialNumber?: string;
+  batchNumber?: string;
+  notes?: string;
+};
+
+export interface CreatePickSlipBody {
+  soId: number;
+  warehouseId?: number;
+  notes?: string;
+  lines?: CreatePickSlipBodyLinesItem[];
+}
+
+export interface Despatch {
+  id?: number;
+  code?: string;
+  soId?: number;
+  warehouseId?: number | null;
+  status?: string;
+  despatchDate?: string | null;
+  trackingNumber?: string | null;
+  carrier?: string | null;
+  notes?: string | null;
+  glPostingId?: number | null;
+  despatchedAt?: string | null;
+  createdAt?: string;
+}
+
+export interface DespatchLine {
+  id?: number;
+  despatchId?: number;
+  soLineId?: number;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  quantity?: string;
+  unitPrice?: string | null;
+  locationId?: number | null;
+  lotNumber?: string | null;
+}
+
+export type DespatchDetail = Despatch & {
+  lines?: DespatchLine[];
+};
+
+export interface DespatchListResponse {
+  data?: Despatch[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export type CreateDespatchBodyLinesItem = {
+  soLineId: number;
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  quantity: number;
+  unitPrice?: number;
+  locationId?: number;
+  lotNumber?: string;
+  serialNumber?: string;
+  batchNumber?: string;
+  notes?: string;
+};
+
+export interface CreateDespatchBody {
+  soId: number;
+  warehouseId?: number;
+  despatchDate?: string;
+  trackingNumber?: string;
+  carrier?: string;
+  notes?: string;
+  lines: CreateDespatchBodyLinesItem[];
+}
+
+export interface CustomerInvoice {
+  id?: number;
+  code?: string;
+  soId?: number;
+  despatchId?: number | null;
+  customerId?: number | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  status?: string;
+  invoiceDate?: string | null;
+  dueDate?: string | null;
+  currencyCode?: string;
+  subtotal?: string;
+  taxAmount?: string;
+  total?: string;
+  paidAmount?: string;
+  notes?: string | null;
+  glPostingId?: number | null;
+  sentAt?: string | null;
+  createdAt?: string;
+}
+
+export interface CustomerInvoiceLine {
+  id?: number;
+  invoiceId?: number;
+  soLineId?: number | null;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  description?: string | null;
+  quantity?: string;
+  unitPrice?: string;
+  discountPct?: string | null;
+  taxPct?: string | null;
+  lineTotal?: string;
+}
+
+export type CustomerInvoiceDetail = CustomerInvoice & {
+  lines?: CustomerInvoiceLine[];
+};
+
+export interface CustomerInvoiceListResponse {
+  data?: CustomerInvoice[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export type CreateCustomerInvoiceBodyLinesItem = {
+  soLineId?: number;
+  despatchLineId?: number;
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  description?: string;
+  quantity: number;
+  unitPrice: number;
+  discountPct?: number;
+  taxPct?: number;
+  notes?: string;
+};
+
+export interface CreateCustomerInvoiceBody {
+  soId: number;
+  despatchId?: number;
+  invoiceDate?: string;
+  dueDate?: string;
+  notes?: string;
+  lines: CreateCustomerInvoiceBodyLinesItem[];
+}
+
+export interface CreditNote {
+  id?: number;
+  code?: string;
+  invoiceId?: number | null;
+  soId?: number | null;
+  rmaId?: number | null;
+  customerId?: number | null;
+  customerName?: string | null;
+  reason?: string | null;
+  status?: string;
+  subtotal?: string;
+  taxAmount?: string;
+  total?: string;
+  notes?: string | null;
+  glPostingId?: number | null;
+  issuedAt?: string | null;
+  createdAt?: string;
+}
+
+export interface CreditNoteListResponse {
+  data?: CreditNote[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export type CreateCreditNoteBodyLinesItem = {
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  description?: string;
+  quantity: number;
+  unitPrice: number;
+  taxPct?: number;
+  notes?: string;
+};
+
+export interface CreateCreditNoteBody {
+  soId?: number;
+  invoiceId?: number;
+  rmaId?: number;
+  customerId?: number;
+  customerName?: string;
+  reason?: string;
+  notes?: string;
+  lines?: CreateCreditNoteBodyLinesItem[];
+}
+
+export interface RmaOrder {
+  id?: number;
+  code?: string;
+  soId?: number | null;
+  invoiceId?: number | null;
+  customerId?: number | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  warehouseId?: number | null;
+  status?: string;
+  reason?: string | null;
+  resolution?: string;
+  notes?: string | null;
+  creditNoteId?: number | null;
+  authorizedAt?: string | null;
+  receivedAt?: string | null;
+  createdAt?: string;
+}
+
+export interface RmaLine {
+  id?: number;
+  rmaId?: number;
+  soLineId?: number | null;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  quantity?: string;
+  receivedQty?: string;
+  unitPrice?: string | null;
+  condition?: string;
+  disposition?: string;
+  reason?: string | null;
+}
+
+export type RmaDetail = RmaOrder & {
+  lines?: RmaLine[];
+};
+
+export interface RmaListResponse {
+  data?: RmaOrder[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export type CreateRmaBodyResolution =
+  (typeof CreateRmaBodyResolution)[keyof typeof CreateRmaBodyResolution];
+
+export const CreateRmaBodyResolution = {
+  credit: "credit",
+  exchange: "exchange",
+  repair: "repair",
+} as const;
+
+export type CreateRmaBodyLinesItemCondition =
+  (typeof CreateRmaBodyLinesItemCondition)[keyof typeof CreateRmaBodyLinesItemCondition];
+
+export const CreateRmaBodyLinesItemCondition = {
+  good: "good",
+  damaged: "damaged",
+  unknown: "unknown",
+} as const;
+
+export type CreateRmaBodyLinesItemDisposition =
+  (typeof CreateRmaBodyLinesItemDisposition)[keyof typeof CreateRmaBodyLinesItemDisposition];
+
+export const CreateRmaBodyLinesItemDisposition = {
+  restock: "restock",
+  scrap: "scrap",
+  return_to_supplier: "return_to_supplier",
+} as const;
+
+export type CreateRmaBodyLinesItem = {
+  soLineId?: number;
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  quantity: number;
+  unitPrice?: number;
+  condition?: CreateRmaBodyLinesItemCondition;
+  disposition?: CreateRmaBodyLinesItemDisposition;
+  warehouseId?: number;
+  locationId?: number;
+  reason?: string;
+  notes?: string;
+};
+
+export interface CreateRmaBody {
+  soId?: number;
+  invoiceId?: number;
+  customerId?: number;
+  customerName?: string;
+  customerEmail?: string;
+  warehouseId?: number;
+  reason?: string;
+  resolution?: CreateRmaBodyResolution;
+  notes?: string;
+  lines?: CreateRmaBodyLinesItem[];
+}
+
+export type SalesSummaryReportOrders = {
+  count?: number;
+  total?: number;
+};
+
+export type SalesSummaryReportDespatches = {
+  count?: number;
+};
+
+export type SalesSummaryReportInvoices = {
+  count?: number;
+  total?: number;
+};
+
+export interface SalesSummaryReport {
+  orders?: SalesSummaryReportOrders;
+  despatches?: SalesSummaryReportDespatches;
+  invoices?: SalesSummaryReportInvoices;
+  openQuotations?: number;
+  pendingRma?: number;
+}
+
 export type UploadOnboardingCsvBodyCsvType =
   (typeof UploadOnboardingCsvBodyCsvType)[keyof typeof UploadOnboardingCsvBodyCsvType];
 
@@ -2167,6 +2727,101 @@ export type ReportGoodsInTransit200Item = {
   outstandingQty?: number;
   outstandingPct?: number;
 };
+
+export type GetAtpParams = {
+  itemId: number;
+  warehouseId?: number;
+};
+
+export type GetAtp200StockDetailsItem = { [key: string]: unknown };
+
+export type GetAtp200 = {
+  itemId?: number;
+  warehouseId?: number | null;
+  atpQty?: number;
+  stockDetails?: GetAtp200StockDetailsItem[];
+};
+
+export type ListQuotationsParams = {
+  status?: string;
+  customerId?: number;
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type SendQuotationBody = {
+  email?: string;
+};
+
+export type ConvertQuotationToSo201 = {
+  so?: SalesOrder;
+  alreadyConverted?: boolean;
+};
+
+export type ListSalesOrdersParams = {
+  status?: string;
+  customerId?: number;
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListPickSlipsParams = {
+  soId?: number;
+  status?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListDespatchesParams = {
+  soId?: number;
+  status?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListCustomerInvoicesParams = {
+  soId?: number;
+  status?: string;
+  customerId?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type SendCustomerInvoiceBody = {
+  email?: string;
+};
+
+export type ListCreditNotesParams = {
+  soId?: number;
+  status?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListRmaOrdersParams = {
+  status?: string;
+  customerId?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type ReceiveRmaBodyLinesItem = {
+  rmaLineId: number;
+  receivedQty: number;
+};
+
+export type ReceiveRmaBody = {
+  lines?: ReceiveRmaBodyLinesItem[];
+};
+
+export type ReportSalesSummaryParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type ReportBackorders200Item = { [key: string]: unknown };
 
 export type ListNotificationsParams = {
   unreadOnly?: ListNotificationsUnreadOnly;

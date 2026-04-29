@@ -20,6 +20,8 @@ tags:
     description: Self-serve tenant onboarding for new sign-ups
   - name: master-data
     description: Master data management — items, suppliers, customers, warehouses, GL accounts
+  - name: Sales
+    description: Sales module — quotations, sales orders, despatch, invoicing, credit notes, RMA
 paths:
   /healthz:
     get:
@@ -3293,6 +3295,804 @@ paths:
                     outstandingQty: { type: number }
                     outstandingPct: { type: integer }
 
+  # ── Sales ──────────────────────────────────────────────────────────────────
+
+  /sales/atp:
+    get:
+      operationId: getAtp
+      summary: Available-to-promise quantity for an item
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: itemId, required: true, schema: { type: integer } }
+        - { in: query, name: warehouseId, schema: { type: integer } }
+      responses:
+        "200":
+          description: ATP result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  itemId: { type: integer }
+                  warehouseId: { type: integer, nullable: true }
+                  atpQty: { type: number }
+                  stockDetails: { type: array, items: { type: object } }
+
+  /sales/quotations:
+    get:
+      operationId: listQuotations
+      summary: List quotations
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: customerId, schema: { type: integer } }
+        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 25 } }
+      responses:
+        "200":
+          description: Paginated quotations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotationListResponse" }
+    post:
+      operationId: createQuotation
+      summary: Create quotation
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateQuotationBody" }
+      responses:
+        "201":
+          description: Created quotation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotationDetail" }
+
+  /sales/quotations/{id}:
+    get:
+      operationId: getQuotation
+      summary: Get quotation with lines
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Quotation detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotationDetail" }
+        "404": { description: Not found }
+    patch:
+      operationId: updateQuotation
+      summary: Update quotation header
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateQuotationBody" }
+      responses:
+        "200":
+          description: Updated quotation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Quotation" }
+    delete:
+      operationId: deleteQuotation
+      summary: Delete quotation (soft delete)
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Deleted }
+
+  /sales/quotations/{id}/send:
+    post:
+      operationId: sendQuotation
+      summary: Send quotation by email
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Quotation" }
+
+  /sales/quotations/{id}/convert:
+    post:
+      operationId: convertQuotationToSo
+      summary: Convert quotation to sales order
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "201":
+          description: Sales order created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  so: { $ref: "#/components/schemas/SalesOrder" }
+                  alreadyConverted: { type: boolean }
+
+  /sales/quotations/{id}/lines:
+    post:
+      operationId: addQuotationLine
+      summary: Add line to quotation
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuotationLineInput" }
+      responses:
+        "201":
+          description: Created line
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotationLine" }
+
+  /sales/quotations/{id}/lines/{lineId}:
+    patch:
+      operationId: updateQuotationLine
+      summary: Update quotation line
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: lineId, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuotationLineInput" }
+      responses:
+        "200":
+          description: Updated line
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotationLine" }
+    delete:
+      operationId: deleteQuotationLine
+      summary: Delete quotation line
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: lineId, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Deleted }
+
+  /sales/orders:
+    get:
+      operationId: listSalesOrders
+      summary: List sales orders
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: customerId, schema: { type: integer } }
+        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 25 } }
+      responses:
+        "200":
+          description: Paginated sales orders
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesOrderListResponse" }
+    post:
+      operationId: createSalesOrder
+      summary: Create sales order
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSalesOrderBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesOrderDetail" }
+
+  /sales/orders/{id}:
+    get:
+      operationId: getSalesOrder
+      summary: Get sales order with lines
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Sales order detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesOrderDetail" }
+        "404": { description: Not found }
+    patch:
+      operationId: updateSalesOrder
+      summary: Update sales order header
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSalesOrderBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesOrder" }
+    delete:
+      operationId: deleteSalesOrder
+      summary: Delete sales order (draft only)
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Deleted }
+
+  /sales/orders/{id}/confirm:
+    post:
+      operationId: confirmSalesOrder
+      summary: Confirm sales order and allocate stock
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Confirmed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesOrder" }
+
+  /sales/orders/{id}/cancel:
+    post:
+      operationId: cancelSalesOrder
+      summary: Cancel sales order and release stock allocations
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesOrder" }
+
+  /sales/orders/{id}/lines:
+    post:
+      operationId: addSalesOrderLine
+      summary: Add line to sales order
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SoLineInput" }
+      responses:
+        "201":
+          description: Created line
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SoLine" }
+
+  /sales/orders/{id}/lines/{lineId}:
+    patch:
+      operationId: updateSalesOrderLine
+      summary: Update sales order line
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: lineId, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SoLineInput" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SoLine" }
+    delete:
+      operationId: deleteSalesOrderLine
+      summary: Delete sales order line
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: lineId, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Deleted }
+
+  /sales/pick-slips:
+    get:
+      operationId: listPickSlips
+      summary: List pick slips
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: soId, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 25 } }
+      responses:
+        "200":
+          description: Paginated pick slips
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PickSlipListResponse" }
+    post:
+      operationId: createPickSlip
+      summary: Create pick slip for a sales order
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePickSlipBody" }
+      responses:
+        "201":
+          description: Created pick slip
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PickSlipDetail" }
+
+  /sales/pick-slips/{id}:
+    get:
+      operationId: getPickSlip
+      summary: Get pick slip with lines
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Pick slip detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PickSlipDetail" }
+        "404": { description: Not found }
+
+  /sales/despatches:
+    get:
+      operationId: listDespatches
+      summary: List despatches
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: soId, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 25 } }
+      responses:
+        "200":
+          description: Paginated despatches
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DespatchListResponse" }
+    post:
+      operationId: createDespatch
+      summary: Create despatch for a sales order
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDespatchBody" }
+      responses:
+        "201":
+          description: Created despatch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DespatchDetail" }
+
+  /sales/despatches/{id}:
+    get:
+      operationId: getDespatch
+      summary: Get despatch with lines
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Despatch detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DespatchDetail" }
+        "404": { description: Not found }
+
+  /sales/despatches/{id}/confirm:
+    post:
+      operationId: confirmDespatch
+      summary: Confirm despatch — posts inventory and GL
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Confirmed despatch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Despatch" }
+
+  /sales/invoices:
+    get:
+      operationId: listCustomerInvoices
+      summary: List customer invoices
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: soId, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: customerId, schema: { type: integer } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 25 } }
+      responses:
+        "200":
+          description: Paginated invoices
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomerInvoiceListResponse" }
+    post:
+      operationId: createCustomerInvoice
+      summary: Create customer invoice from despatch
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCustomerInvoiceBody" }
+      responses:
+        "201":
+          description: Created invoice
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomerInvoiceDetail" }
+
+  /sales/invoices/{id}:
+    get:
+      operationId: getCustomerInvoice
+      summary: Get customer invoice with lines
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Invoice detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomerInvoiceDetail" }
+        "404": { description: Not found }
+
+  /sales/invoices/{id}/send:
+    post:
+      operationId: sendCustomerInvoice
+      summary: Send customer invoice by email
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomerInvoice" }
+
+  /sales/credit-notes:
+    get:
+      operationId: listCreditNotes
+      summary: List credit notes
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: soId, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 25 } }
+      responses:
+        "200":
+          description: Paginated credit notes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreditNoteListResponse" }
+    post:
+      operationId: createCreditNote
+      summary: Create credit note
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCreditNoteBody" }
+      responses:
+        "201":
+          description: Created credit note
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreditNote" }
+
+  /sales/credit-notes/{id}/issue:
+    post:
+      operationId: issueCreditNote
+      summary: Issue credit note (posts GL)
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Issued credit note
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreditNote" }
+
+  /sales/rma:
+    get:
+      operationId: listRmaOrders
+      summary: List RMA orders
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: customerId, schema: { type: integer } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 25 } }
+      responses:
+        "200":
+          description: Paginated RMA orders
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RmaListResponse" }
+    post:
+      operationId: createRmaOrder
+      summary: Create RMA order
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateRmaBody" }
+      responses:
+        "201":
+          description: Created RMA order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RmaDetail" }
+
+  /sales/rma/{id}:
+    get:
+      operationId: getRmaOrder
+      summary: Get RMA order with lines
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: RMA detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RmaDetail" }
+        "404": { description: Not found }
+
+  /sales/rma/{id}/authorize:
+    post:
+      operationId: authorizeRma
+      summary: Authorize RMA order
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Authorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RmaOrder" }
+
+  /sales/rma/{id}/receive:
+    post:
+      operationId: receiveRma
+      summary: Receive returned goods for RMA
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    required: [rmaLineId, receivedQty]
+                    properties:
+                      rmaLineId: { type: integer }
+                      receivedQty: { type: number }
+      responses:
+        "200":
+          description: Updated RMA
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RmaOrder" }
+
+  /sales/rma/{id}/process:
+    post:
+      operationId: processRma
+      summary: Mark RMA as processed
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Processed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RmaOrder" }
+
+  /sales/reports/summary:
+    get:
+      operationId: reportSalesSummary
+      summary: Sales summary report
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Sales summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesSummaryReport" }
+
+  /sales/reports/backorders:
+    get:
+      operationId: reportBackorders
+      summary: Backorder report — lines not yet despatched
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Backorder rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object }
+
+  /sales/reports/outstanding-invoices:
+    get:
+      operationId: reportOutstandingInvoices
+      summary: Outstanding invoices report
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Outstanding invoices
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CustomerInvoice" }
+
   /notifications:
     get:
       operationId: listNotifications
@@ -5483,3 +6283,608 @@ components:
         isRead: { type: boolean }
         createdAt: { type: string, format: date-time }
         readAt: { type: string, format: date-time, nullable: true }
+
+    # ── Sales Schemas ─────────────────────────────────────────────────────────
+
+    Quotation:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        code: { type: string }
+        customerId: { type: integer, nullable: true }
+        customerName: { type: string, nullable: true }
+        customerEmail: { type: string, nullable: true }
+        customerRef: { type: string, nullable: true }
+        expiryDate: { type: string, nullable: true }
+        requestedDate: { type: string, nullable: true }
+        currencyCode: { type: string }
+        paymentTerms: { type: string, nullable: true }
+        status: { type: string }
+        subtotal: { type: string }
+        taxAmount: { type: string }
+        total: { type: string }
+        notes: { type: string, nullable: true }
+        convertedSoId: { type: integer, nullable: true }
+        sentAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    QuotationLine:
+      type: object
+      properties:
+        id: { type: integer }
+        quotationId: { type: integer }
+        lineNumber: { type: integer }
+        lineType: { type: string }
+        itemId: { type: integer, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        quantity: { type: string }
+        unitPrice: { type: string }
+        discountPct: { type: string, nullable: true }
+        taxPct: { type: string, nullable: true }
+        lineTotal: { type: string }
+        notes: { type: string, nullable: true }
+
+    QuotationLineInput:
+      type: object
+      properties:
+        lineNumber: { type: integer }
+        lineType: { type: string, enum: [stock, service, charge, comment] }
+        itemId: { type: integer }
+        itemCode: { type: string }
+        itemName: { type: string }
+        description: { type: string }
+        quantity: { type: number }
+        unitOfMeasure: { type: string }
+        unitPrice: { type: number }
+        discountPct: { type: number }
+        taxPct: { type: number }
+        glAccountId: { type: integer }
+        notes: { type: string }
+
+    QuotationDetail:
+      allOf:
+        - $ref: "#/components/schemas/Quotation"
+        - type: object
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/QuotationLine" }
+
+    QuotationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Quotation" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    CreateQuotationBody:
+      type: object
+      properties:
+        customerId: { type: integer }
+        customerName: { type: string }
+        customerEmail: { type: string, format: email }
+        customerRef: { type: string }
+        expiryDate: { type: string }
+        requestedDate: { type: string }
+        currencyCode: { type: string }
+        paymentTerms: { type: string }
+        notes: { type: string }
+        internalNotes: { type: string }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/QuotationLineInput" }
+
+    UpdateQuotationBody:
+      type: object
+      properties:
+        customerName: { type: string }
+        customerEmail: { type: string }
+        customerRef: { type: string }
+        expiryDate: { type: string }
+        requestedDate: { type: string }
+        paymentTerms: { type: string }
+        notes: { type: string }
+        internalNotes: { type: string }
+
+    SalesOrder:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        code: { type: string }
+        quotationId: { type: integer, nullable: true }
+        customerId: { type: integer, nullable: true }
+        customerName: { type: string, nullable: true }
+        customerEmail: { type: string, nullable: true }
+        customerRef: { type: string, nullable: true }
+        warehouseId: { type: integer, nullable: true }
+        requestedDate: { type: string, nullable: true }
+        scheduledDate: { type: string, nullable: true }
+        currencyCode: { type: string }
+        paymentTerms: { type: string, nullable: true }
+        status: { type: string }
+        subtotal: { type: string }
+        taxAmount: { type: string }
+        total: { type: string }
+        notes: { type: string, nullable: true }
+        confirmedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    SoLine:
+      type: object
+      properties:
+        id: { type: integer }
+        soId: { type: integer }
+        lineNumber: { type: integer }
+        lineType: { type: string }
+        itemId: { type: integer, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        quantity: { type: string }
+        despatched_qty: { type: string }
+        invoiced_qty: { type: string }
+        unitPrice: { type: string }
+        discountPct: { type: string, nullable: true }
+        taxPct: { type: string, nullable: true }
+        lineTotal: { type: string }
+        notes: { type: string, nullable: true }
+
+    SoLineInput:
+      type: object
+      properties:
+        lineNumber: { type: integer }
+        lineType: { type: string, enum: [stock, service, charge, comment] }
+        itemId: { type: integer }
+        itemCode: { type: string }
+        itemName: { type: string }
+        description: { type: string }
+        quantity: { type: number }
+        unitOfMeasure: { type: string }
+        unitPrice: { type: number }
+        discountPct: { type: number }
+        taxPct: { type: number }
+        glAccountId: { type: integer }
+        notes: { type: string }
+
+    SalesOrderDetail:
+      allOf:
+        - $ref: "#/components/schemas/SalesOrder"
+        - type: object
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/SoLine" }
+
+    SalesOrderListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/SalesOrder" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    CreateSalesOrderBody:
+      type: object
+      properties:
+        customerId: { type: integer }
+        customerName: { type: string }
+        customerEmail: { type: string }
+        customerRef: { type: string }
+        warehouseId: { type: integer }
+        requestedDate: { type: string }
+        scheduledDate: { type: string }
+        currencyCode: { type: string }
+        paymentTerms: { type: string }
+        notes: { type: string }
+        internalNotes: { type: string }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/SoLineInput" }
+
+    UpdateSalesOrderBody:
+      type: object
+      properties:
+        customerName: { type: string }
+        customerEmail: { type: string }
+        customerRef: { type: string }
+        warehouseId: { type: integer }
+        requestedDate: { type: string }
+        scheduledDate: { type: string }
+        paymentTerms: { type: string }
+        notes: { type: string }
+        internalNotes: { type: string }
+
+    PickSlip:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        soId: { type: integer }
+        warehouseId: { type: integer, nullable: true }
+        status: { type: string }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    PickSlipLine:
+      type: object
+      properties:
+        id: { type: integer }
+        pickSlipId: { type: integer }
+        soLineId: { type: integer }
+        itemId: { type: integer, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        locationId: { type: integer, nullable: true }
+        requiredQty: { type: string }
+        pickedQty: { type: string }
+        lotNumber: { type: string, nullable: true }
+
+    PickSlipDetail:
+      allOf:
+        - $ref: "#/components/schemas/PickSlip"
+        - type: object
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/PickSlipLine" }
+
+    PickSlipListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/PickSlip" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    CreatePickSlipBody:
+      type: object
+      required: [soId]
+      properties:
+        soId: { type: integer }
+        warehouseId: { type: integer }
+        notes: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [soLineId, requiredQty]
+            properties:
+              soLineId: { type: integer }
+              itemId: { type: integer }
+              itemCode: { type: string }
+              itemName: { type: string }
+              locationId: { type: integer }
+              requiredQty: { type: number }
+              lotNumber: { type: string }
+              serialNumber: { type: string }
+              batchNumber: { type: string }
+              notes: { type: string }
+
+    Despatch:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        soId: { type: integer }
+        warehouseId: { type: integer, nullable: true }
+        status: { type: string }
+        despatchDate: { type: string, nullable: true }
+        trackingNumber: { type: string, nullable: true }
+        carrier: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        glPostingId: { type: integer, nullable: true }
+        despatchedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    DespatchLine:
+      type: object
+      properties:
+        id: { type: integer }
+        despatchId: { type: integer }
+        soLineId: { type: integer }
+        itemId: { type: integer, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        quantity: { type: string }
+        unitPrice: { type: string, nullable: true }
+        locationId: { type: integer, nullable: true }
+        lotNumber: { type: string, nullable: true }
+
+    DespatchDetail:
+      allOf:
+        - $ref: "#/components/schemas/Despatch"
+        - type: object
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/DespatchLine" }
+
+    DespatchListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Despatch" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    CreateDespatchBody:
+      type: object
+      required: [soId, lines]
+      properties:
+        soId: { type: integer }
+        warehouseId: { type: integer }
+        despatchDate: { type: string }
+        trackingNumber: { type: string }
+        carrier: { type: string }
+        notes: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [soLineId, quantity]
+            properties:
+              soLineId: { type: integer }
+              itemId: { type: integer }
+              itemCode: { type: string }
+              itemName: { type: string }
+              quantity: { type: number }
+              unitPrice: { type: number }
+              locationId: { type: integer }
+              lotNumber: { type: string }
+              serialNumber: { type: string }
+              batchNumber: { type: string }
+              notes: { type: string }
+
+    CustomerInvoice:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        soId: { type: integer }
+        despatchId: { type: integer, nullable: true }
+        customerId: { type: integer, nullable: true }
+        customerName: { type: string, nullable: true }
+        customerEmail: { type: string, nullable: true }
+        status: { type: string }
+        invoiceDate: { type: string, nullable: true }
+        dueDate: { type: string, nullable: true }
+        currencyCode: { type: string }
+        subtotal: { type: string }
+        taxAmount: { type: string }
+        total: { type: string }
+        paidAmount: { type: string }
+        notes: { type: string, nullable: true }
+        glPostingId: { type: integer, nullable: true }
+        sentAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    CustomerInvoiceLine:
+      type: object
+      properties:
+        id: { type: integer }
+        invoiceId: { type: integer }
+        soLineId: { type: integer, nullable: true }
+        itemId: { type: integer, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        quantity: { type: string }
+        unitPrice: { type: string }
+        discountPct: { type: string, nullable: true }
+        taxPct: { type: string, nullable: true }
+        lineTotal: { type: string }
+
+    CustomerInvoiceDetail:
+      allOf:
+        - $ref: "#/components/schemas/CustomerInvoice"
+        - type: object
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/CustomerInvoiceLine" }
+
+    CustomerInvoiceListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/CustomerInvoice" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    CreateCustomerInvoiceBody:
+      type: object
+      required: [soId, lines]
+      properties:
+        soId: { type: integer }
+        despatchId: { type: integer }
+        invoiceDate: { type: string }
+        dueDate: { type: string }
+        notes: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [quantity, unitPrice]
+            properties:
+              soLineId: { type: integer }
+              despatchLineId: { type: integer }
+              itemId: { type: integer }
+              itemCode: { type: string }
+              itemName: { type: string }
+              description: { type: string }
+              quantity: { type: number }
+              unitPrice: { type: number }
+              discountPct: { type: number }
+              taxPct: { type: number }
+              notes: { type: string }
+
+    CreditNote:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        invoiceId: { type: integer, nullable: true }
+        soId: { type: integer, nullable: true }
+        rmaId: { type: integer, nullable: true }
+        customerId: { type: integer, nullable: true }
+        customerName: { type: string, nullable: true }
+        reason: { type: string, nullable: true }
+        status: { type: string }
+        subtotal: { type: string }
+        taxAmount: { type: string }
+        total: { type: string }
+        notes: { type: string, nullable: true }
+        glPostingId: { type: integer, nullable: true }
+        issuedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    CreditNoteListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/CreditNote" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    CreateCreditNoteBody:
+      type: object
+      properties:
+        soId: { type: integer }
+        invoiceId: { type: integer }
+        rmaId: { type: integer }
+        customerId: { type: integer }
+        customerName: { type: string }
+        reason: { type: string }
+        notes: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [quantity, unitPrice]
+            properties:
+              itemId: { type: integer }
+              itemCode: { type: string }
+              itemName: { type: string }
+              description: { type: string }
+              quantity: { type: number }
+              unitPrice: { type: number }
+              taxPct: { type: number }
+              notes: { type: string }
+
+    RmaOrder:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        soId: { type: integer, nullable: true }
+        invoiceId: { type: integer, nullable: true }
+        customerId: { type: integer, nullable: true }
+        customerName: { type: string, nullable: true }
+        customerEmail: { type: string, nullable: true }
+        warehouseId: { type: integer, nullable: true }
+        status: { type: string }
+        reason: { type: string, nullable: true }
+        resolution: { type: string }
+        notes: { type: string, nullable: true }
+        creditNoteId: { type: integer, nullable: true }
+        authorizedAt: { type: string, format: date-time, nullable: true }
+        receivedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    RmaLine:
+      type: object
+      properties:
+        id: { type: integer }
+        rmaId: { type: integer }
+        soLineId: { type: integer, nullable: true }
+        itemId: { type: integer, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        quantity: { type: string }
+        receivedQty: { type: string }
+        unitPrice: { type: string, nullable: true }
+        condition: { type: string }
+        disposition: { type: string }
+        reason: { type: string, nullable: true }
+
+    RmaDetail:
+      allOf:
+        - $ref: "#/components/schemas/RmaOrder"
+        - type: object
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/RmaLine" }
+
+    RmaListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/RmaOrder" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    CreateRmaBody:
+      type: object
+      properties:
+        soId: { type: integer }
+        invoiceId: { type: integer }
+        customerId: { type: integer }
+        customerName: { type: string }
+        customerEmail: { type: string }
+        warehouseId: { type: integer }
+        reason: { type: string }
+        resolution: { type: string, enum: [credit, exchange, repair] }
+        notes: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [quantity]
+            properties:
+              soLineId: { type: integer }
+              itemId: { type: integer }
+              itemCode: { type: string }
+              itemName: { type: string }
+              quantity: { type: number }
+              unitPrice: { type: number }
+              condition: { type: string, enum: [good, damaged, unknown] }
+              disposition: { type: string, enum: [restock, scrap, return_to_supplier] }
+              warehouseId: { type: integer }
+              locationId: { type: integer }
+              reason: { type: string }
+              notes: { type: string }
+
+    SalesSummaryReport:
+      type: object
+      properties:
+        orders:
+          type: object
+          properties:
+            count: { type: integer }
+            total: { type: number }
+        despatches:
+          type: object
+          properties:
+            count: { type: integer }
+        invoices:
+          type: object
+          properties:
+            count: { type: integer }
+            total: { type: number }
+        openQuotations: { type: integer }
+        pendingRma: { type: integer }

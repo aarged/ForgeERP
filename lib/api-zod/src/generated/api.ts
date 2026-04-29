@@ -4121,6 +4121,1570 @@ export const ReportGoodsInTransitResponse = zod.array(
 );
 
 /**
+ * @summary Available-to-promise quantity for an item
+ */
+export const GetAtpQueryParams = zod.object({
+  itemId: zod.coerce.number(),
+  warehouseId: zod.coerce.number().optional(),
+});
+
+export const GetAtpHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetAtpResponse = zod.object({
+  itemId: zod.number().optional(),
+  warehouseId: zod.number().nullish(),
+  atpQty: zod.number().optional(),
+  stockDetails: zod.array(zod.object({}).passthrough()).optional(),
+});
+
+/**
+ * @summary List quotations
+ */
+export const listQuotationsQueryPageDefault = 1;
+export const listQuotationsQueryLimitDefault = 25;
+
+export const ListQuotationsQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+  customerId: zod.coerce.number().optional(),
+  search: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listQuotationsQueryPageDefault),
+  limit: zod.coerce.number().default(listQuotationsQueryLimitDefault),
+});
+
+export const ListQuotationsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListQuotationsResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        code: zod.string().optional(),
+        customerId: zod.number().nullish(),
+        customerName: zod.string().nullish(),
+        customerEmail: zod.string().nullish(),
+        customerRef: zod.string().nullish(),
+        expiryDate: zod.string().nullish(),
+        requestedDate: zod.string().nullish(),
+        currencyCode: zod.string().optional(),
+        paymentTerms: zod.string().nullish(),
+        status: zod.string().optional(),
+        subtotal: zod.string().optional(),
+        taxAmount: zod.string().optional(),
+        total: zod.string().optional(),
+        notes: zod.string().nullish(),
+        convertedSoId: zod.number().nullish(),
+        sentAt: zod.coerce.date().nullish(),
+        createdAt: zod.coerce.date().optional(),
+        updatedAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create quotation
+ */
+export const CreateQuotationHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateQuotationBody = zod.object({
+  customerId: zod.number().optional(),
+  customerName: zod.string().optional(),
+  customerEmail: zod.string().email().optional(),
+  customerRef: zod.string().optional(),
+  expiryDate: zod.string().optional(),
+  requestedDate: zod.string().optional(),
+  currencyCode: zod.string().optional(),
+  paymentTerms: zod.string().optional(),
+  notes: zod.string().optional(),
+  internalNotes: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        lineNumber: zod.number().optional(),
+        lineType: zod
+          .enum(["stock", "service", "charge", "comment"])
+          .optional(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        description: zod.string().optional(),
+        quantity: zod.number().optional(),
+        unitOfMeasure: zod.string().optional(),
+        unitPrice: zod.number().optional(),
+        discountPct: zod.number().optional(),
+        taxPct: zod.number().optional(),
+        glAccountId: zod.number().optional(),
+        notes: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Get quotation with lines
+ */
+export const GetQuotationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetQuotationHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetQuotationResponse = zod
+  .object({
+    id: zod.number().optional(),
+    tenantId: zod.number().optional(),
+    code: zod.string().optional(),
+    customerId: zod.number().nullish(),
+    customerName: zod.string().nullish(),
+    customerEmail: zod.string().nullish(),
+    customerRef: zod.string().nullish(),
+    expiryDate: zod.string().nullish(),
+    requestedDate: zod.string().nullish(),
+    currencyCode: zod.string().optional(),
+    paymentTerms: zod.string().nullish(),
+    status: zod.string().optional(),
+    subtotal: zod.string().optional(),
+    taxAmount: zod.string().optional(),
+    total: zod.string().optional(),
+    notes: zod.string().nullish(),
+    convertedSoId: zod.number().nullish(),
+    sentAt: zod.coerce.date().nullish(),
+    createdAt: zod.coerce.date().optional(),
+    updatedAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            quotationId: zod.number().optional(),
+            lineNumber: zod.number().optional(),
+            lineType: zod.string().optional(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            description: zod.string().nullish(),
+            quantity: zod.string().optional(),
+            unitPrice: zod.string().optional(),
+            discountPct: zod.string().nullish(),
+            taxPct: zod.string().nullish(),
+            lineTotal: zod.string().optional(),
+            notes: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Update quotation header
+ */
+export const UpdateQuotationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateQuotationHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateQuotationBody = zod.object({
+  customerName: zod.string().optional(),
+  customerEmail: zod.string().optional(),
+  customerRef: zod.string().optional(),
+  expiryDate: zod.string().optional(),
+  requestedDate: zod.string().optional(),
+  paymentTerms: zod.string().optional(),
+  notes: zod.string().optional(),
+  internalNotes: zod.string().optional(),
+});
+
+export const UpdateQuotationResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  customerEmail: zod.string().nullish(),
+  customerRef: zod.string().nullish(),
+  expiryDate: zod.string().nullish(),
+  requestedDate: zod.string().nullish(),
+  currencyCode: zod.string().optional(),
+  paymentTerms: zod.string().nullish(),
+  status: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  notes: zod.string().nullish(),
+  convertedSoId: zod.number().nullish(),
+  sentAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Delete quotation (soft delete)
+ */
+export const DeleteQuotationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteQuotationHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Send quotation by email
+ */
+export const SendQuotationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SendQuotationHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const SendQuotationBody = zod.object({
+  email: zod.string().email().optional(),
+});
+
+export const SendQuotationResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  customerEmail: zod.string().nullish(),
+  customerRef: zod.string().nullish(),
+  expiryDate: zod.string().nullish(),
+  requestedDate: zod.string().nullish(),
+  currencyCode: zod.string().optional(),
+  paymentTerms: zod.string().nullish(),
+  status: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  notes: zod.string().nullish(),
+  convertedSoId: zod.number().nullish(),
+  sentAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Convert quotation to sales order
+ */
+export const ConvertQuotationToSoParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ConvertQuotationToSoHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Add line to quotation
+ */
+export const AddQuotationLineParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AddQuotationLineHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const AddQuotationLineBody = zod.object({
+  lineNumber: zod.number().optional(),
+  lineType: zod.enum(["stock", "service", "charge", "comment"]).optional(),
+  itemId: zod.number().optional(),
+  itemCode: zod.string().optional(),
+  itemName: zod.string().optional(),
+  description: zod.string().optional(),
+  quantity: zod.number().optional(),
+  unitOfMeasure: zod.string().optional(),
+  unitPrice: zod.number().optional(),
+  discountPct: zod.number().optional(),
+  taxPct: zod.number().optional(),
+  glAccountId: zod.number().optional(),
+  notes: zod.string().optional(),
+});
+
+/**
+ * @summary Update quotation line
+ */
+export const UpdateQuotationLineParams = zod.object({
+  id: zod.coerce.number(),
+  lineId: zod.coerce.number(),
+});
+
+export const UpdateQuotationLineHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateQuotationLineBody = zod.object({
+  lineNumber: zod.number().optional(),
+  lineType: zod.enum(["stock", "service", "charge", "comment"]).optional(),
+  itemId: zod.number().optional(),
+  itemCode: zod.string().optional(),
+  itemName: zod.string().optional(),
+  description: zod.string().optional(),
+  quantity: zod.number().optional(),
+  unitOfMeasure: zod.string().optional(),
+  unitPrice: zod.number().optional(),
+  discountPct: zod.number().optional(),
+  taxPct: zod.number().optional(),
+  glAccountId: zod.number().optional(),
+  notes: zod.string().optional(),
+});
+
+export const UpdateQuotationLineResponse = zod.object({
+  id: zod.number().optional(),
+  quotationId: zod.number().optional(),
+  lineNumber: zod.number().optional(),
+  lineType: zod.string().optional(),
+  itemId: zod.number().nullish(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  description: zod.string().nullish(),
+  quantity: zod.string().optional(),
+  unitPrice: zod.string().optional(),
+  discountPct: zod.string().nullish(),
+  taxPct: zod.string().nullish(),
+  lineTotal: zod.string().optional(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Delete quotation line
+ */
+export const DeleteQuotationLineParams = zod.object({
+  id: zod.coerce.number(),
+  lineId: zod.coerce.number(),
+});
+
+export const DeleteQuotationLineHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary List sales orders
+ */
+export const listSalesOrdersQueryPageDefault = 1;
+export const listSalesOrdersQueryLimitDefault = 25;
+
+export const ListSalesOrdersQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+  customerId: zod.coerce.number().optional(),
+  search: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listSalesOrdersQueryPageDefault),
+  limit: zod.coerce.number().default(listSalesOrdersQueryLimitDefault),
+});
+
+export const ListSalesOrdersHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListSalesOrdersResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        code: zod.string().optional(),
+        quotationId: zod.number().nullish(),
+        customerId: zod.number().nullish(),
+        customerName: zod.string().nullish(),
+        customerEmail: zod.string().nullish(),
+        customerRef: zod.string().nullish(),
+        warehouseId: zod.number().nullish(),
+        requestedDate: zod.string().nullish(),
+        scheduledDate: zod.string().nullish(),
+        currencyCode: zod.string().optional(),
+        paymentTerms: zod.string().nullish(),
+        status: zod.string().optional(),
+        subtotal: zod.string().optional(),
+        taxAmount: zod.string().optional(),
+        total: zod.string().optional(),
+        notes: zod.string().nullish(),
+        confirmedAt: zod.coerce.date().nullish(),
+        createdAt: zod.coerce.date().optional(),
+        updatedAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create sales order
+ */
+export const CreateSalesOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateSalesOrderBody = zod.object({
+  customerId: zod.number().optional(),
+  customerName: zod.string().optional(),
+  customerEmail: zod.string().optional(),
+  customerRef: zod.string().optional(),
+  warehouseId: zod.number().optional(),
+  requestedDate: zod.string().optional(),
+  scheduledDate: zod.string().optional(),
+  currencyCode: zod.string().optional(),
+  paymentTerms: zod.string().optional(),
+  notes: zod.string().optional(),
+  internalNotes: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        lineNumber: zod.number().optional(),
+        lineType: zod
+          .enum(["stock", "service", "charge", "comment"])
+          .optional(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        description: zod.string().optional(),
+        quantity: zod.number().optional(),
+        unitOfMeasure: zod.string().optional(),
+        unitPrice: zod.number().optional(),
+        discountPct: zod.number().optional(),
+        taxPct: zod.number().optional(),
+        glAccountId: zod.number().optional(),
+        notes: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Get sales order with lines
+ */
+export const GetSalesOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetSalesOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetSalesOrderResponse = zod
+  .object({
+    id: zod.number().optional(),
+    tenantId: zod.number().optional(),
+    code: zod.string().optional(),
+    quotationId: zod.number().nullish(),
+    customerId: zod.number().nullish(),
+    customerName: zod.string().nullish(),
+    customerEmail: zod.string().nullish(),
+    customerRef: zod.string().nullish(),
+    warehouseId: zod.number().nullish(),
+    requestedDate: zod.string().nullish(),
+    scheduledDate: zod.string().nullish(),
+    currencyCode: zod.string().optional(),
+    paymentTerms: zod.string().nullish(),
+    status: zod.string().optional(),
+    subtotal: zod.string().optional(),
+    taxAmount: zod.string().optional(),
+    total: zod.string().optional(),
+    notes: zod.string().nullish(),
+    confirmedAt: zod.coerce.date().nullish(),
+    createdAt: zod.coerce.date().optional(),
+    updatedAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            soId: zod.number().optional(),
+            lineNumber: zod.number().optional(),
+            lineType: zod.string().optional(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            description: zod.string().nullish(),
+            quantity: zod.string().optional(),
+            despatched_qty: zod.string().optional(),
+            invoiced_qty: zod.string().optional(),
+            unitPrice: zod.string().optional(),
+            discountPct: zod.string().nullish(),
+            taxPct: zod.string().nullish(),
+            lineTotal: zod.string().optional(),
+            notes: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Update sales order header
+ */
+export const UpdateSalesOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateSalesOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateSalesOrderBody = zod.object({
+  customerName: zod.string().optional(),
+  customerEmail: zod.string().optional(),
+  customerRef: zod.string().optional(),
+  warehouseId: zod.number().optional(),
+  requestedDate: zod.string().optional(),
+  scheduledDate: zod.string().optional(),
+  paymentTerms: zod.string().optional(),
+  notes: zod.string().optional(),
+  internalNotes: zod.string().optional(),
+});
+
+export const UpdateSalesOrderResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  quotationId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  customerEmail: zod.string().nullish(),
+  customerRef: zod.string().nullish(),
+  warehouseId: zod.number().nullish(),
+  requestedDate: zod.string().nullish(),
+  scheduledDate: zod.string().nullish(),
+  currencyCode: zod.string().optional(),
+  paymentTerms: zod.string().nullish(),
+  status: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  notes: zod.string().nullish(),
+  confirmedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Delete sales order (draft only)
+ */
+export const DeleteSalesOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteSalesOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Confirm sales order and allocate stock
+ */
+export const ConfirmSalesOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ConfirmSalesOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ConfirmSalesOrderResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  quotationId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  customerEmail: zod.string().nullish(),
+  customerRef: zod.string().nullish(),
+  warehouseId: zod.number().nullish(),
+  requestedDate: zod.string().nullish(),
+  scheduledDate: zod.string().nullish(),
+  currencyCode: zod.string().optional(),
+  paymentTerms: zod.string().nullish(),
+  status: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  notes: zod.string().nullish(),
+  confirmedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Cancel sales order and release stock allocations
+ */
+export const CancelSalesOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CancelSalesOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CancelSalesOrderResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  quotationId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  customerEmail: zod.string().nullish(),
+  customerRef: zod.string().nullish(),
+  warehouseId: zod.number().nullish(),
+  requestedDate: zod.string().nullish(),
+  scheduledDate: zod.string().nullish(),
+  currencyCode: zod.string().optional(),
+  paymentTerms: zod.string().nullish(),
+  status: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  notes: zod.string().nullish(),
+  confirmedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Add line to sales order
+ */
+export const AddSalesOrderLineParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AddSalesOrderLineHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const AddSalesOrderLineBody = zod.object({
+  lineNumber: zod.number().optional(),
+  lineType: zod.enum(["stock", "service", "charge", "comment"]).optional(),
+  itemId: zod.number().optional(),
+  itemCode: zod.string().optional(),
+  itemName: zod.string().optional(),
+  description: zod.string().optional(),
+  quantity: zod.number().optional(),
+  unitOfMeasure: zod.string().optional(),
+  unitPrice: zod.number().optional(),
+  discountPct: zod.number().optional(),
+  taxPct: zod.number().optional(),
+  glAccountId: zod.number().optional(),
+  notes: zod.string().optional(),
+});
+
+/**
+ * @summary Update sales order line
+ */
+export const UpdateSalesOrderLineParams = zod.object({
+  id: zod.coerce.number(),
+  lineId: zod.coerce.number(),
+});
+
+export const UpdateSalesOrderLineHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateSalesOrderLineBody = zod.object({
+  lineNumber: zod.number().optional(),
+  lineType: zod.enum(["stock", "service", "charge", "comment"]).optional(),
+  itemId: zod.number().optional(),
+  itemCode: zod.string().optional(),
+  itemName: zod.string().optional(),
+  description: zod.string().optional(),
+  quantity: zod.number().optional(),
+  unitOfMeasure: zod.string().optional(),
+  unitPrice: zod.number().optional(),
+  discountPct: zod.number().optional(),
+  taxPct: zod.number().optional(),
+  glAccountId: zod.number().optional(),
+  notes: zod.string().optional(),
+});
+
+export const UpdateSalesOrderLineResponse = zod.object({
+  id: zod.number().optional(),
+  soId: zod.number().optional(),
+  lineNumber: zod.number().optional(),
+  lineType: zod.string().optional(),
+  itemId: zod.number().nullish(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  description: zod.string().nullish(),
+  quantity: zod.string().optional(),
+  despatched_qty: zod.string().optional(),
+  invoiced_qty: zod.string().optional(),
+  unitPrice: zod.string().optional(),
+  discountPct: zod.string().nullish(),
+  taxPct: zod.string().nullish(),
+  lineTotal: zod.string().optional(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Delete sales order line
+ */
+export const DeleteSalesOrderLineParams = zod.object({
+  id: zod.coerce.number(),
+  lineId: zod.coerce.number(),
+});
+
+export const DeleteSalesOrderLineHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary List pick slips
+ */
+export const listPickSlipsQueryPageDefault = 1;
+export const listPickSlipsQueryLimitDefault = 25;
+
+export const ListPickSlipsQueryParams = zod.object({
+  soId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listPickSlipsQueryPageDefault),
+  limit: zod.coerce.number().default(listPickSlipsQueryLimitDefault),
+});
+
+export const ListPickSlipsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListPickSlipsResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        soId: zod.number().optional(),
+        warehouseId: zod.number().nullish(),
+        status: zod.string().optional(),
+        notes: zod.string().nullish(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create pick slip for a sales order
+ */
+export const CreatePickSlipHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreatePickSlipBody = zod.object({
+  soId: zod.number(),
+  warehouseId: zod.number().optional(),
+  notes: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        soLineId: zod.number(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        locationId: zod.number().optional(),
+        requiredQty: zod.number(),
+        lotNumber: zod.string().optional(),
+        serialNumber: zod.string().optional(),
+        batchNumber: zod.string().optional(),
+        notes: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Get pick slip with lines
+ */
+export const GetPickSlipParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetPickSlipHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetPickSlipResponse = zod
+  .object({
+    id: zod.number().optional(),
+    code: zod.string().optional(),
+    soId: zod.number().optional(),
+    warehouseId: zod.number().nullish(),
+    status: zod.string().optional(),
+    notes: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            pickSlipId: zod.number().optional(),
+            soLineId: zod.number().optional(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            locationId: zod.number().nullish(),
+            requiredQty: zod.string().optional(),
+            pickedQty: zod.string().optional(),
+            lotNumber: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary List despatches
+ */
+export const listDespatchesQueryPageDefault = 1;
+export const listDespatchesQueryLimitDefault = 25;
+
+export const ListDespatchesQueryParams = zod.object({
+  soId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listDespatchesQueryPageDefault),
+  limit: zod.coerce.number().default(listDespatchesQueryLimitDefault),
+});
+
+export const ListDespatchesHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListDespatchesResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        soId: zod.number().optional(),
+        warehouseId: zod.number().nullish(),
+        status: zod.string().optional(),
+        despatchDate: zod.string().nullish(),
+        trackingNumber: zod.string().nullish(),
+        carrier: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        glPostingId: zod.number().nullish(),
+        despatchedAt: zod.coerce.date().nullish(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create despatch for a sales order
+ */
+export const CreateDespatchHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateDespatchBody = zod.object({
+  soId: zod.number(),
+  warehouseId: zod.number().optional(),
+  despatchDate: zod.string().optional(),
+  trackingNumber: zod.string().optional(),
+  carrier: zod.string().optional(),
+  notes: zod.string().optional(),
+  lines: zod.array(
+    zod.object({
+      soLineId: zod.number(),
+      itemId: zod.number().optional(),
+      itemCode: zod.string().optional(),
+      itemName: zod.string().optional(),
+      quantity: zod.number(),
+      unitPrice: zod.number().optional(),
+      locationId: zod.number().optional(),
+      lotNumber: zod.string().optional(),
+      serialNumber: zod.string().optional(),
+      batchNumber: zod.string().optional(),
+      notes: zod.string().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get despatch with lines
+ */
+export const GetDespatchParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetDespatchHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetDespatchResponse = zod
+  .object({
+    id: zod.number().optional(),
+    code: zod.string().optional(),
+    soId: zod.number().optional(),
+    warehouseId: zod.number().nullish(),
+    status: zod.string().optional(),
+    despatchDate: zod.string().nullish(),
+    trackingNumber: zod.string().nullish(),
+    carrier: zod.string().nullish(),
+    notes: zod.string().nullish(),
+    glPostingId: zod.number().nullish(),
+    despatchedAt: zod.coerce.date().nullish(),
+    createdAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            despatchId: zod.number().optional(),
+            soLineId: zod.number().optional(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            quantity: zod.string().optional(),
+            unitPrice: zod.string().nullish(),
+            locationId: zod.number().nullish(),
+            lotNumber: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Confirm despatch — posts inventory and GL
+ */
+export const ConfirmDespatchParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ConfirmDespatchHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ConfirmDespatchResponse = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  soId: zod.number().optional(),
+  warehouseId: zod.number().nullish(),
+  status: zod.string().optional(),
+  despatchDate: zod.string().nullish(),
+  trackingNumber: zod.string().nullish(),
+  carrier: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  glPostingId: zod.number().nullish(),
+  despatchedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary List customer invoices
+ */
+export const listCustomerInvoicesQueryPageDefault = 1;
+export const listCustomerInvoicesQueryLimitDefault = 25;
+
+export const ListCustomerInvoicesQueryParams = zod.object({
+  soId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  customerId: zod.coerce.number().optional(),
+  page: zod.coerce.number().default(listCustomerInvoicesQueryPageDefault),
+  limit: zod.coerce.number().default(listCustomerInvoicesQueryLimitDefault),
+});
+
+export const ListCustomerInvoicesHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListCustomerInvoicesResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        soId: zod.number().optional(),
+        despatchId: zod.number().nullish(),
+        customerId: zod.number().nullish(),
+        customerName: zod.string().nullish(),
+        customerEmail: zod.string().nullish(),
+        status: zod.string().optional(),
+        invoiceDate: zod.string().nullish(),
+        dueDate: zod.string().nullish(),
+        currencyCode: zod.string().optional(),
+        subtotal: zod.string().optional(),
+        taxAmount: zod.string().optional(),
+        total: zod.string().optional(),
+        paidAmount: zod.string().optional(),
+        notes: zod.string().nullish(),
+        glPostingId: zod.number().nullish(),
+        sentAt: zod.coerce.date().nullish(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create customer invoice from despatch
+ */
+export const CreateCustomerInvoiceHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateCustomerInvoiceBody = zod.object({
+  soId: zod.number(),
+  despatchId: zod.number().optional(),
+  invoiceDate: zod.string().optional(),
+  dueDate: zod.string().optional(),
+  notes: zod.string().optional(),
+  lines: zod.array(
+    zod.object({
+      soLineId: zod.number().optional(),
+      despatchLineId: zod.number().optional(),
+      itemId: zod.number().optional(),
+      itemCode: zod.string().optional(),
+      itemName: zod.string().optional(),
+      description: zod.string().optional(),
+      quantity: zod.number(),
+      unitPrice: zod.number(),
+      discountPct: zod.number().optional(),
+      taxPct: zod.number().optional(),
+      notes: zod.string().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get customer invoice with lines
+ */
+export const GetCustomerInvoiceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetCustomerInvoiceHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetCustomerInvoiceResponse = zod
+  .object({
+    id: zod.number().optional(),
+    code: zod.string().optional(),
+    soId: zod.number().optional(),
+    despatchId: zod.number().nullish(),
+    customerId: zod.number().nullish(),
+    customerName: zod.string().nullish(),
+    customerEmail: zod.string().nullish(),
+    status: zod.string().optional(),
+    invoiceDate: zod.string().nullish(),
+    dueDate: zod.string().nullish(),
+    currencyCode: zod.string().optional(),
+    subtotal: zod.string().optional(),
+    taxAmount: zod.string().optional(),
+    total: zod.string().optional(),
+    paidAmount: zod.string().optional(),
+    notes: zod.string().nullish(),
+    glPostingId: zod.number().nullish(),
+    sentAt: zod.coerce.date().nullish(),
+    createdAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            invoiceId: zod.number().optional(),
+            soLineId: zod.number().nullish(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            description: zod.string().nullish(),
+            quantity: zod.string().optional(),
+            unitPrice: zod.string().optional(),
+            discountPct: zod.string().nullish(),
+            taxPct: zod.string().nullish(),
+            lineTotal: zod.string().optional(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Send customer invoice by email
+ */
+export const SendCustomerInvoiceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SendCustomerInvoiceHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const SendCustomerInvoiceBody = zod.object({
+  email: zod.string().email().optional(),
+});
+
+export const SendCustomerInvoiceResponse = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  soId: zod.number().optional(),
+  despatchId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  customerEmail: zod.string().nullish(),
+  status: zod.string().optional(),
+  invoiceDate: zod.string().nullish(),
+  dueDate: zod.string().nullish(),
+  currencyCode: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  paidAmount: zod.string().optional(),
+  notes: zod.string().nullish(),
+  glPostingId: zod.number().nullish(),
+  sentAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary List credit notes
+ */
+export const listCreditNotesQueryPageDefault = 1;
+export const listCreditNotesQueryLimitDefault = 25;
+
+export const ListCreditNotesQueryParams = zod.object({
+  soId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listCreditNotesQueryPageDefault),
+  limit: zod.coerce.number().default(listCreditNotesQueryLimitDefault),
+});
+
+export const ListCreditNotesHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListCreditNotesResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        invoiceId: zod.number().nullish(),
+        soId: zod.number().nullish(),
+        rmaId: zod.number().nullish(),
+        customerId: zod.number().nullish(),
+        customerName: zod.string().nullish(),
+        reason: zod.string().nullish(),
+        status: zod.string().optional(),
+        subtotal: zod.string().optional(),
+        taxAmount: zod.string().optional(),
+        total: zod.string().optional(),
+        notes: zod.string().nullish(),
+        glPostingId: zod.number().nullish(),
+        issuedAt: zod.coerce.date().nullish(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create credit note
+ */
+export const CreateCreditNoteHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateCreditNoteBody = zod.object({
+  soId: zod.number().optional(),
+  invoiceId: zod.number().optional(),
+  rmaId: zod.number().optional(),
+  customerId: zod.number().optional(),
+  customerName: zod.string().optional(),
+  reason: zod.string().optional(),
+  notes: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        itemId: zod.number().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        description: zod.string().optional(),
+        quantity: zod.number(),
+        unitPrice: zod.number(),
+        taxPct: zod.number().optional(),
+        notes: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Issue credit note (posts GL)
+ */
+export const IssueCreditNoteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const IssueCreditNoteHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const IssueCreditNoteResponse = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  invoiceId: zod.number().nullish(),
+  soId: zod.number().nullish(),
+  rmaId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  reason: zod.string().nullish(),
+  status: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  notes: zod.string().nullish(),
+  glPostingId: zod.number().nullish(),
+  issuedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary List RMA orders
+ */
+export const listRmaOrdersQueryPageDefault = 1;
+export const listRmaOrdersQueryLimitDefault = 25;
+
+export const ListRmaOrdersQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+  customerId: zod.coerce.number().optional(),
+  page: zod.coerce.number().default(listRmaOrdersQueryPageDefault),
+  limit: zod.coerce.number().default(listRmaOrdersQueryLimitDefault),
+});
+
+export const ListRmaOrdersHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListRmaOrdersResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        soId: zod.number().nullish(),
+        invoiceId: zod.number().nullish(),
+        customerId: zod.number().nullish(),
+        customerName: zod.string().nullish(),
+        customerEmail: zod.string().nullish(),
+        warehouseId: zod.number().nullish(),
+        status: zod.string().optional(),
+        reason: zod.string().nullish(),
+        resolution: zod.string().optional(),
+        notes: zod.string().nullish(),
+        creditNoteId: zod.number().nullish(),
+        authorizedAt: zod.coerce.date().nullish(),
+        receivedAt: zod.coerce.date().nullish(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create RMA order
+ */
+export const CreateRmaOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateRmaOrderBody = zod.object({
+  soId: zod.number().optional(),
+  invoiceId: zod.number().optional(),
+  customerId: zod.number().optional(),
+  customerName: zod.string().optional(),
+  customerEmail: zod.string().optional(),
+  warehouseId: zod.number().optional(),
+  reason: zod.string().optional(),
+  resolution: zod.enum(["credit", "exchange", "repair"]).optional(),
+  notes: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        soLineId: zod.number().optional(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        quantity: zod.number(),
+        unitPrice: zod.number().optional(),
+        condition: zod.enum(["good", "damaged", "unknown"]).optional(),
+        disposition: zod
+          .enum(["restock", "scrap", "return_to_supplier"])
+          .optional(),
+        warehouseId: zod.number().optional(),
+        locationId: zod.number().optional(),
+        reason: zod.string().optional(),
+        notes: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Get RMA order with lines
+ */
+export const GetRmaOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetRmaOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetRmaOrderResponse = zod
+  .object({
+    id: zod.number().optional(),
+    code: zod.string().optional(),
+    soId: zod.number().nullish(),
+    invoiceId: zod.number().nullish(),
+    customerId: zod.number().nullish(),
+    customerName: zod.string().nullish(),
+    customerEmail: zod.string().nullish(),
+    warehouseId: zod.number().nullish(),
+    status: zod.string().optional(),
+    reason: zod.string().nullish(),
+    resolution: zod.string().optional(),
+    notes: zod.string().nullish(),
+    creditNoteId: zod.number().nullish(),
+    authorizedAt: zod.coerce.date().nullish(),
+    receivedAt: zod.coerce.date().nullish(),
+    createdAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            rmaId: zod.number().optional(),
+            soLineId: zod.number().nullish(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            quantity: zod.string().optional(),
+            receivedQty: zod.string().optional(),
+            unitPrice: zod.string().nullish(),
+            condition: zod.string().optional(),
+            disposition: zod.string().optional(),
+            reason: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Authorize RMA order
+ */
+export const AuthorizeRmaParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AuthorizeRmaHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const AuthorizeRmaResponse = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  soId: zod.number().nullish(),
+  invoiceId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  customerEmail: zod.string().nullish(),
+  warehouseId: zod.number().nullish(),
+  status: zod.string().optional(),
+  reason: zod.string().nullish(),
+  resolution: zod.string().optional(),
+  notes: zod.string().nullish(),
+  creditNoteId: zod.number().nullish(),
+  authorizedAt: zod.coerce.date().nullish(),
+  receivedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Receive returned goods for RMA
+ */
+export const ReceiveRmaParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ReceiveRmaHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReceiveRmaBody = zod.object({
+  lines: zod
+    .array(
+      zod.object({
+        rmaLineId: zod.number(),
+        receivedQty: zod.number(),
+      }),
+    )
+    .optional(),
+});
+
+export const ReceiveRmaResponse = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  soId: zod.number().nullish(),
+  invoiceId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  customerEmail: zod.string().nullish(),
+  warehouseId: zod.number().nullish(),
+  status: zod.string().optional(),
+  reason: zod.string().nullish(),
+  resolution: zod.string().optional(),
+  notes: zod.string().nullish(),
+  creditNoteId: zod.number().nullish(),
+  authorizedAt: zod.coerce.date().nullish(),
+  receivedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Mark RMA as processed
+ */
+export const ProcessRmaParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ProcessRmaHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ProcessRmaResponse = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  soId: zod.number().nullish(),
+  invoiceId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  customerEmail: zod.string().nullish(),
+  warehouseId: zod.number().nullish(),
+  status: zod.string().optional(),
+  reason: zod.string().nullish(),
+  resolution: zod.string().optional(),
+  notes: zod.string().nullish(),
+  creditNoteId: zod.number().nullish(),
+  authorizedAt: zod.coerce.date().nullish(),
+  receivedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Sales summary report
+ */
+export const ReportSalesSummaryQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ReportSalesSummaryHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportSalesSummaryResponse = zod.object({
+  orders: zod
+    .object({
+      count: zod.number().optional(),
+      total: zod.number().optional(),
+    })
+    .optional(),
+  despatches: zod
+    .object({
+      count: zod.number().optional(),
+    })
+    .optional(),
+  invoices: zod
+    .object({
+      count: zod.number().optional(),
+      total: zod.number().optional(),
+    })
+    .optional(),
+  openQuotations: zod.number().optional(),
+  pendingRma: zod.number().optional(),
+});
+
+/**
+ * @summary Backorder report — lines not yet despatched
+ */
+export const ReportBackordersHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportBackordersResponseItem = zod.object({}).passthrough();
+export const ReportBackordersResponse = zod.array(ReportBackordersResponseItem);
+
+/**
+ * @summary Outstanding invoices report
+ */
+export const ReportOutstandingInvoicesHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportOutstandingInvoicesResponseItem = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  soId: zod.number().optional(),
+  despatchId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  customerEmail: zod.string().nullish(),
+  status: zod.string().optional(),
+  invoiceDate: zod.string().nullish(),
+  dueDate: zod.string().nullish(),
+  currencyCode: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  paidAmount: zod.string().optional(),
+  notes: zod.string().nullish(),
+  glPostingId: zod.number().nullish(),
+  sentAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date().optional(),
+});
+export const ReportOutstandingInvoicesResponse = zod.array(
+  ReportOutstandingInvoicesResponseItem,
+);
+
+/**
  * @summary List notifications for the current user
  */
 export const ListNotificationsQueryParams = zod.object({

@@ -6,6 +6,7 @@ import adminRouter from "./admin";
 import onboardingRouter from "./onboarding";
 import masterDataRouter from "./master-data";
 import procurementRouter from "./procurement";
+import salesRouter from "./sales";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(adminRouter);
 router.use(onboardingRouter);
 router.use(masterDataRouter);
 router.use(procurementRouter);
+router.use(salesRouter);
 
 export default router;

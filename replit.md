@@ -139,7 +139,8 @@ Stripe is optional — all code is guarded by `isStripeConfigured()` which retur
 - `/dashboard` — Main app dashboard (protected)
 - `/settings` — User profile settings (protected)
 - `/procurement` — Full Procurement & Purchase Orders module (9 tabs: Dashboard, Requisitions, Purchase Orders, Goods Receipts, Returns, Inventory, GL Postings, Workflows, Reports)
-- `/sales`, `/inventory`, `/finance` — Module placeholders (protected)
+- `/sales` — Full Sales Orders module (8 tabs: Quotations, Sales Orders, Despatches, Invoices, Credit Notes, RMA, Pick Slips, Allocations). Covers quotation → SO → pick slip → despatch → invoice lifecycle, RMA/credit notes, ATP allocation, GL postings.
+- `/inventory`, `/finance` — Module placeholders (protected)
 - `/super-admin` — Super admin dashboard: KPI bar, tenant table w/ search/filter, create tenant dialog, tenant detail sheet with Stripe invoices, row actions (suspend/unsuspend/plan change/delete)
 - `/pending` — Shown when a signed-in user has no tenant; CTA to start onboarding
 - `/onboarding` — 5-step self-serve wizard (Company Details → Company Structure → Master Data Import → Plan & Payment → Team Setup). Features: progress persistence via session API, ABN/tax ID validation, CSV import with template download, sample data loading, Stripe Elements (graceful fallback), warehouse/department setup with GL template, up to 25 team invites, Quick Start Tour on completion. Redirects to `/dashboard` when the user already has a tenant.
@@ -157,7 +158,7 @@ Stripe is optional — all code is guarded by `isStripeConfigured()` which retur
 - [x] Task 3: Tenant Onboarding Wizard
 - [ ] Task 4: Master Data Management
 - [x] Task 5: Procurement & Purchase Orders Module
-- [ ] Task 6: Sales Orders Module
+- [x] Task 6: Sales Orders Module
 - [ ] Task 7: Inventory & Warehouse Operations
 - [ ] Task 8: Mobile Warehouse Picking App (PWA)
 - [ ] Task 9: GL Financial Integration & Reports
