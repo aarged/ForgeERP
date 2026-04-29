@@ -327,6 +327,20 @@ router.post(
     }
 
     const data = parsed.data;
+
+    // If caller supplied a custom slug, check it isn't already taken
+    if (data.slug) {
+      const conflict = await adminDb
+        .select({ id: tenantsTable.id })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.slug, data.slug))
+        .limit(1);
+      if (conflict.length > 0) {
+        res.status(409).json({ error: `Slug "${data.slug}" is already in use`, code: "SLUG_CONFLICT" });
+        return;
+      }
+    }
+
     const slug = data.slug ?? (await ensureUniqueSlug(slugify(data.name)));
 
     const [tenant] = await adminDb
