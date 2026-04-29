@@ -122,7 +122,7 @@ async function updateStockLevel(
     // Hard-fail on over-consumption: do not silently clamp to zero
     if (quantity < 0 && Number(existing[0].qtyOnHand) + quantity < -0.0001) {
       throw new Error(
-        `Insufficient stock for item ${itemId} in warehouse ${warehouseId}: available ${Number(existing[0].qtyOnHand).toFixed(4)}, requested ${Math.abs(quantity).toFixed(4)}`
+        `Insufficient stock for item ${itemId} in warehouse ${warehouseId}${locationId ? `/loc:${locationId}` : ""}${lotNumber ? `/lot:${lotNumber}` : ""}: available ${Number(existing[0].qtyOnHand).toFixed(4)}, requested ${Math.abs(quantity).toFixed(4)}`
       );
     }
     await db.update(inventoryStockTable)
@@ -142,6 +142,11 @@ async function updateStockLevel(
       averageCost: unitCost != null ? String(unitCost) : undefined,
       lastMovementAt: new Date(),
     } as typeof inventoryStockTable.$inferInsert);
+  } else {
+    // quantity < 0 but no stock bucket exists at all — hard-fail
+    throw new Error(
+      `No stock bucket for item ${itemId} in warehouse ${warehouseId}${locationId ? `/loc:${locationId}` : ""}${lotNumber ? `/lot:${lotNumber}` : ""}: cannot consume from non-existent stock`
+    );
   }
 
   // Maintain FIFO cost layers for inbound (all methods track layers; FIFO consumes them on outbound)
@@ -158,7 +163,7 @@ async function updateStockLevel(
     } as typeof costLayersTable.$inferInsert);
   }
 
-  // FIFO outbound: consume oldest cost layers first
+  // FIFO outbound: consume oldest cost layers first, scoped to same lot/location as the movement
   if (quantity < 0 && (costingMethod === "fifo")) {
     let remaining = Math.abs(quantity);
     const layers = await db.select()
@@ -167,6 +172,8 @@ async function updateStockLevel(
         eq(costLayersTable.tenantId, tenantId),
         eq(costLayersTable.itemId, itemId),
         eq(costLayersTable.warehouseId, warehouseId),
+        locationId ? eq(costLayersTable.locationId, locationId) : isNull(costLayersTable.locationId),
+        lotNumber ? eq(costLayersTable.lotNumber, lotNumber) : isNull(costLayersTable.lotNumber),
         gt(costLayersTable.qtyRemaining, "0"),
       ))
       .orderBy(asc(costLayersTable.receivedAt));

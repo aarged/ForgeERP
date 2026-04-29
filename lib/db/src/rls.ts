@@ -92,8 +92,21 @@ export async function applyRLSPolicies(): Promise<void> {
       "receipt_lines",
       "po_returns",
       "po_return_lines",
+      // Inventory tables
       "inventory_stock",
       "inventory_movements",
+      "cost_layers",
+      "lot_numbers",
+      "inventory_adjustments",
+      "inventory_adjustment_lines",
+      "stocktake_runs",
+      "stocktake_lines",
+      "cycle_count_tasks",
+      "cycle_count_lines",
+      "landed_cost_allocations",
+      "serial_numbers",
+      "inventory_transfers",
+      // GL tables
       "gl_postings",
       "notifications",
     ];
@@ -159,8 +172,21 @@ export async function applyRLSPolicies(): Promise<void> {
       "receipt_lines",
       "po_returns",
       "po_return_lines",
+      // Inventory tables
       "inventory_stock",
       "inventory_movements",
+      "cost_layers",
+      "lot_numbers",
+      "inventory_adjustments",
+      "inventory_adjustment_lines",
+      "stocktake_runs",
+      "stocktake_lines",
+      "cycle_count_tasks",
+      "cycle_count_lines",
+      "landed_cost_allocations",
+      "serial_numbers",
+      "inventory_transfers",
+      // GL tables
       "gl_postings",
       "notifications",
     ];
