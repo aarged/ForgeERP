@@ -1111,12 +1111,22 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
   const lineCategories = lineItems.map((i) => i.category).filter(Boolean) as string[];
 
   // Select workflow based on trigger rules (value, supplier, warehouse, category)
-  const workflow = await selectWorkflow(tenantId, "purchase_requisition", {
+  let workflow = await selectWorkflow(tenantId, "purchase_requisition", {
     totalValue: req_.totalEstimated,
     supplierId: req_.preferredSupplierId,
     warehouseId: req_.deliverToWarehouseId,
     lineCategories,
   });
+
+  // Guard: if selected workflow has no step 1, treat it as "no workflow" (auto-approve)
+  let step1: (typeof approvalStepsTable.$inferSelect)[] = [];
+  if (workflow) {
+    step1 = await withTenantDb(tenantId, (db) =>
+      db.select().from(approvalStepsTable)
+        .where(and(eq(approvalStepsTable.workflowId, workflow!.id), eq(approvalStepsTable.stepNumber, 1), eq(approvalStepsTable.tenantId, tenantId)))
+        .limit(1));
+    if (step1.length === 0) workflow = null;
+  }
 
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(purchaseRequisitionsTable)
@@ -1132,10 +1142,7 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
 
   // Notify: if a workflow was assigned, tell step-1 approvers; otherwise confirm auto-approval to submitter
   if (workflow) {
-    const step1 = await withTenantDb(tenantId, (db) =>
-      db.select().from(approvalStepsTable)
-        .where(and(eq(approvalStepsTable.workflowId, workflow.id), eq(approvalStepsTable.stepNumber, 1), eq(approvalStepsTable.tenantId, tenantId)))
-        .limit(1));
+    // step1 was already fetched above (and is guaranteed non-empty at this point)
     if (step1[0]) {
       const approverIds = await resolveApproverClerkIds(tenantId, step1[0]);
       await Promise.all(approverIds.map((uid) =>
@@ -1161,7 +1168,7 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
 });
 
 // Approve/reject/return — restricted to approver, tenant_admin, super_admin
-router.post("/procurement/requisitions/:id/decision", ...approverMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/procurement/requisitions/:id/decision", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail, userRole } = req as TenantRequest;
   const id = Number(req.params.id);
   const schema = z.object({
@@ -1596,12 +1603,23 @@ router.post("/procurement/purchase-orders/:id/submit", ...tenantWriteMiddleware,
   const poLineCategories = poLineItems.map((i) => i.category).filter(Boolean) as string[];
 
   // Select workflow based on trigger rules (value, supplier, warehouse, category)
-  const workflow = await selectWorkflow(tenantId, "purchase_order", {
+  let poWorkflow = await selectWorkflow(tenantId, "purchase_order", {
     totalValue: po.total,
     supplierId: po.supplierId,
     warehouseId: po.deliverToWarehouseId,
     lineCategories: poLineCategories,
   });
+
+  // Guard: if selected workflow has no step 1, treat it as "no workflow" (auto-approve)
+  let poStep1: (typeof approvalStepsTable.$inferSelect)[] = [];
+  if (poWorkflow) {
+    poStep1 = await withTenantDb(tenantId, (db) =>
+      db.select().from(approvalStepsTable)
+        .where(and(eq(approvalStepsTable.workflowId, poWorkflow!.id), eq(approvalStepsTable.stepNumber, 1), eq(approvalStepsTable.tenantId, tenantId)))
+        .limit(1));
+    if (poStep1.length === 0) poWorkflow = null;
+  }
+  const workflow = poWorkflow;
 
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(purchaseOrdersTable)
@@ -1611,12 +1629,9 @@ router.post("/procurement/purchase-orders/:id/submit", ...tenantWriteMiddleware,
 
   // Notify step-1 approvers or confirm auto-approval to submitter
   if (workflow) {
-    const step1 = await withTenantDb(tenantId, (db) =>
-      db.select().from(approvalStepsTable)
-        .where(and(eq(approvalStepsTable.workflowId, workflow.id), eq(approvalStepsTable.stepNumber, 1), eq(approvalStepsTable.tenantId, tenantId)))
-        .limit(1));
-    if (step1[0]) {
-      const approverIds = await resolveApproverClerkIds(tenantId, step1[0]);
+    // poStep1 was already fetched above (guaranteed non-empty)
+    if (poStep1[0]) {
+      const approverIds = await resolveApproverClerkIds(tenantId, poStep1[0]);
       await Promise.all(approverIds.map((uid) =>
         createNotification(tenantId, uid, "approval_required",
           "Purchase Order requires your approval",
@@ -1635,7 +1650,7 @@ router.post("/procurement/purchase-orders/:id/submit", ...tenantWriteMiddleware,
 });
 
 // Approve/reject/return PO — restricted to approver, tenant_admin, super_admin
-router.post("/procurement/purchase-orders/:id/decision", ...approverMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/procurement/purchase-orders/:id/decision", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail, userRole } = req as TenantRequest;
   const id = Number(req.params.id);
   const schema = z.object({
