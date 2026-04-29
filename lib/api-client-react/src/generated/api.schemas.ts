@@ -3712,3 +3712,236 @@ export type ListCostLayers200 = {
   hasMore?: boolean;
   page?: number;
 };
+
+export type GetFinanceJournalsParams = {
+  entityType?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type GetFinanceJournals200 = {
+  data?: GlPosting[];
+  total?: number;
+  page?: number;
+  limit?: number;
+  pages?: number;
+};
+
+export type PostFinanceJournalsBodyLinesItem = {
+  accountCode: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+  description?: string;
+};
+
+export type PostFinanceJournalsBody = {
+  memo: string;
+  postingDate?: string;
+  lines: PostFinanceJournalsBodyLinesItem[];
+};
+
+export type PostFinanceJournalsIdReverseBody = {
+  memo?: string;
+};
+
+export type GetFinanceTrialBalanceParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type GetFinanceTrialBalance200AccountsItem = {
+  accountId?: number;
+  accountCode?: string;
+  accountName?: string;
+  accountType?: string;
+  periodDebit?: number;
+  periodCredit?: number;
+  closingBalance?: number;
+};
+
+export type GetFinanceTrialBalance200Totals = {
+  debit?: number;
+  credit?: number;
+};
+
+export type GetFinanceTrialBalance200 = {
+  fromDate?: string | null;
+  toDate?: string | null;
+  accounts?: GetFinanceTrialBalance200AccountsItem[];
+  totals?: GetFinanceTrialBalance200Totals;
+};
+
+export type GetFinanceTrialBalancePdfParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type GetFinanceTrialBalanceExportCsvParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type GetFinanceAccountMovementsParams = {
+  accountCode: string;
+  fromDate?: string;
+  toDate?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type GetFinanceAccountMovements200DataItem = {
+  postingId?: number;
+  postingCode?: string;
+  entityType?: string;
+  postedAt?: string | null;
+  createdAt?: string;
+  debit?: number;
+  credit?: number;
+  description?: string;
+  balance?: number;
+};
+
+export type GetFinanceAccountMovements200 = {
+  accountCode?: string;
+  data?: GetFinanceAccountMovements200DataItem[];
+  page?: number;
+  limit?: number;
+};
+
+export type GetDashboardKpiParams = {
+  role?: GetDashboardKpiRole;
+};
+
+export type GetDashboardKpiRole =
+  (typeof GetDashboardKpiRole)[keyof typeof GetDashboardKpiRole];
+
+export const GetDashboardKpiRole = {
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  admin: "admin",
+  viewer: "viewer",
+} as const;
+
+export type GetDashboardKpi200Kpis = { [key: string]: unknown };
+
+export type GetDashboardKpi200PendingApprovalListItem = {
+  [key: string]: unknown;
+};
+
+export type GetDashboardKpi200 = {
+  role?: string;
+  kpis?: GetDashboardKpi200Kpis;
+  pendingApprovalList?: GetDashboardKpi200PendingApprovalListItem[] | null;
+};
+
+export type GetDashboardWidgetTypeParams = {
+  limit?: number;
+};
+
+export type GetDashboardWidgetType200DataItem = { [key: string]: unknown };
+
+export type GetDashboardWidgetType200 = {
+  type?: string;
+  data?: GetDashboardWidgetType200DataItem[];
+};
+
+export type GetInventoryReportsStockValuationParams = {
+  warehouseId?: number;
+  itemId?: number;
+  groupBy?: string;
+};
+
+export type GetInventoryReportsStockValuation200RowsItem = {
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  warehouseId?: number;
+  warehouseName?: string;
+  qtyOnHand?: number;
+  averageCost?: number;
+  totalValue?: number;
+};
+
+export type GetInventoryReportsStockValuation200 = {
+  groupBy?: string;
+  grandTotal?: number;
+  rows?: GetInventoryReportsStockValuation200RowsItem[];
+};
+
+export type GetInventoryReportsStockValuationExportCsvParams = {
+  warehouseId?: number;
+  itemId?: number;
+};
+
+export type GetInventoryReportsMovementHistoryParams = {
+  fromDate?: string;
+  toDate?: string;
+  warehouseId?: number;
+  itemId?: number;
+  movementType?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type GetInventoryReportsMovementHistory200DataItem = {
+  [key: string]: unknown;
+};
+
+export type GetInventoryReportsMovementHistory200 = {
+  data?: GetInventoryReportsMovementHistory200DataItem[];
+  total?: number;
+  page?: number;
+  limit?: number;
+  pages?: number;
+};
+
+export type GetInventoryReportsSlowMovingParams = {
+  days?: number;
+  warehouseId?: number;
+};
+
+export type GetInventoryReportsSlowMoving200RowsItem = {
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  warehouseId?: number;
+  warehouseName?: string;
+  qtyOnHand?: number;
+  totalValue?: number;
+  lastMovementAt?: string | null;
+  daysSinceMovement?: number;
+};
+
+export type GetInventoryReportsSlowMoving200 = {
+  cutoffDays?: number;
+  cutoffDate?: string;
+  rows?: GetInventoryReportsSlowMoving200RowsItem[];
+};
+
+export type GetInventoryReportsStocktakeVarianceParams = {
+  stocktakeRunId?: number;
+  warehouseId?: number;
+};
+
+export type GetInventoryReportsStocktakeVariance200RowsItem = {
+  runId?: number;
+  runCode?: string;
+  itemCode?: string;
+  itemName?: string;
+  qtyExpected?: number;
+  qtyActual?: number;
+  variance?: number;
+  varianceValue?: number;
+};
+
+export type GetInventoryReportsStocktakeVariance200 = {
+  stocktakeRunId?: number | null;
+  totalVarianceValue?: number;
+  rows?: GetInventoryReportsStocktakeVariance200RowsItem[];
+};

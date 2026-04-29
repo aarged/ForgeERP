@@ -5436,6 +5436,420 @@ paths:
                   hasMore: { type: boolean }
                   page: { type: integer }
 
+  # ── Finance / GL ──────────────────────────────────────────────────────────────
+
+  /finance/journals:
+    get:
+      tags: [Finance]
+      summary: List GL journal postings
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: entityType, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: fromDate, in: query, schema: { type: string } }
+        - { name: toDate, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Paginated list of GL postings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GlPosting"
+                  total: { type: integer }
+                  page: { type: integer }
+                  limit: { type: integer }
+                  pages: { type: integer }
+    post:
+      tags: [Finance]
+      summary: Create a manual GL journal entry
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [memo, lines]
+              properties:
+                memo: { type: string }
+                postingDate: { type: string }
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    required: [accountCode, accountName, debit, credit]
+                    properties:
+                      accountCode: { type: string }
+                      accountName: { type: string }
+                      debit: { type: number }
+                      credit: { type: number }
+                      description: { type: string }
+      responses:
+        "201":
+          description: Created journal posting
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GlPosting" }
+
+  /finance/journals/{id}:
+    get:
+      tags: [Finance]
+      summary: Get a GL journal posting by ID
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: GL posting detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GlPosting" }
+
+  /finance/journals/{id}/reverse:
+    post:
+      tags: [Finance]
+      summary: Reverse a GL journal posting
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                memo: { type: string }
+      responses:
+        "201":
+          description: Reversal journal posting
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GlPosting" }
+
+  /finance/trial-balance:
+    get:
+      tags: [Finance]
+      summary: Trial balance report
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: fromDate, in: query, schema: { type: string } }
+        - { name: toDate, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Trial balance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fromDate: { type: string, nullable: true }
+                  toDate: { type: string, nullable: true }
+                  accounts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        accountId: { type: integer }
+                        accountCode: { type: string }
+                        accountName: { type: string }
+                        accountType: { type: string }
+                        periodDebit: { type: number }
+                        periodCredit: { type: number }
+                        closingBalance: { type: number }
+                  totals:
+                    type: object
+                    properties:
+                      debit: { type: number }
+                      credit: { type: number }
+
+  /finance/trial-balance/pdf:
+    get:
+      tags: [Finance]
+      summary: Download trial balance as PDF
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: fromDate, in: query, schema: { type: string } }
+        - { name: toDate, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
+  /finance/trial-balance/export/csv:
+    get:
+      tags: [Finance]
+      summary: Download trial balance as CSV
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: fromDate, in: query, schema: { type: string } }
+        - { name: toDate, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /finance/account-movements:
+    get:
+      tags: [Finance]
+      summary: Account ledger movements with running balance
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: accountCode, in: query, required: true, schema: { type: string } }
+        - { name: fromDate, in: query, schema: { type: string } }
+        - { name: toDate, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Account movements with running balance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accountCode: { type: string }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        postingId: { type: integer }
+                        postingCode: { type: string }
+                        entityType: { type: string }
+                        postedAt: { type: string, nullable: true }
+                        createdAt: { type: string }
+                        debit: { type: number }
+                        credit: { type: number }
+                        description: { type: string }
+                        balance: { type: number }
+                  page: { type: integer }
+                  limit: { type: integer }
+
+  # ── Dashboard KPIs ────────────────────────────────────────────────────────────
+
+  /dashboard/kpi:
+    get:
+      tags: [Dashboard]
+      summary: Role-based KPI metrics
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [purchaser, warehouse, approver, accountant, admin, viewer]
+      responses:
+        "200":
+          description: KPI data for the given role
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role: { type: string }
+                  kpis: { type: object, additionalProperties: true }
+                  pendingApprovalList:
+                    type: array
+                    nullable: true
+                    items: { type: object, additionalProperties: true }
+
+  /dashboard/widget/{type}:
+    get:
+      tags: [Dashboard]
+      summary: Widget data by type
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [recent-pos, recent-orders, stock-alerts, pending-approvals, top-items, stock-value, gl-activity, sales-by-period]
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Widget data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type: { type: string }
+                  data:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+
+  # ── Inventory Reports ─────────────────────────────────────────────────────────
+
+  /inventory/reports/stock-valuation:
+    get:
+      tags: [Inventory]
+      summary: Stock valuation report
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+        - { name: itemId, in: query, schema: { type: integer } }
+        - { name: groupBy, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Stock valuation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groupBy: { type: string }
+                  grandTotal: { type: number }
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        itemId: { type: integer }
+                        itemCode: { type: string }
+                        itemName: { type: string }
+                        warehouseId: { type: integer }
+                        warehouseName: { type: string }
+                        qtyOnHand: { type: number }
+                        averageCost: { type: number }
+                        totalValue: { type: number }
+
+  /inventory/reports/stock-valuation/export/csv:
+    get:
+      tags: [Inventory]
+      summary: Export stock valuation as CSV
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+        - { name: itemId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /inventory/reports/movement-history:
+    get:
+      tags: [Inventory]
+      summary: Inventory movement history
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: fromDate, in: query, schema: { type: string } }
+        - { name: toDate, in: query, schema: { type: string } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+        - { name: itemId, in: query, schema: { type: integer } }
+        - { name: movementType, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Paginated movement history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+                  total: { type: integer }
+                  page: { type: integer }
+                  limit: { type: integer }
+                  pages: { type: integer }
+
+  /inventory/reports/slow-moving:
+    get:
+      tags: [Inventory]
+      summary: Slow-moving items report
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: days, in: query, schema: { type: integer } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Slow-moving items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cutoffDays: { type: integer }
+                  cutoffDate: { type: string }
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        itemId: { type: integer }
+                        itemCode: { type: string }
+                        itemName: { type: string }
+                        warehouseId: { type: integer }
+                        warehouseName: { type: string }
+                        qtyOnHand: { type: number }
+                        totalValue: { type: number }
+                        lastMovementAt: { type: string, nullable: true }
+                        daysSinceMovement: { type: number }
+
+  /inventory/reports/stocktake-variance:
+    get:
+      tags: [Inventory]
+      summary: Stocktake variance report
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: stocktakeRunId, in: query, schema: { type: integer } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Stocktake variance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stocktakeRunId: { type: integer, nullable: true }
+                  totalVarianceValue: { type: number }
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        runId: { type: integer }
+                        runCode: { type: string }
+                        itemCode: { type: string }
+                        itemName: { type: string }
+                        qtyExpected: { type: number }
+                        qtyActual: { type: number }
+                        variance: { type: number }
+                        varianceValue: { type: number }
+
 components:
   securitySchemes:
     clerkAuth:

@@ -7243,3 +7243,395 @@ export const ListCostLayersResponse = zod.object({
   hasMore: zod.boolean().optional(),
   page: zod.number().optional(),
 });
+
+/**
+ * @summary List GL journal postings
+ */
+export const GetFinanceJournalsQueryParams = zod.object({
+  entityType: zod.coerce.string().optional(),
+  status: zod.coerce.string().optional(),
+  fromDate: zod.coerce.string().optional(),
+  toDate: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const GetFinanceJournalsHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const GetFinanceJournalsResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        code: zod.string().optional(),
+        entityType: zod.string().optional(),
+        entityId: zod.number().optional(),
+        status: zod.string().optional(),
+        postedByClerkId: zod.string().nullish(),
+        postedByEmail: zod.string().nullish(),
+        postedAt: zod.coerce.date().nullish(),
+        lines: zod.object({}).passthrough().optional(),
+        totalDebit: zod.string().optional(),
+        totalCredit: zod.string().optional(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  total: zod.number().optional(),
+  page: zod.number().optional(),
+  limit: zod.number().optional(),
+  pages: zod.number().optional(),
+});
+
+/**
+ * @summary Create a manual GL journal entry
+ */
+export const PostFinanceJournalsHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const PostFinanceJournalsBody = zod.object({
+  memo: zod.string(),
+  postingDate: zod.string().optional(),
+  lines: zod.array(
+    zod.object({
+      accountCode: zod.string(),
+      accountName: zod.string(),
+      debit: zod.number(),
+      credit: zod.number(),
+      description: zod.string().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get a GL journal posting by ID
+ */
+export const GetFinanceJournalsIdParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetFinanceJournalsIdHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const GetFinanceJournalsIdResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  entityType: zod.string().optional(),
+  entityId: zod.number().optional(),
+  status: zod.string().optional(),
+  postedByClerkId: zod.string().nullish(),
+  postedByEmail: zod.string().nullish(),
+  postedAt: zod.coerce.date().nullish(),
+  lines: zod.object({}).passthrough().optional(),
+  totalDebit: zod.string().optional(),
+  totalCredit: zod.string().optional(),
+  createdAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Reverse a GL journal posting
+ */
+export const PostFinanceJournalsIdReverseParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const PostFinanceJournalsIdReverseHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const PostFinanceJournalsIdReverseBody = zod.object({
+  memo: zod.string().optional(),
+});
+
+/**
+ * @summary Trial balance report
+ */
+export const GetFinanceTrialBalanceQueryParams = zod.object({
+  fromDate: zod.coerce.string().optional(),
+  toDate: zod.coerce.string().optional(),
+});
+
+export const GetFinanceTrialBalanceHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const GetFinanceTrialBalanceResponse = zod.object({
+  fromDate: zod.string().nullish(),
+  toDate: zod.string().nullish(),
+  accounts: zod
+    .array(
+      zod.object({
+        accountId: zod.number().optional(),
+        accountCode: zod.string().optional(),
+        accountName: zod.string().optional(),
+        accountType: zod.string().optional(),
+        periodDebit: zod.number().optional(),
+        periodCredit: zod.number().optional(),
+        closingBalance: zod.number().optional(),
+      }),
+    )
+    .optional(),
+  totals: zod
+    .object({
+      debit: zod.number().optional(),
+      credit: zod.number().optional(),
+    })
+    .optional(),
+});
+
+/**
+ * @summary Download trial balance as PDF
+ */
+export const GetFinanceTrialBalancePdfQueryParams = zod.object({
+  fromDate: zod.coerce.string().optional(),
+  toDate: zod.coerce.string().optional(),
+});
+
+export const GetFinanceTrialBalancePdfHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Download trial balance as CSV
+ */
+export const GetFinanceTrialBalanceExportCsvQueryParams = zod.object({
+  fromDate: zod.coerce.string().optional(),
+  toDate: zod.coerce.string().optional(),
+});
+
+export const GetFinanceTrialBalanceExportCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Account ledger movements with running balance
+ */
+export const GetFinanceAccountMovementsQueryParams = zod.object({
+  accountCode: zod.coerce.string(),
+  fromDate: zod.coerce.string().optional(),
+  toDate: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const GetFinanceAccountMovementsHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const GetFinanceAccountMovementsResponse = zod.object({
+  accountCode: zod.string().optional(),
+  data: zod
+    .array(
+      zod.object({
+        postingId: zod.number().optional(),
+        postingCode: zod.string().optional(),
+        entityType: zod.string().optional(),
+        postedAt: zod.string().nullish(),
+        createdAt: zod.string().optional(),
+        debit: zod.number().optional(),
+        credit: zod.number().optional(),
+        description: zod.string().optional(),
+        balance: zod.number().optional(),
+      }),
+    )
+    .optional(),
+  page: zod.number().optional(),
+  limit: zod.number().optional(),
+});
+
+/**
+ * @summary Role-based KPI metrics
+ */
+export const GetDashboardKpiQueryParams = zod.object({
+  role: zod
+    .enum([
+      "purchaser",
+      "warehouse",
+      "approver",
+      "accountant",
+      "admin",
+      "viewer",
+    ])
+    .optional(),
+});
+
+export const GetDashboardKpiHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const GetDashboardKpiResponse = zod.object({
+  role: zod.string().optional(),
+  kpis: zod.record(zod.string(), zod.unknown()).optional(),
+  pendingApprovalList: zod
+    .array(zod.record(zod.string(), zod.unknown()))
+    .nullish(),
+});
+
+/**
+ * @summary Widget data by type
+ */
+export const GetDashboardWidgetTypeParams = zod.object({
+  type: zod.enum([
+    "recent-pos",
+    "recent-orders",
+    "stock-alerts",
+    "pending-approvals",
+    "top-items",
+    "stock-value",
+    "gl-activity",
+    "sales-by-period",
+  ]),
+});
+
+export const GetDashboardWidgetTypeQueryParams = zod.object({
+  limit: zod.coerce.number().optional(),
+});
+
+export const GetDashboardWidgetTypeHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const GetDashboardWidgetTypeResponse = zod.object({
+  type: zod.string().optional(),
+  data: zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+});
+
+/**
+ * @summary Stock valuation report
+ */
+export const GetInventoryReportsStockValuationQueryParams = zod.object({
+  warehouseId: zod.coerce.number().optional(),
+  itemId: zod.coerce.number().optional(),
+  groupBy: zod.coerce.string().optional(),
+});
+
+export const GetInventoryReportsStockValuationHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const GetInventoryReportsStockValuationResponse = zod.object({
+  groupBy: zod.string().optional(),
+  grandTotal: zod.number().optional(),
+  rows: zod
+    .array(
+      zod.object({
+        itemId: zod.number().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        warehouseId: zod.number().optional(),
+        warehouseName: zod.string().optional(),
+        qtyOnHand: zod.number().optional(),
+        averageCost: zod.number().optional(),
+        totalValue: zod.number().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Export stock valuation as CSV
+ */
+export const GetInventoryReportsStockValuationExportCsvQueryParams = zod.object(
+  {
+    warehouseId: zod.coerce.number().optional(),
+    itemId: zod.coerce.number().optional(),
+  },
+);
+
+export const GetInventoryReportsStockValuationExportCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Inventory movement history
+ */
+export const GetInventoryReportsMovementHistoryQueryParams = zod.object({
+  fromDate: zod.coerce.string().optional(),
+  toDate: zod.coerce.string().optional(),
+  warehouseId: zod.coerce.number().optional(),
+  itemId: zod.coerce.number().optional(),
+  movementType: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const GetInventoryReportsMovementHistoryHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const GetInventoryReportsMovementHistoryResponse = zod.object({
+  data: zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  total: zod.number().optional(),
+  page: zod.number().optional(),
+  limit: zod.number().optional(),
+  pages: zod.number().optional(),
+});
+
+/**
+ * @summary Slow-moving items report
+ */
+export const GetInventoryReportsSlowMovingQueryParams = zod.object({
+  days: zod.coerce.number().optional(),
+  warehouseId: zod.coerce.number().optional(),
+});
+
+export const GetInventoryReportsSlowMovingHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const GetInventoryReportsSlowMovingResponse = zod.object({
+  cutoffDays: zod.number().optional(),
+  cutoffDate: zod.string().optional(),
+  rows: zod
+    .array(
+      zod.object({
+        itemId: zod.number().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        warehouseId: zod.number().optional(),
+        warehouseName: zod.string().optional(),
+        qtyOnHand: zod.number().optional(),
+        totalValue: zod.number().optional(),
+        lastMovementAt: zod.string().nullish(),
+        daysSinceMovement: zod.number().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Stocktake variance report
+ */
+export const GetInventoryReportsStocktakeVarianceQueryParams = zod.object({
+  stocktakeRunId: zod.coerce.number().optional(),
+  warehouseId: zod.coerce.number().optional(),
+});
+
+export const GetInventoryReportsStocktakeVarianceHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+export const GetInventoryReportsStocktakeVarianceResponse = zod.object({
+  stocktakeRunId: zod.number().nullish(),
+  totalVarianceValue: zod.number().optional(),
+  rows: zod
+    .array(
+      zod.object({
+        runId: zod.number().optional(),
+        runCode: zod.string().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        qtyExpected: zod.number().optional(),
+        qtyActual: zod.number().optional(),
+        variance: zod.number().optional(),
+        varianceValue: zod.number().optional(),
+      }),
+    )
+    .optional(),
+});

@@ -95,6 +95,27 @@ import type {
   GetAdminAuditLogsParams,
   GetAtp200,
   GetAtpParams,
+  GetDashboardKpi200,
+  GetDashboardKpiParams,
+  GetDashboardWidgetType200,
+  GetDashboardWidgetTypeParams,
+  GetFinanceAccountMovements200,
+  GetFinanceAccountMovementsParams,
+  GetFinanceJournals200,
+  GetFinanceJournalsParams,
+  GetFinanceTrialBalance200,
+  GetFinanceTrialBalanceExportCsvParams,
+  GetFinanceTrialBalanceParams,
+  GetFinanceTrialBalancePdfParams,
+  GetInventoryReportsMovementHistory200,
+  GetInventoryReportsMovementHistoryParams,
+  GetInventoryReportsSlowMoving200,
+  GetInventoryReportsSlowMovingParams,
+  GetInventoryReportsStockValuation200,
+  GetInventoryReportsStockValuationExportCsvParams,
+  GetInventoryReportsStockValuationParams,
+  GetInventoryReportsStocktakeVariance200,
+  GetInventoryReportsStocktakeVarianceParams,
   GetItemAvailability200,
   GetItemAvailabilityParams,
   GetMasterDataAuditTrailParams,
@@ -103,6 +124,7 @@ import type {
   GetSalesAlternativesParams,
   GetSerialNumber200,
   GlAccountListResponse,
+  GlPosting,
   GlPostingList,
   GlTemplateImportBody,
   GlTemplateImportResult,
@@ -193,6 +215,8 @@ import type {
   PoReturn,
   PoReturnDetail,
   PoSummaryRow,
+  PostFinanceJournalsBody,
+  PostFinanceJournalsIdReverseBody,
   PostStocktakeRun200,
   PostStocktakeRunBody,
   PurchaseOrder,
@@ -19830,6 +19854,1599 @@ export function useListCostLayers<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListCostLayersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List GL journal postings
+ */
+export const getGetFinanceJournalsUrl = (params?: GetFinanceJournalsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/finance/journals?${stringifiedParams}`
+    : `/api/finance/journals`;
+};
+
+export const getFinanceJournals = async (
+  params?: GetFinanceJournalsParams,
+  options?: RequestInit,
+): Promise<GetFinanceJournals200> => {
+  return customFetch<GetFinanceJournals200>(getGetFinanceJournalsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFinanceJournalsQueryKey = (
+  params?: GetFinanceJournalsParams,
+) => {
+  return [`/api/finance/journals`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetFinanceJournalsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFinanceJournals>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetFinanceJournalsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceJournals>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetFinanceJournalsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFinanceJournals>>
+  > = ({ signal }) => getFinanceJournals(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFinanceJournals>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFinanceJournalsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFinanceJournals>>
+>;
+export type GetFinanceJournalsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List GL journal postings
+ */
+
+export function useGetFinanceJournals<
+  TData = Awaited<ReturnType<typeof getFinanceJournals>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetFinanceJournalsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceJournals>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFinanceJournalsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a manual GL journal entry
+ */
+export const getPostFinanceJournalsUrl = () => {
+  return `/api/finance/journals`;
+};
+
+export const postFinanceJournals = async (
+  postFinanceJournalsBody: PostFinanceJournalsBody,
+  options?: RequestInit,
+): Promise<GlPosting> => {
+  return customFetch<GlPosting>(getPostFinanceJournalsUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(postFinanceJournalsBody),
+  });
+};
+
+export const getPostFinanceJournalsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postFinanceJournals>>,
+    TError,
+    { data: BodyType<PostFinanceJournalsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postFinanceJournals>>,
+  TError,
+  { data: BodyType<PostFinanceJournalsBody> },
+  TContext
+> => {
+  const mutationKey = ["postFinanceJournals"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postFinanceJournals>>,
+    { data: BodyType<PostFinanceJournalsBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return postFinanceJournals(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostFinanceJournalsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postFinanceJournals>>
+>;
+export type PostFinanceJournalsMutationBody = BodyType<PostFinanceJournalsBody>;
+export type PostFinanceJournalsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a manual GL journal entry
+ */
+export const usePostFinanceJournals = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postFinanceJournals>>,
+    TError,
+    { data: BodyType<PostFinanceJournalsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof postFinanceJournals>>,
+  TError,
+  { data: BodyType<PostFinanceJournalsBody> },
+  TContext
+> => {
+  return useMutation(getPostFinanceJournalsMutationOptions(options));
+};
+
+/**
+ * @summary Get a GL journal posting by ID
+ */
+export const getGetFinanceJournalsIdUrl = (id: number) => {
+  return `/api/finance/journals/${id}`;
+};
+
+export const getFinanceJournalsId = async (
+  id: number,
+  options?: RequestInit,
+): Promise<GlPosting> => {
+  return customFetch<GlPosting>(getGetFinanceJournalsIdUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFinanceJournalsIdQueryKey = (id: number) => {
+  return [`/api/finance/journals/${id}`] as const;
+};
+
+export const getGetFinanceJournalsIdQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFinanceJournalsId>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceJournalsId>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetFinanceJournalsIdQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFinanceJournalsId>>
+  > = ({ signal }) => getFinanceJournalsId(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFinanceJournalsId>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFinanceJournalsIdQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFinanceJournalsId>>
+>;
+export type GetFinanceJournalsIdQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a GL journal posting by ID
+ */
+
+export function useGetFinanceJournalsId<
+  TData = Awaited<ReturnType<typeof getFinanceJournalsId>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceJournalsId>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFinanceJournalsIdQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Reverse a GL journal posting
+ */
+export const getPostFinanceJournalsIdReverseUrl = (id: number) => {
+  return `/api/finance/journals/${id}/reverse`;
+};
+
+export const postFinanceJournalsIdReverse = async (
+  id: number,
+  postFinanceJournalsIdReverseBody: PostFinanceJournalsIdReverseBody,
+  options?: RequestInit,
+): Promise<GlPosting> => {
+  return customFetch<GlPosting>(getPostFinanceJournalsIdReverseUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(postFinanceJournalsIdReverseBody),
+  });
+};
+
+export const getPostFinanceJournalsIdReverseMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postFinanceJournalsIdReverse>>,
+    TError,
+    { id: number; data: BodyType<PostFinanceJournalsIdReverseBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postFinanceJournalsIdReverse>>,
+  TError,
+  { id: number; data: BodyType<PostFinanceJournalsIdReverseBody> },
+  TContext
+> => {
+  const mutationKey = ["postFinanceJournalsIdReverse"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postFinanceJournalsIdReverse>>,
+    { id: number; data: BodyType<PostFinanceJournalsIdReverseBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return postFinanceJournalsIdReverse(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostFinanceJournalsIdReverseMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postFinanceJournalsIdReverse>>
+>;
+export type PostFinanceJournalsIdReverseMutationBody =
+  BodyType<PostFinanceJournalsIdReverseBody>;
+export type PostFinanceJournalsIdReverseMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Reverse a GL journal posting
+ */
+export const usePostFinanceJournalsIdReverse = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postFinanceJournalsIdReverse>>,
+    TError,
+    { id: number; data: BodyType<PostFinanceJournalsIdReverseBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof postFinanceJournalsIdReverse>>,
+  TError,
+  { id: number; data: BodyType<PostFinanceJournalsIdReverseBody> },
+  TContext
+> => {
+  return useMutation(getPostFinanceJournalsIdReverseMutationOptions(options));
+};
+
+/**
+ * @summary Trial balance report
+ */
+export const getGetFinanceTrialBalanceUrl = (
+  params?: GetFinanceTrialBalanceParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/finance/trial-balance?${stringifiedParams}`
+    : `/api/finance/trial-balance`;
+};
+
+export const getFinanceTrialBalance = async (
+  params?: GetFinanceTrialBalanceParams,
+  options?: RequestInit,
+): Promise<GetFinanceTrialBalance200> => {
+  return customFetch<GetFinanceTrialBalance200>(
+    getGetFinanceTrialBalanceUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetFinanceTrialBalanceQueryKey = (
+  params?: GetFinanceTrialBalanceParams,
+) => {
+  return [`/api/finance/trial-balance`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetFinanceTrialBalanceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFinanceTrialBalance>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetFinanceTrialBalanceParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceTrialBalance>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetFinanceTrialBalanceQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFinanceTrialBalance>>
+  > = ({ signal }) =>
+    getFinanceTrialBalance(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFinanceTrialBalance>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFinanceTrialBalanceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFinanceTrialBalance>>
+>;
+export type GetFinanceTrialBalanceQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Trial balance report
+ */
+
+export function useGetFinanceTrialBalance<
+  TData = Awaited<ReturnType<typeof getFinanceTrialBalance>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetFinanceTrialBalanceParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceTrialBalance>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFinanceTrialBalanceQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Download trial balance as PDF
+ */
+export const getGetFinanceTrialBalancePdfUrl = (
+  params?: GetFinanceTrialBalancePdfParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/finance/trial-balance/pdf?${stringifiedParams}`
+    : `/api/finance/trial-balance/pdf`;
+};
+
+export const getFinanceTrialBalancePdf = async (
+  params?: GetFinanceTrialBalancePdfParams,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getGetFinanceTrialBalancePdfUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFinanceTrialBalancePdfQueryKey = (
+  params?: GetFinanceTrialBalancePdfParams,
+) => {
+  return [
+    `/api/finance/trial-balance/pdf`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetFinanceTrialBalancePdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFinanceTrialBalancePdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetFinanceTrialBalancePdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceTrialBalancePdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetFinanceTrialBalancePdfQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFinanceTrialBalancePdf>>
+  > = ({ signal }) =>
+    getFinanceTrialBalancePdf(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFinanceTrialBalancePdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFinanceTrialBalancePdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFinanceTrialBalancePdf>>
+>;
+export type GetFinanceTrialBalancePdfQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Download trial balance as PDF
+ */
+
+export function useGetFinanceTrialBalancePdf<
+  TData = Awaited<ReturnType<typeof getFinanceTrialBalancePdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetFinanceTrialBalancePdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceTrialBalancePdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFinanceTrialBalancePdfQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Download trial balance as CSV
+ */
+export const getGetFinanceTrialBalanceExportCsvUrl = (
+  params?: GetFinanceTrialBalanceExportCsvParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/finance/trial-balance/export/csv?${stringifiedParams}`
+    : `/api/finance/trial-balance/export/csv`;
+};
+
+export const getFinanceTrialBalanceExportCsv = async (
+  params?: GetFinanceTrialBalanceExportCsvParams,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getGetFinanceTrialBalanceExportCsvUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFinanceTrialBalanceExportCsvQueryKey = (
+  params?: GetFinanceTrialBalanceExportCsvParams,
+) => {
+  return [
+    `/api/finance/trial-balance/export/csv`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetFinanceTrialBalanceExportCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFinanceTrialBalanceExportCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetFinanceTrialBalanceExportCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceTrialBalanceExportCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetFinanceTrialBalanceExportCsvQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFinanceTrialBalanceExportCsv>>
+  > = ({ signal }) =>
+    getFinanceTrialBalanceExportCsv(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFinanceTrialBalanceExportCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFinanceTrialBalanceExportCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFinanceTrialBalanceExportCsv>>
+>;
+export type GetFinanceTrialBalanceExportCsvQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Download trial balance as CSV
+ */
+
+export function useGetFinanceTrialBalanceExportCsv<
+  TData = Awaited<ReturnType<typeof getFinanceTrialBalanceExportCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetFinanceTrialBalanceExportCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceTrialBalanceExportCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFinanceTrialBalanceExportCsvQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Account ledger movements with running balance
+ */
+export const getGetFinanceAccountMovementsUrl = (
+  params: GetFinanceAccountMovementsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/finance/account-movements?${stringifiedParams}`
+    : `/api/finance/account-movements`;
+};
+
+export const getFinanceAccountMovements = async (
+  params: GetFinanceAccountMovementsParams,
+  options?: RequestInit,
+): Promise<GetFinanceAccountMovements200> => {
+  return customFetch<GetFinanceAccountMovements200>(
+    getGetFinanceAccountMovementsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetFinanceAccountMovementsQueryKey = (
+  params?: GetFinanceAccountMovementsParams,
+) => {
+  return [
+    `/api/finance/account-movements`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetFinanceAccountMovementsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFinanceAccountMovements>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetFinanceAccountMovementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceAccountMovements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetFinanceAccountMovementsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFinanceAccountMovements>>
+  > = ({ signal }) =>
+    getFinanceAccountMovements(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFinanceAccountMovements>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFinanceAccountMovementsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFinanceAccountMovements>>
+>;
+export type GetFinanceAccountMovementsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Account ledger movements with running balance
+ */
+
+export function useGetFinanceAccountMovements<
+  TData = Awaited<ReturnType<typeof getFinanceAccountMovements>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetFinanceAccountMovementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceAccountMovements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFinanceAccountMovementsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Role-based KPI metrics
+ */
+export const getGetDashboardKpiUrl = (params?: GetDashboardKpiParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/dashboard/kpi?${stringifiedParams}`
+    : `/api/dashboard/kpi`;
+};
+
+export const getDashboardKpi = async (
+  params?: GetDashboardKpiParams,
+  options?: RequestInit,
+): Promise<GetDashboardKpi200> => {
+  return customFetch<GetDashboardKpi200>(getGetDashboardKpiUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDashboardKpiQueryKey = (params?: GetDashboardKpiParams) => {
+  return [`/api/dashboard/kpi`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetDashboardKpiQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDashboardKpi>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetDashboardKpiParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDashboardKpi>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDashboardKpiQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboardKpi>>> = ({
+    signal,
+  }) => getDashboardKpi(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDashboardKpi>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDashboardKpiQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDashboardKpi>>
+>;
+export type GetDashboardKpiQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Role-based KPI metrics
+ */
+
+export function useGetDashboardKpi<
+  TData = Awaited<ReturnType<typeof getDashboardKpi>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetDashboardKpiParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDashboardKpi>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDashboardKpiQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Widget data by type
+ */
+export const getGetDashboardWidgetTypeUrl = (
+  type:
+    | "recent-pos"
+    | "recent-orders"
+    | "stock-alerts"
+    | "pending-approvals"
+    | "top-items"
+    | "stock-value"
+    | "gl-activity"
+    | "sales-by-period",
+  params?: GetDashboardWidgetTypeParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/dashboard/widget/${type}?${stringifiedParams}`
+    : `/api/dashboard/widget/${type}`;
+};
+
+export const getDashboardWidgetType = async (
+  type:
+    | "recent-pos"
+    | "recent-orders"
+    | "stock-alerts"
+    | "pending-approvals"
+    | "top-items"
+    | "stock-value"
+    | "gl-activity"
+    | "sales-by-period",
+  params?: GetDashboardWidgetTypeParams,
+  options?: RequestInit,
+): Promise<GetDashboardWidgetType200> => {
+  return customFetch<GetDashboardWidgetType200>(
+    getGetDashboardWidgetTypeUrl(type, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetDashboardWidgetTypeQueryKey = (
+  type:
+    | "recent-pos"
+    | "recent-orders"
+    | "stock-alerts"
+    | "pending-approvals"
+    | "top-items"
+    | "stock-value"
+    | "gl-activity"
+    | "sales-by-period",
+  params?: GetDashboardWidgetTypeParams,
+) => {
+  return [
+    `/api/dashboard/widget/${type}`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetDashboardWidgetTypeQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDashboardWidgetType>>,
+  TError = ErrorType<unknown>,
+>(
+  type:
+    | "recent-pos"
+    | "recent-orders"
+    | "stock-alerts"
+    | "pending-approvals"
+    | "top-items"
+    | "stock-value"
+    | "gl-activity"
+    | "sales-by-period",
+  params?: GetDashboardWidgetTypeParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDashboardWidgetType>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetDashboardWidgetTypeQueryKey(type, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getDashboardWidgetType>>
+  > = ({ signal }) =>
+    getDashboardWidgetType(type, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!type,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDashboardWidgetType>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDashboardWidgetTypeQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDashboardWidgetType>>
+>;
+export type GetDashboardWidgetTypeQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Widget data by type
+ */
+
+export function useGetDashboardWidgetType<
+  TData = Awaited<ReturnType<typeof getDashboardWidgetType>>,
+  TError = ErrorType<unknown>,
+>(
+  type:
+    | "recent-pos"
+    | "recent-orders"
+    | "stock-alerts"
+    | "pending-approvals"
+    | "top-items"
+    | "stock-value"
+    | "gl-activity"
+    | "sales-by-period",
+  params?: GetDashboardWidgetTypeParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDashboardWidgetType>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDashboardWidgetTypeQueryOptions(
+    type,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Stock valuation report
+ */
+export const getGetInventoryReportsStockValuationUrl = (
+  params?: GetInventoryReportsStockValuationParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/stock-valuation?${stringifiedParams}`
+    : `/api/inventory/reports/stock-valuation`;
+};
+
+export const getInventoryReportsStockValuation = async (
+  params?: GetInventoryReportsStockValuationParams,
+  options?: RequestInit,
+): Promise<GetInventoryReportsStockValuation200> => {
+  return customFetch<GetInventoryReportsStockValuation200>(
+    getGetInventoryReportsStockValuationUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetInventoryReportsStockValuationQueryKey = (
+  params?: GetInventoryReportsStockValuationParams,
+) => {
+  return [
+    `/api/inventory/reports/stock-valuation`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetInventoryReportsStockValuationQueryOptions = <
+  TData = Awaited<ReturnType<typeof getInventoryReportsStockValuation>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInventoryReportsStockValuationParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryReportsStockValuation>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetInventoryReportsStockValuationQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getInventoryReportsStockValuation>>
+  > = ({ signal }) =>
+    getInventoryReportsStockValuation(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getInventoryReportsStockValuation>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetInventoryReportsStockValuationQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getInventoryReportsStockValuation>>
+>;
+export type GetInventoryReportsStockValuationQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Stock valuation report
+ */
+
+export function useGetInventoryReportsStockValuation<
+  TData = Awaited<ReturnType<typeof getInventoryReportsStockValuation>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInventoryReportsStockValuationParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryReportsStockValuation>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetInventoryReportsStockValuationQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export stock valuation as CSV
+ */
+export const getGetInventoryReportsStockValuationExportCsvUrl = (
+  params?: GetInventoryReportsStockValuationExportCsvParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/stock-valuation/export/csv?${stringifiedParams}`
+    : `/api/inventory/reports/stock-valuation/export/csv`;
+};
+
+export const getInventoryReportsStockValuationExportCsv = async (
+  params?: GetInventoryReportsStockValuationExportCsvParams,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(
+    getGetInventoryReportsStockValuationExportCsvUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetInventoryReportsStockValuationExportCsvQueryKey = (
+  params?: GetInventoryReportsStockValuationExportCsvParams,
+) => {
+  return [
+    `/api/inventory/reports/stock-valuation/export/csv`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetInventoryReportsStockValuationExportCsvQueryOptions = <
+  TData = Awaited<
+    ReturnType<typeof getInventoryReportsStockValuationExportCsv>
+  >,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInventoryReportsStockValuationExportCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryReportsStockValuationExportCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetInventoryReportsStockValuationExportCsvQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getInventoryReportsStockValuationExportCsv>>
+  > = ({ signal }) =>
+    getInventoryReportsStockValuationExportCsv(params, {
+      signal,
+      ...requestOptions,
+    });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getInventoryReportsStockValuationExportCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetInventoryReportsStockValuationExportCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getInventoryReportsStockValuationExportCsv>>
+>;
+export type GetInventoryReportsStockValuationExportCsvQueryError =
+  ErrorType<unknown>;
+
+/**
+ * @summary Export stock valuation as CSV
+ */
+
+export function useGetInventoryReportsStockValuationExportCsv<
+  TData = Awaited<
+    ReturnType<typeof getInventoryReportsStockValuationExportCsv>
+  >,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInventoryReportsStockValuationExportCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryReportsStockValuationExportCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions =
+    getGetInventoryReportsStockValuationExportCsvQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Inventory movement history
+ */
+export const getGetInventoryReportsMovementHistoryUrl = (
+  params?: GetInventoryReportsMovementHistoryParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/movement-history?${stringifiedParams}`
+    : `/api/inventory/reports/movement-history`;
+};
+
+export const getInventoryReportsMovementHistory = async (
+  params?: GetInventoryReportsMovementHistoryParams,
+  options?: RequestInit,
+): Promise<GetInventoryReportsMovementHistory200> => {
+  return customFetch<GetInventoryReportsMovementHistory200>(
+    getGetInventoryReportsMovementHistoryUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetInventoryReportsMovementHistoryQueryKey = (
+  params?: GetInventoryReportsMovementHistoryParams,
+) => {
+  return [
+    `/api/inventory/reports/movement-history`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetInventoryReportsMovementHistoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getInventoryReportsMovementHistory>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInventoryReportsMovementHistoryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryReportsMovementHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetInventoryReportsMovementHistoryQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getInventoryReportsMovementHistory>>
+  > = ({ signal }) =>
+    getInventoryReportsMovementHistory(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getInventoryReportsMovementHistory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetInventoryReportsMovementHistoryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getInventoryReportsMovementHistory>>
+>;
+export type GetInventoryReportsMovementHistoryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Inventory movement history
+ */
+
+export function useGetInventoryReportsMovementHistory<
+  TData = Awaited<ReturnType<typeof getInventoryReportsMovementHistory>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInventoryReportsMovementHistoryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryReportsMovementHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetInventoryReportsMovementHistoryQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Slow-moving items report
+ */
+export const getGetInventoryReportsSlowMovingUrl = (
+  params?: GetInventoryReportsSlowMovingParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/slow-moving?${stringifiedParams}`
+    : `/api/inventory/reports/slow-moving`;
+};
+
+export const getInventoryReportsSlowMoving = async (
+  params?: GetInventoryReportsSlowMovingParams,
+  options?: RequestInit,
+): Promise<GetInventoryReportsSlowMoving200> => {
+  return customFetch<GetInventoryReportsSlowMoving200>(
+    getGetInventoryReportsSlowMovingUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetInventoryReportsSlowMovingQueryKey = (
+  params?: GetInventoryReportsSlowMovingParams,
+) => {
+  return [
+    `/api/inventory/reports/slow-moving`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetInventoryReportsSlowMovingQueryOptions = <
+  TData = Awaited<ReturnType<typeof getInventoryReportsSlowMoving>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInventoryReportsSlowMovingParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryReportsSlowMoving>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetInventoryReportsSlowMovingQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getInventoryReportsSlowMoving>>
+  > = ({ signal }) =>
+    getInventoryReportsSlowMoving(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getInventoryReportsSlowMoving>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetInventoryReportsSlowMovingQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getInventoryReportsSlowMoving>>
+>;
+export type GetInventoryReportsSlowMovingQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Slow-moving items report
+ */
+
+export function useGetInventoryReportsSlowMoving<
+  TData = Awaited<ReturnType<typeof getInventoryReportsSlowMoving>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInventoryReportsSlowMovingParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryReportsSlowMoving>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetInventoryReportsSlowMovingQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Stocktake variance report
+ */
+export const getGetInventoryReportsStocktakeVarianceUrl = (
+  params?: GetInventoryReportsStocktakeVarianceParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/stocktake-variance?${stringifiedParams}`
+    : `/api/inventory/reports/stocktake-variance`;
+};
+
+export const getInventoryReportsStocktakeVariance = async (
+  params?: GetInventoryReportsStocktakeVarianceParams,
+  options?: RequestInit,
+): Promise<GetInventoryReportsStocktakeVariance200> => {
+  return customFetch<GetInventoryReportsStocktakeVariance200>(
+    getGetInventoryReportsStocktakeVarianceUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetInventoryReportsStocktakeVarianceQueryKey = (
+  params?: GetInventoryReportsStocktakeVarianceParams,
+) => {
+  return [
+    `/api/inventory/reports/stocktake-variance`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetInventoryReportsStocktakeVarianceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getInventoryReportsStocktakeVariance>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInventoryReportsStocktakeVarianceParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryReportsStocktakeVariance>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetInventoryReportsStocktakeVarianceQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getInventoryReportsStocktakeVariance>>
+  > = ({ signal }) =>
+    getInventoryReportsStocktakeVariance(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getInventoryReportsStocktakeVariance>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetInventoryReportsStocktakeVarianceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getInventoryReportsStocktakeVariance>>
+>;
+export type GetInventoryReportsStocktakeVarianceQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Stocktake variance report
+ */
+
+export function useGetInventoryReportsStocktakeVariance<
+  TData = Awaited<ReturnType<typeof getInventoryReportsStocktakeVariance>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetInventoryReportsStocktakeVarianceParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryReportsStocktakeVariance>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetInventoryReportsStocktakeVarianceQueryOptions(
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

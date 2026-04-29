@@ -2150,4 +2150,215 @@ router.get("/inventory/cost-layers", ...tenantUserMiddleware, async (req: Reques
   res.json({ data: rows.slice(0, lim).map((r) => ({ ...r, qtyOriginal: Number(r.qtyOriginal), qtyRemaining: Number(r.qtyRemaining), unitCost: Number(r.unitCost) })), hasMore, page: pg });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ── Inventory Reports ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Stock Valuation Report — current stock on hand with cost per item/warehouse */
+router.get("/inventory/reports/stock-valuation", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { warehouseId, itemId, groupBy = "item" } = req.query as Record<string, string>;
+
+  type StockValRow = { itemId: number; itemCode: string; itemName: string; warehouseId: number; warehouseName: string; qtyOnHand: number; averageCost: number; totalValue: number; };
+  const rows = await withTenantDb(tenantId, async (db) =>
+    db.execute(sql`
+      SELECT
+        s.item_id AS "itemId", i.code AS "itemCode", i.name AS "itemName",
+        s.warehouse_id AS "warehouseId", w.name AS "warehouseName",
+        SUM(s.qty_on_hand::numeric) AS "qtyOnHand",
+        AVG(COALESCE(s.average_cost::numeric, 0)) AS "averageCost",
+        SUM(s.qty_on_hand::numeric * COALESCE(s.average_cost::numeric, 0)) AS "totalValue"
+      FROM inventory_stock s
+      JOIN items i ON i.id = s.item_id AND i.tenant_id = ${tenantId} AND i.deleted_at IS NULL
+      JOIN warehouses w ON w.id = s.warehouse_id AND w.tenant_id = ${tenantId}
+      WHERE s.tenant_id = ${tenantId}
+        ${warehouseId ? sql`AND s.warehouse_id = ${Number(warehouseId)}` : sql``}
+        ${itemId ? sql`AND s.item_id = ${Number(itemId)}` : sql``}
+      GROUP BY s.item_id, i.code, i.name, s.warehouse_id, w.name
+      ORDER BY "totalValue" DESC
+    `) as unknown as StockValRow[]
+  ) as StockValRow[];
+
+  const grandTotal = rows.reduce((sum, r) => sum + Number(r.totalValue ?? 0), 0);
+  res.json({
+    groupBy,
+    grandTotal,
+    rows: rows.map(r => ({
+      ...r,
+      qtyOnHand: Number(r.qtyOnHand ?? 0),
+      averageCost: Number(r.averageCost ?? 0),
+      totalValue: Number(r.totalValue ?? 0),
+    })),
+  });
+});
+
+/** Movement History Report — detailed inventory movements with filters */
+router.get("/inventory/reports/movement-history", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate, warehouseId, itemId, movementType, page = "1", limit = "100" } = req.query as Record<string, string>;
+  const pg = Math.max(1, Number(page));
+  const lim = Math.min(500, Math.max(1, Number(limit)));
+  const offset = (pg - 1) * lim;
+
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      id: inventoryMovementsTable.id,
+      itemCode: inventoryMovementsTable.itemCode,
+      itemName: inventoryMovementsTable.itemName,
+      warehouseId: inventoryMovementsTable.warehouseId,
+      movementType: inventoryMovementsTable.movementType,
+      quantity: inventoryMovementsTable.quantity,
+      unitCost: inventoryMovementsTable.unitCost,
+      lotNumber: inventoryMovementsTable.lotNumber,
+      refType: inventoryMovementsTable.refType,
+      refCode: inventoryMovementsTable.refCode,
+      postedByEmail: inventoryMovementsTable.postedByEmail,
+      createdAt: inventoryMovementsTable.createdAt,
+    }).from(inventoryMovementsTable)
+      .where(and(
+        eq(inventoryMovementsTable.tenantId, tenantId),
+        fromDate ? sql`${inventoryMovementsTable.createdAt} >= ${new Date(fromDate)}` : undefined,
+        toDate ? sql`${inventoryMovementsTable.createdAt} <= ${new Date(toDate)}` : undefined,
+        warehouseId ? eq(inventoryMovementsTable.warehouseId, Number(warehouseId)) : undefined,
+        itemId ? eq(inventoryMovementsTable.itemId, Number(itemId)) : undefined,
+        movementType ? eq(inventoryMovementsTable.movementType, movementType) : undefined,
+      ))
+      .orderBy(desc(inventoryMovementsTable.createdAt))
+      .limit(lim).offset(offset)
+  );
+
+  const [countRow] = await withTenantDb(tenantId, (db) =>
+    db.select({ count: sql<number>`count(*)` }).from(inventoryMovementsTable)
+      .where(and(
+        eq(inventoryMovementsTable.tenantId, tenantId),
+        fromDate ? sql`${inventoryMovementsTable.createdAt} >= ${new Date(fromDate)}` : undefined,
+        toDate ? sql`${inventoryMovementsTable.createdAt} <= ${new Date(toDate)}` : undefined,
+        warehouseId ? eq(inventoryMovementsTable.warehouseId, Number(warehouseId)) : undefined,
+        itemId ? eq(inventoryMovementsTable.itemId, Number(itemId)) : undefined,
+        movementType ? eq(inventoryMovementsTable.movementType, movementType) : undefined,
+      ))
+  );
+
+  res.json({
+    data: rows.map(r => ({ ...r, quantity: Number(r.quantity), unitCost: r.unitCost ? Number(r.unitCost) : null })),
+    total: Number(countRow?.count ?? 0),
+    page: pg,
+    limit: lim,
+    pages: Math.ceil(Number(countRow?.count ?? 0) / lim),
+  });
+});
+
+/** Slow-Moving Items Report — items with no outbound movement in N days */
+router.get("/inventory/reports/slow-moving", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { days = "90", warehouseId } = req.query as Record<string, string>;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - Number(days));
+
+  type SlowMoveRow = { itemId: number; itemCode: string; itemName: string; warehouseId: number; warehouseName: string; qtyOnHand: number; totalValue: number; lastMovementAt: Date | null; daysSinceMovement: number; };
+  const rows = await withTenantDb(tenantId, async (db) =>
+    db.execute(sql`
+      SELECT
+        s.item_id AS "itemId", i.code AS "itemCode", i.name AS "itemName",
+        s.warehouse_id AS "warehouseId", w.name AS "warehouseName",
+        s.qty_on_hand::numeric AS "qtyOnHand",
+        (s.qty_on_hand::numeric * COALESCE(s.average_cost::numeric, 0)) AS "totalValue",
+        s.last_movement_at AS "lastMovementAt",
+        EXTRACT(DAY FROM NOW() - COALESCE(s.last_movement_at, s.created_at)) AS "daysSinceMovement"
+      FROM inventory_stock s
+      JOIN items i ON i.id = s.item_id AND i.tenant_id = ${tenantId} AND i.deleted_at IS NULL
+      JOIN warehouses w ON w.id = s.warehouse_id AND w.tenant_id = ${tenantId}
+      WHERE s.tenant_id = ${tenantId}
+        AND s.qty_on_hand::numeric > 0
+        AND (s.last_movement_at IS NULL OR s.last_movement_at < ${cutoff})
+        ${warehouseId ? sql`AND s.warehouse_id = ${Number(warehouseId)}` : sql``}
+      ORDER BY "daysSinceMovement" DESC
+      LIMIT 500
+    `) as unknown as SlowMoveRow[]
+  ) as SlowMoveRow[];
+
+  res.json({
+    cutoffDays: Number(days),
+    cutoffDate: cutoff.toISOString().split("T")[0],
+    rows: rows.map(r => ({
+      ...r,
+      qtyOnHand: Number(r.qtyOnHand ?? 0),
+      totalValue: Number(r.totalValue ?? 0),
+      daysSinceMovement: Number(r.daysSinceMovement ?? 0),
+    })),
+  });
+});
+
+/** Stocktake Variance Report — variance by last completed stocktake run */
+router.get("/inventory/reports/stocktake-variance", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { stocktakeRunId, warehouseId } = req.query as Record<string, string>;
+
+  type StocktakeVarianceRow = { runId: number; runCode: string; itemCode: string; itemName: string; qtyExpected: number; qtyActual: number; variance: number; varianceValue: number; };
+  const rows = await withTenantDb(tenantId, async (db) =>
+    db.execute(sql`
+      SELECT
+        sr.id AS "runId", sr.code AS "runCode",
+        sl.item_code AS "itemCode", sl.item_name AS "itemName",
+        sl.expected_qty::numeric AS "qtyExpected",
+        sl.actual_qty::numeric AS "qtyActual",
+        (sl.actual_qty::numeric - sl.expected_qty::numeric) AS "variance",
+        ((sl.actual_qty::numeric - sl.expected_qty::numeric) * COALESCE(sl.unit_cost::numeric, 0)) AS "varianceValue"
+      FROM stocktake_runs sr
+      JOIN stocktake_lines sl ON sl.run_id = sr.id AND sl.tenant_id = ${tenantId}
+      WHERE sr.tenant_id = ${tenantId}
+        AND sr.status = 'posted'
+        ${stocktakeRunId ? sql`AND sr.id = ${Number(stocktakeRunId)}` : sql``}
+        ${warehouseId ? sql`AND sr.warehouse_id = ${Number(warehouseId)}` : sql``}
+      ORDER BY ABS(sl.actual_qty::numeric - sl.expected_qty::numeric) DESC
+      LIMIT 1000
+    `) as unknown as StocktakeVarianceRow[]
+  ) as StocktakeVarianceRow[];
+
+  const totalVarianceValue = rows.reduce((s, r) => s + Number(r.varianceValue ?? 0), 0);
+  res.json({
+    stocktakeRunId: stocktakeRunId ? Number(stocktakeRunId) : null,
+    totalVarianceValue,
+    rows: rows.map(r => ({
+      ...r,
+      qtyExpected: Number(r.qtyExpected ?? 0),
+      qtyActual: Number(r.qtyActual ?? 0),
+      variance: Number(r.variance ?? 0),
+      varianceValue: Number(r.varianceValue ?? 0),
+    })),
+  });
+});
+
+/** Stock Valuation CSV Export */
+router.get("/inventory/reports/stock-valuation/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { warehouseId, itemId } = req.query as Record<string, string>;
+
+  type CsvStockRow = { itemCode: string; itemName: string; warehouseName: string; qtyOnHand: number; averageCost: number; totalValue: number };
+  const rows = await withTenantDb(tenantId, async (db) =>
+    db.execute(sql`
+      SELECT i.code AS "itemCode", i.name AS "itemName", w.name AS "warehouseName",
+             SUM(s.qty_on_hand::numeric) AS "qtyOnHand",
+             AVG(COALESCE(s.average_cost::numeric,0)) AS "averageCost",
+             SUM(s.qty_on_hand::numeric * COALESCE(s.average_cost::numeric,0)) AS "totalValue"
+      FROM inventory_stock s
+      JOIN items i ON i.id = s.item_id AND i.tenant_id = ${tenantId} AND i.deleted_at IS NULL
+      JOIN warehouses w ON w.id = s.warehouse_id AND w.tenant_id = ${tenantId}
+      WHERE s.tenant_id = ${tenantId}
+        ${warehouseId ? sql`AND s.warehouse_id = ${Number(warehouseId)}` : sql``}
+        ${itemId ? sql`AND s.item_id = ${Number(itemId)}` : sql``}
+      GROUP BY i.code, i.name, w.name ORDER BY "totalValue" DESC
+    `) as unknown as CsvStockRow[]
+  ) as CsvStockRow[];
+
+  const lines = ["Item Code,Item Name,Warehouse,Qty On Hand,Average Cost,Total Value"];
+  for (const r of rows) {
+    lines.push([r.itemCode, `"${r.itemName}"`, `"${r.warehouseName}"`, Number(r.qtyOnHand).toFixed(4), Number(r.averageCost).toFixed(4), Number(r.totalValue).toFixed(2)].join(","));
+  }
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=\"stock-valuation.csv\"");
+  res.send(lines.join("\n"));
+});
+
 export default router;

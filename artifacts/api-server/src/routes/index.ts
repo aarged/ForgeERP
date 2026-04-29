@@ -8,6 +8,8 @@ import masterDataRouter from "./master-data";
 import procurementRouter from "./procurement";
 import salesRouter from "./sales";
 import inventoryRouter from "./inventory";
+import financeRouter from "./finance";
+import dashboardRouter from "./dashboard";
 
 const router: IRouter = Router();
 
@@ -20,5 +22,7 @@ router.use(masterDataRouter);
 router.use(procurementRouter);
 router.use(salesRouter);
 router.use(inventoryRouter);
+router.use(financeRouter);
+router.use(dashboardRouter);
 
 export default router;
