@@ -567,49 +567,84 @@ router.post(
       return;
     }
 
-    // ── Create tenant ──────────────────────────────────────────────────────────
+    // ── Transactional core: create tenant + membership + structure ────────────
     const slug = await ensureUniqueSlug(slugify(step1.companyName));
     const now = new Date();
 
-    const [tenant] = await adminDb.insert(tenantsTable).values({
-      name: step1.companyName,
-      tradingName: step1.tradingName ?? null,
-      legalName: step1.legalName ?? null,
-      taxId: step1.taxId ?? null,
-      phone: step1.phone ?? null,
-      email: step1.email ?? userEmail,
-      website: step1.website ?? null,
-      addressLine1: step1.addressLine1 ?? null,
-      addressLine2: step1.addressLine2 ?? null,
-      city: step1.city ?? null,
-      state: step1.state ?? null,
-      postalCode: step1.postalCode ?? null,
-      country: step1.country ?? null,
-      fiscalYearStart: step1.fiscalYearStart ?? 1,
-      currency: step1.currency ?? "USD",
-      timezone: step1.timezone ?? "UTC",
-      industryType: step1.industryType ?? null,
-      slug,
-      status: "active",
-      planTier: step4?.planTier ?? "starter",
-      onboardingCompletedAt: now,
-    }).returning();
+    let tenant: typeof tenantsTable.$inferSelect;
+    try {
+      tenant = await adminDb.transaction(async (tx) => {
+        const [newTenant] = await tx.insert(tenantsTable).values({
+          name: step1.companyName,
+          tradingName: step1.tradingName ?? null,
+          legalName: step1.legalName ?? null,
+          taxId: step1.taxId ?? null,
+          phone: step1.phone ?? null,
+          email: step1.email ?? userEmail,
+          website: step1.website ?? null,
+          addressLine1: step1.addressLine1 ?? null,
+          addressLine2: step1.addressLine2 ?? null,
+          city: step1.city ?? null,
+          state: step1.state ?? null,
+          postalCode: step1.postalCode ?? null,
+          country: step1.country ?? null,
+          fiscalYearStart: step1.fiscalYearStart ?? 1,
+          currency: step1.currency ?? "USD",
+          timezone: step1.timezone ?? "UTC",
+          industryType: step1.industryType ?? null,
+          glTemplate: step2?.glTemplate ?? "standard",
+          slug,
+          status: "active",
+          planTier: step4?.planTier ?? "starter",
+          onboardingCompletedAt: now,
+        }).returning();
 
-    if (!tenant) {
-      res.status(500).json({ error: "Failed to create tenant" });
+        if (!newTenant) throw new Error("Failed to create tenant");
+
+        await tx.insert(tenantMembershipsTable).values({
+          tenantId: newTenant.id,
+          clerkId,
+          email: userEmail,
+          firstName,
+          lastName,
+          role: "tenant_admin",
+          isActive: "true",
+        });
+
+        if (step2?.warehouses && step2.warehouses.length > 0) {
+          await tx.insert(warehousesTable).values(
+            step2.warehouses.map((w, idx) => ({
+              tenantId: newTenant.id,
+              name: w.name,
+              code: w.code ?? null,
+              addressLine1: w.addressLine1 ?? null,
+              addressLine2: w.addressLine2 ?? null,
+              city: w.city ?? null,
+              state: w.state ?? null,
+              postalCode: w.postalCode ?? null,
+              country: w.country ?? null,
+              isDefault: (idx === 0 || w.isDefault) ? "true" : "false",
+            })),
+          );
+        }
+
+        if (step2?.departments && step2.departments.length > 0) {
+          await tx.insert(departmentsTable).values(
+            step2.departments.map((d) => ({
+              tenantId: newTenant.id,
+              name: d.name,
+              code: d.code ?? null,
+            })),
+          );
+        }
+
+        return newTenant;
+      });
+    } catch (err) {
+      logger.error({ err }, "Failed to create tenant during onboarding");
+      res.status(500).json({ error: "Failed to set up your workspace. Please try again." });
       return;
     }
-
-    // ── Create admin membership ────────────────────────────────────────────────
-    await adminDb.insert(tenantMembershipsTable).values({
-      tenantId: tenant.id,
-      clerkId,
-      email: userEmail,
-      firstName,
-      lastName,
-      role: "tenant_admin",
-      isActive: "true",
-    });
 
     // ── Stripe: create customer + activate subscription ───────────────────────
     const planTierForStripe = step4?.planTier ?? "starter";
@@ -667,35 +702,6 @@ router.post(
           .where(eq(tenantsTable.id, tenant.id));
         await writeAuditLog({ req, actorClerkId: clerkId, actorEmail: userEmail, tenantId: tenant.id, action: "tenant.stripe_activation_failed", entityType: "tenant", entityId: tenant.id, newValues: { originalPlan: planTierForStripe, downgradedTo: "starter", error: err instanceof Error ? err.message : String(err) } });
       }
-    }
-
-    // ── Create warehouses ──────────────────────────────────────────────────────
-    if (step2?.warehouses && step2.warehouses.length > 0) {
-      await adminDb.insert(warehousesTable).values(
-        step2.warehouses.map((w, idx) => ({
-          tenantId: tenant.id,
-          name: w.name,
-          code: w.code ?? null,
-          addressLine1: w.addressLine1 ?? null,
-          addressLine2: w.addressLine2 ?? null,
-          city: w.city ?? null,
-          state: w.state ?? null,
-          postalCode: w.postalCode ?? null,
-          country: w.country ?? null,
-          isDefault: (idx === 0 || w.isDefault) ? "true" : "false",
-        })),
-      );
-    }
-
-    // ── Create departments ─────────────────────────────────────────────────────
-    if (step2?.departments && step2.departments.length > 0) {
-      await adminDb.insert(departmentsTable).values(
-        step2.departments.map((d) => ({
-          tenantId: tenant.id,
-          name: d.name,
-          code: d.code ?? null,
-        })),
-      );
     }
 
     // ── Import items ───────────────────────────────────────────────────────────
@@ -824,7 +830,9 @@ router.post(
     // Send welcome email (fire-and-forget — fails gracefully if SMTP not configured)
     void (async () => {
       try {
-        const loginUrl = `${req.protocol}://${req.get("host")}/forge-erp/dashboard`;
+        const frontendBase = process.env.FRONTEND_URL
+          ?? `${req.protocol}://${req.get("x-forwarded-host") ?? req.get("host")}`;
+        const loginUrl = `${frontendBase.replace(/\/$/, "")}/forge-erp/dashboard`;
         const emailContent = buildWelcomeEmail({
           firstName,
           companyName: tenant.name,

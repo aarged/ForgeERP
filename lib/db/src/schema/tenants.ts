@@ -47,6 +47,7 @@ export const tenantsTable = pgTable("tenants", {
   timezone: text("timezone").default("UTC"),
   fiscalYearStart: integer("fiscal_year_start").default(1),
   industryType: text("industry_type"),
+  glTemplate: text("gl_template").default("standard"),
   // Stripe
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
