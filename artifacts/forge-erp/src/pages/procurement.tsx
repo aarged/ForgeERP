@@ -46,6 +46,7 @@ import {
   getListApprovalStepsQueryKey,
   useListSuppliers,
   useListWarehouses,
+  useGeneratePurchaseOrderPdf,
 } from "@workspace/api-client-react";
 import type {
   PurchaseRequisition,
@@ -1037,7 +1038,22 @@ function PurchaseOrderDetail({ id, detail, onBack, onRefresh }: { id: number; de
   const submitMut = useSubmitPurchaseOrder();
   const decisionMut = useDecidePurchaseOrder();
   const sendMut = useSendPurchaseOrder();
+  const pdfMut = useGeneratePurchaseOrderPdf();
   const po = detail as PoDetail | undefined;
+
+  const handleDownloadPdf = () => {
+    if (!po?.id) return;
+    pdfMut.mutateAsync({ id: po.id, data: {} }).then((res) => {
+      const typed = res as { pdfBase64?: string; filename?: string };
+      if (typed.pdfBase64 && typed.filename) {
+        const link = document.createElement("a");
+        link.href = `data:application/pdf;base64,${typed.pdfBase64}`;
+        link.download = typed.filename;
+        link.click();
+      }
+      toast({ title: "PDF generated" });
+    }).catch(() => toast({ title: "PDF generation failed", variant: "destructive" }));
+  };
 
   const inv = () => {
     qc.invalidateQueries({ queryKey: getGetPurchaseOrderQueryKey(id) });
@@ -1066,6 +1082,11 @@ function PurchaseOrderDetail({ id, detail, onBack, onRefresh }: { id: number; de
               <Button size="sm" variant="outline" className="text-green-700" onClick={() => setDecisionDialog({ action: "approved" })}><CheckCircle2 className="mr-2 h-4 w-4" />Approve</Button>
               <Button size="sm" variant="outline" className="text-destructive" onClick={() => setDecisionDialog({ action: "rejected" })}><XCircle className="mr-2 h-4 w-4" />Reject</Button>
             </>
+          )}
+          {["draft", "approved", "sent", "pending_approval", "partially_received"].includes(po.status ?? "") && (
+            <Button size="sm" variant="outline" onClick={handleDownloadPdf} disabled={pdfMut.isPending}>
+              {pdfMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}<FileText className="mr-2 h-4 w-4" />Generate PDF
+            </Button>
           )}
           {po.status === "approved" && (
             <Button size="sm" variant="outline" onClick={() => sendMut.mutateAsync({ id }).then(() => { toast({ title: "Marked as sent" }); inv(); })} disabled={sendMut.isPending}>

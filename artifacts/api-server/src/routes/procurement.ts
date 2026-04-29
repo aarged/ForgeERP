@@ -30,6 +30,7 @@ import {
 import { writeAuditLog } from "../lib/audit";
 import type { Request, Response } from "express";
 import { z } from "zod";
+import PDFDocument from "pdfkit";
 
 const router: IRouter = Router();
 
@@ -406,8 +407,8 @@ async function createReturnGlPosting(tenantId: number, returnId: number, postedB
 /**
  * Execute an approval decision, enforcing:
  * - Entity must be in `pending_approval` state.
- * - For "approved" decisions: actor must match the step's approverRoles/approverUserIds and must not exceed the step's valueLimit.
- * - "rejected" and "returned" decisions bypass eligibility checks (any approver-role user can reject).
+ * - Actor must match the step's approverRoles/approverUserIds for ALL decision types (approved/rejected/returned).
+ * - For "approved" decisions: additionally enforces the step's valueLimit authority constraint.
  * - On approval, advances to the next step or finalises to "approved".
  *
  * Returns `{ newStatus, newStepNum }` — callers must persist these to the entity.
@@ -427,24 +428,7 @@ async function executeApprovalDecision(opts: {
 }): Promise<{ newStatus: string; newStepNum: number }> {
   const { tenantId, entityType, entityId, workflowId, currentStepNum, entityTotal, actorClerkId, actorEmail, actorRole, decision, comment } = opts;
 
-  // Rejection and return bypass step-eligibility checks — any approver-role user can stop
-  if (decision !== "approved") {
-    await withTenantDb(tenantId, (db) =>
-      db.insert(approvalDecisionsTable).values({
-        tenantId,
-        workflowId: workflowId ?? undefined,
-        stepNumber: currentStepNum,
-        entityType,
-        entityId,
-        approverClerkId: actorClerkId,
-        approverEmail: actorEmail,
-        decision,
-        comment,
-      } as typeof approvalDecisionsTable.$inferInsert));
-    return { newStatus: decision === "rejected" ? "rejected" : "returned", newStepNum: currentStepNum };
-  }
-
-  // For approval, load and validate the current step
+  // Load and validate the current step for ALL decision types
   if (workflowId) {
     const [step] = await withTenantDb(tenantId, (db) =>
       db.select().from(approvalStepsTable)
@@ -469,8 +453,8 @@ async function executeApprovalDecision(opts: {
         );
       }
 
-      // Authority / value limit
-      if (step.valueLimit != null && entityTotal != null) {
+      // Authority / value limit — only enforced for "approved" decisions
+      if (decision === "approved" && step.valueLimit != null && entityTotal != null) {
         if (Number(entityTotal) > Number(step.valueLimit)) {
           throw Object.assign(
             new Error(`Your authority limit for this step is ${step.valueLimit}. The document value exceeds this limit.`),
@@ -479,6 +463,23 @@ async function executeApprovalDecision(opts: {
         }
       }
     }
+  }
+
+  // Record and return non-approval decisions (rejected / returned)
+  if (decision !== "approved") {
+    await withTenantDb(tenantId, (db) =>
+      db.insert(approvalDecisionsTable).values({
+        tenantId,
+        workflowId: workflowId ?? undefined,
+        stepNumber: currentStepNum,
+        entityType,
+        entityId,
+        approverClerkId: actorClerkId,
+        approverEmail: actorEmail,
+        decision,
+        comment,
+      } as typeof approvalDecisionsTable.$inferInsert));
+    return { newStatus: decision === "rejected" ? "rejected" : "returned", newStepNum: currentStepNum };
   }
 
   // Record the decision
@@ -1369,40 +1370,82 @@ router.post("/procurement/purchase-orders/:id/pdf", ...tenantWriteMiddleware, as
     db.select().from(poLinesTable)
       .where(and(eq(poLinesTable.poId, id), eq(poLinesTable.tenantId, tenantId))));
 
-  // Generate HTML representation of the PO that can be rendered as a document
-  const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Purchase Order ${po.code}</title>
-<style>
-  body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
-  h1 { color: #1a1a1a; } table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-  th { background: #f5f5f5; font-weight: bold; }
-  .header { display: flex; justify-content: space-between; margin-bottom: 20px; }
-  .total { font-weight: bold; font-size: 1.1em; margin-top: 10px; }
-</style></head>
-<body>
-  <div class="header">
-    <div><h1>PURCHASE ORDER</h1><p><strong>${po.code}</strong></p></div>
-    <div><p>Status: ${po.status.toUpperCase()}</p><p>Date: ${new Date(po.createdAt).toLocaleDateString()}</p></div>
-  </div>
-  <p><strong>Supplier:</strong> ${po.supplierName ?? "—"}</p>
-  ${po.supplierRef ? `<p><strong>Supplier Ref:</strong> ${po.supplierRef}</p>` : ""}
-  ${po.deliveryDate ? `<p><strong>Delivery Date:</strong> ${po.deliveryDate}</p>` : ""}
-  ${po.paymentTerms ? `<p><strong>Payment Terms:</strong> ${po.paymentTerms}</p>` : ""}
-  <table>
-    <thead><tr><th>#</th><th>Item</th><th>Description</th><th>Qty</th><th>UoM</th><th>Unit Price</th><th>Total</th></tr></thead>
-    <tbody>
-      ${lines.map((l, i) => `<tr><td>${i + 1}</td><td>${l.itemCode ?? "—"}</td><td>${l.description ?? l.itemName ?? ""}</td><td>${l.quantity}</td><td>${l.unitOfMeasure ?? ""}</td><td>${Number(l.unitPrice).toFixed(2)} ${po.currencyCode}</td><td>${Number(l.lineTotal).toFixed(2)} ${po.currencyCode}</td></tr>`).join("")}
-    </tbody>
-  </table>
-  <p class="total">Total: ${Number(po.total).toFixed(2)} ${po.currencyCode}</p>
-  ${po.notes ? `<p><strong>Notes:</strong> ${po.notes}</p>` : ""}
-</body></html>`;
+  // Generate a real PDF using PDFKit
+  const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: "A4" });
+    const chunks: Buffer[] = [];
+    doc.on("data", (c: Buffer) => chunks.push(c));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
 
-  // Encode as base64 (client can use to render or print)
-  const pdfBase64 = Buffer.from(htmlContent).toString("base64");
-  const filename = `${po.code}.html`;
+    const pageWidth = doc.page.width - 100; // account for margins
+
+    // Header
+    doc.fontSize(20).font("Helvetica-Bold").text("PURCHASE ORDER", 50, 50);
+    doc.fontSize(12).font("Helvetica").text(po.code, 50, 76);
+    doc.fontSize(10).text(`Status: ${po.status.toUpperCase()}`, 400, 50, { align: "right" });
+    doc.text(`Date: ${new Date(po.createdAt).toLocaleDateString()}`, 400, 65, { align: "right" });
+
+    doc.moveDown(2);
+    doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+    doc.moveDown(0.5);
+
+    // Supplier details
+    doc.fontSize(11).font("Helvetica-Bold").text("Supplier:");
+    doc.font("Helvetica").text(po.supplierName ?? "—");
+    if (po.supplierRef) doc.text(`Ref: ${po.supplierRef}`);
+    if (po.deliveryDate) doc.text(`Delivery Date: ${po.deliveryDate}`);
+    if (po.paymentTerms) doc.text(`Payment Terms: ${po.paymentTerms}`);
+    doc.moveDown(1);
+
+    // Lines table header
+    const colX = { num: 50, item: 70, desc: 150, qty: 340, uom: 380, price: 430, total: 500 };
+    doc.font("Helvetica-Bold").fontSize(10);
+    doc.text("#", colX.num, doc.y, { width: 20 });
+    const headerY = doc.y - doc.currentLineHeight();
+    doc.text("Item", colX.item, headerY, { width: 80 });
+    doc.text("Description", colX.desc, headerY, { width: 185 });
+    doc.text("Qty", colX.qty, headerY, { width: 40 });
+    doc.text("UoM", colX.uom, headerY, { width: 50 });
+    doc.text("Price", colX.price, headerY, { width: 70 });
+    doc.text("Total", colX.total, headerY, { width: 60 });
+    doc.moveDown(0.3);
+    doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+    doc.moveDown(0.3);
+
+    // Lines
+    doc.font("Helvetica").fontSize(9);
+    lines.forEach((l, i) => {
+      const rowY = doc.y;
+      doc.text(String(i + 1), colX.num, rowY, { width: 20 });
+      doc.text(l.itemCode ?? "—", colX.item, rowY, { width: 80 });
+      doc.text(l.description ?? l.itemName ?? "", colX.desc, rowY, { width: 185 });
+      doc.text(String(l.quantity), colX.qty, rowY, { width: 40 });
+      doc.text(l.unitOfMeasure ?? "", colX.uom, rowY, { width: 50 });
+      doc.text(`${Number(l.unitPrice).toFixed(2)}`, colX.price, rowY, { width: 70 });
+      doc.text(`${Number(l.lineTotal).toFixed(2)}`, colX.total, rowY, { width: 60 });
+      doc.moveDown(0.8);
+    });
+
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+    doc.moveDown(0.5);
+
+    // Total
+    doc.font("Helvetica-Bold").fontSize(11);
+    doc.text(`Total: ${Number(po.total).toFixed(2)} ${po.currencyCode}`, { align: "right" });
+
+    if (po.notes) {
+      doc.moveDown(1);
+      doc.font("Helvetica-Bold").text("Notes:");
+      doc.font("Helvetica").text(po.notes);
+    }
+
+    doc.end();
+  });
+
+  const pdfBase64 = pdfBuffer.toString("base64");
+  const filename = `${po.code}.pdf`;
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "purchase_order.pdf_generated", entityType: "purchase_order", entityId: String(id), newValues: { dispatchEmail: dispatchEmail ?? null } });
 
