@@ -540,6 +540,48 @@ async function createReturnGlPosting(tenantId: number, returnId: number, postedB
   return posting;
 }
 
+/** DB-transactional variant: posts GL credit-note for a return inside an already-open TenantDb transaction. */
+async function createReturnGlPostingInTx(db: TenantDb, tenantId: number, returnId: number, postedByClerkId: string, postedByEmail?: string) {
+  const [ret] = await db.select().from(poReturnsTable).where(and(eq(poReturnsTable.id, returnId), eq(poReturnsTable.tenantId, tenantId))).limit(1);
+  if (!ret) return null;
+
+  const lines = await db.select().from(poReturnLinesTable)
+    .where(and(eq(poReturnLinesTable.returnId, returnId), eq(poReturnLinesTable.tenantId, tenantId)));
+
+  const apAccount = await resolveGlAccount(tenantId, null, "2100", "Accounts Payable");
+
+  let totalValue = 0;
+  const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
+  for (const rl of lines) {
+    if (Number(rl.quantity) <= 0) continue;
+    const lineVal = Number(rl.quantity) * Number(rl.unitCost ?? 0);
+    totalValue += lineVal;
+    const invAccount = await resolveGlAccount(tenantId, null, "1300", "Inventory");
+    glLines.push({ ...invAccount, debit: 0, credit: lineVal, description: `RTV of ${rl.itemCode ?? rl.itemName ?? "item"}` });
+  }
+  if (totalValue === 0) return null;
+  glLines.push({ ...apAccount, debit: totalValue, credit: 0, description: `AP credit note for return ${returnId}` });
+
+  const [posting] = await db.insert(glPostingsTable).values({
+    tenantId,
+    code: `GL-RTV-${Date.now()}`,
+    entityType: "po_return",
+    entityId: returnId,
+    status: "posted",
+    postedByClerkId,
+    postedByEmail: postedByEmail ?? undefined,
+    postedAt: new Date(),
+    lines: glLines,
+    totalDebit: totalValue.toFixed(2),
+    totalCredit: totalValue.toFixed(2),
+  } as typeof glPostingsTable.$inferInsert).returning();
+
+  if (posting) {
+    await db.update(poReturnsTable).set({ glPostingId: posting.id }).where(and(eq(poReturnsTable.id, returnId), eq(poReturnsTable.tenantId, tenantId)));
+  }
+  return posting;
+}
+
 // ── Step-Based Approval Engine ────────────────────────────────────────────────
 
 /**
@@ -2146,7 +2188,8 @@ router.post("/procurement/returns", ...tenantWriteMiddleware, async (req: Reques
       itemCode: z.string().optional(),
       itemName: z.string().optional(),
       quantity: z.number().positive(),
-      unitCost: z.number().optional(),
+      unitCost: z.number().nonnegative().optional(),
+      locationId: z.number().int().optional(),
       lotNumber: z.string().optional(),
       serialNumber: z.string().optional(),
       batchNumber: z.string().optional(),
@@ -2229,30 +2272,61 @@ router.delete("/procurement/returns/:id", ...tenantWriteMiddleware, async (req: 
 router.post("/procurement/returns/:id/confirm", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
+
+  // Pre-flight checks outside the transaction (read-only, fast)
   const [ret] = await withTenantDb(tenantId, (db) =>
     db.select().from(poReturnsTable).where(and(eq(poReturnsTable.id, id), eq(poReturnsTable.tenantId, tenantId))).limit(1));
   if (!ret) { res.status(404).json({ error: "Return not found" }); return; }
   if (ret.status !== "draft") { res.status(400).json({ error: "Return is already confirmed" }); return; }
-
-  const lines = await withTenantDb(tenantId, (db) =>
-    db.select().from(poReturnLinesTable).where(and(eq(poReturnLinesTable.returnId, id), eq(poReturnLinesTable.tenantId, tenantId))));
-
-  // A valid warehouse is required for inventory reversal
   if (!ret.warehouseId) {
     res.status(400).json({ error: "Return has no warehouse assigned; cannot reverse inventory" });
     return;
   }
 
-  // Reverse inventory
+  const lines = await withTenantDb(tenantId, (db) =>
+    db.select().from(poReturnLinesTable).where(and(eq(poReturnLinesTable.returnId, id), eq(poReturnLinesTable.tenantId, tenantId))));
+
+  const warehouseId = ret.warehouseId;
+
+  // Quantity validation: each return line must not exceed available on-hand stock
+  // in the same traceability bucket (warehouse + location + lot/batch/serial)
   for (const line of lines) {
     if (!line.itemId || Number(line.quantity) <= 0) continue;
     const qty = Number(line.quantity);
-    const warehouseId = ret.warehouseId;
-    await withTenantDb(tenantId, (db) =>
-      db.insert(inventoryMovementsTable).values({
+    const lineLocId = line.locationId ?? null;
+    const [stock] = await withTenantDb(tenantId, (db) =>
+      db.select({ qtyOnHand: inventoryStockTable.qtyOnHand }).from(inventoryStockTable)
+        .where(and(
+          eq(inventoryStockTable.tenantId, tenantId),
+          eq(inventoryStockTable.itemId, line.itemId!),
+          eq(inventoryStockTable.warehouseId, warehouseId),
+          lineLocId ? eq(inventoryStockTable.locationId, lineLocId) : isNull(inventoryStockTable.locationId),
+          line.lotNumber ? eq(inventoryStockTable.lotNumber, line.lotNumber) : isNull(inventoryStockTable.lotNumber),
+          line.batchNumber ? eq(inventoryStockTable.batchNumber, line.batchNumber) : isNull(inventoryStockTable.batchNumber),
+          line.serialNumber ? eq(inventoryStockTable.serialNumber, line.serialNumber) : isNull(inventoryStockTable.serialNumber),
+        ))
+        .limit(1));
+    const available = Number(stock?.qtyOnHand ?? 0);
+    if (qty > available) {
+      res.status(400).json({
+        error: `Return quantity ${qty} for item ${line.itemCode ?? line.itemId} exceeds available on-hand stock (${available}) in the specified traceability bucket.`,
+      });
+      return;
+    }
+  }
+
+  // Fully atomic: inventory movements + stock decrements + status update + GL posting in one transaction
+  const updated = await withTenantDb(tenantId, async (db) => {
+    for (const line of lines) {
+      if (!line.itemId || Number(line.quantity) <= 0) continue;
+      const qty = Number(line.quantity);
+      const lineLocId = line.locationId ?? null;
+
+      await db.insert(inventoryMovementsTable).values({
         tenantId,
         itemId: line.itemId!,
         warehouseId,
+        locationId: lineLocId ?? undefined,
         movementType: "return",
         quantity: (-qty).toFixed(4),
         unitCost: line.unitCost ?? undefined,
@@ -2262,36 +2336,37 @@ router.post("/procurement/returns/:id/confirm", ...tenantWriteMiddleware, async 
         serialNumber: line.serialNumber ?? undefined,
         batchNumber: line.batchNumber ?? undefined,
         postedByClerkId: clerkUserId,
-      } as typeof inventoryMovementsTable.$inferInsert),
-    );
+      } as typeof inventoryMovementsTable.$inferInsert);
 
-    // Match stock on all traceability dimensions (lot/batch/serial).
-    // Return lines do not carry a location field — match on warehouse + null-location rows.
-    const [stock] = await withTenantDb(tenantId, (db) =>
-      db.select().from(inventoryStockTable)
+      // Decrement stock in the exact bucket (warehouse + location + lot/batch/serial)
+      const [stock] = await db.select().from(inventoryStockTable)
         .where(and(
           eq(inventoryStockTable.tenantId, tenantId),
           eq(inventoryStockTable.itemId, line.itemId!),
           eq(inventoryStockTable.warehouseId, warehouseId),
-          isNull(inventoryStockTable.locationId),
+          lineLocId ? eq(inventoryStockTable.locationId, lineLocId) : isNull(inventoryStockTable.locationId),
           line.lotNumber ? eq(inventoryStockTable.lotNumber, line.lotNumber) : isNull(inventoryStockTable.lotNumber),
           line.batchNumber ? eq(inventoryStockTable.batchNumber, line.batchNumber) : isNull(inventoryStockTable.batchNumber),
           line.serialNumber ? eq(inventoryStockTable.serialNumber, line.serialNumber) : isNull(inventoryStockTable.serialNumber),
         ))
-        .limit(1));
-    if (stock) {
-      await withTenantDb(tenantId, (db) =>
-        db.update(inventoryStockTable)
+        .limit(1);
+      if (stock) {
+        await db.update(inventoryStockTable)
           .set({ qtyOnHand: (Math.max(0, Number(stock.qtyOnHand) - qty)).toFixed(4), lastMovementAt: new Date() })
-          .where(and(eq(inventoryStockTable.id, stock.id), eq(inventoryStockTable.tenantId, tenantId))));
+          .where(and(eq(inventoryStockTable.id, stock.id), eq(inventoryStockTable.tenantId, tenantId)));
+      }
     }
-  }
 
-  const [updated] = await withTenantDb(tenantId, (db) =>
-    db.update(poReturnsTable).set({ status: "confirmed" }).where(and(eq(poReturnsTable.id, id), eq(poReturnsTable.tenantId, tenantId))).returning());
+    const [u] = await db.update(poReturnsTable)
+      .set({ status: "confirmed" })
+      .where(and(eq(poReturnsTable.id, id), eq(poReturnsTable.tenantId, tenantId)))
+      .returning();
 
-  // Post credit-note GL entry (Dr AP / Cr Inventory derived from chart of accounts)
-  await createReturnGlPosting(tenantId, id, clerkUserId, userEmail);
+    // Post credit-note GL entry inside the same transaction
+    await createReturnGlPostingInTx(db, tenantId, id, clerkUserId, userEmail);
+
+    return u;
+  });
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_return.confirmed", entityType: "po_return", entityId: String(id) });
   res.json(updated);
