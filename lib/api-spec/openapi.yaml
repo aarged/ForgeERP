@@ -2146,7 +2146,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [item, supplier, customer, warehouse, gl_account]
+            enum: [item, supplier, customer, warehouse, gl_account, item_variant, item_attribute, item_cross_reference, supplier_contact, customer_contact, warehouse_location]
         - name: entityId
           in: query
           required: true

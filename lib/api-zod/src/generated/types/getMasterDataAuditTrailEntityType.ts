@@ -15,4 +15,10 @@ export const GetMasterDataAuditTrailEntityType = {
   customer: "customer",
   warehouse: "warehouse",
   gl_account: "gl_account",
+  item_variant: "item_variant",
+  item_attribute: "item_attribute",
+  item_cross_reference: "item_cross_reference",
+  supplier_contact: "supplier_contact",
+  customer_contact: "customer_contact",
+  warehouse_location: "warehouse_location",
 } as const;
