@@ -599,6 +599,12 @@ components:
           type: integer
         stripeConfigured:
           type: boolean
+        estimatedMrrCents:
+          type: integer
+          description: Monthly recurring revenue in cents (plan-tier estimate for active/trial tenants)
+        mrrIsEstimate:
+          type: boolean
+          description: True when MRR is a local plan-tier estimate rather than live Stripe data
       required:
         - totalTenants
         - activeTenants
@@ -606,6 +612,8 @@ components:
         - suspendedTenants
         - stripeConnectedTenants
         - stripeConfigured
+        - estimatedMrrCents
+        - mrrIsEstimate
 
     AdminTenant:
       type: object
@@ -636,6 +644,9 @@ components:
           type: string
         memberCount:
           type: integer
+        storageUsageMb:
+          type: integer
+          description: Storage used by this tenant in megabytes
       required:
         - id
         - name
@@ -644,6 +655,7 @@ components:
         - planTier
         - createdAt
         - memberCount
+        - storageUsageMb
 
     AdminTenantDetail:
       type: object

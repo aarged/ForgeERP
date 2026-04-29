@@ -89,6 +89,10 @@ export interface AdminKpi {
   suspendedTenants: number;
   stripeConnectedTenants: number;
   stripeConfigured: boolean;
+  /** Monthly recurring revenue in cents (plan-tier estimate for active/trial tenants) */
+  estimatedMrrCents: number;
+  /** True when MRR is a local plan-tier estimate rather than live Stripe data */
+  mrrIsEstimate: boolean;
 }
 
 export type AdminTenantStatus =
@@ -128,6 +132,8 @@ export interface AdminTenant {
   onboardingCompletedAt?: string | null;
   createdAt: string;
   memberCount: number;
+  /** Storage used by this tenant in megabytes */
+  storageUsageMb: number;
 }
 
 export type AdminTenantDetailStatus =

@@ -120,10 +120,17 @@ function PlanBadge({ plan }: { plan: string }) {
 
 // ── KPI bar ───────────────────────────────────────────────────────────────────
 
+function formatMrr(cents: number): string {
+  if (cents === 0) return "$0";
+  const dollars = cents / 100;
+  if (dollars >= 1000) return `$${(dollars / 1000).toFixed(1)}k`;
+  return `$${dollars.toLocaleString()}`;
+}
+
 function KpiBar() {
   const { data: kpi, isLoading } = useGetAdminKpi();
 
-  const cards = [
+  const countCards = [
     {
       label: "Total Tenants",
       value: kpi?.totalTenants ?? 0,
@@ -157,24 +164,53 @@ function KpiBar() {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-      {cards.map((c) => (
-        <Card key={c.label}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-xs font-medium text-muted-foreground">
-                {c.label}
-              </p>
-              <c.Icon className={cn("h-4 w-4", c.color)} />
-            </div>
+    <div className="space-y-3">
+      {/* MRR highlight */}
+      <Card className="border-violet-200 dark:border-violet-800 bg-gradient-to-r from-violet-50 to-white dark:from-violet-950/20 dark:to-background">
+        <CardContent className="p-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <TrendingUp className="h-3.5 w-3.5 text-violet-500" />
+              Estimated MRR
+              {kpi?.mrrIsEstimate && (
+                <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded ml-1">
+                  plan-tier estimate
+                </span>
+              )}
+            </p>
             {isLoading ? (
-              <div className="h-7 w-12 rounded bg-muted animate-pulse" />
+              <div className="h-8 w-24 rounded bg-muted animate-pulse mt-1" />
             ) : (
-              <p className="text-2xl font-bold tabular-nums">{c.value}</p>
+              <p className="text-3xl font-bold tabular-nums text-violet-700 dark:text-violet-400 mt-0.5">
+                {formatMrr(kpi?.estimatedMrrCents ?? 0)}
+                <span className="text-sm font-normal text-muted-foreground ml-1">/mo</span>
+              </p>
             )}
-          </CardContent>
-        </Card>
-      ))}
+          </div>
+          <CreditCard className="h-8 w-8 text-violet-300 dark:text-violet-700" />
+        </CardContent>
+      </Card>
+
+      {/* Count cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {countCards.map((c) => (
+          <Card key={c.label}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {c.label}
+                </p>
+                <c.Icon className={cn("h-4 w-4", c.color)} />
+              </div>
+              {isLoading ? (
+                <div className="h-7 w-12 rounded bg-muted animate-pulse" />
+              ) : (
+                <p className="text-2xl font-bold tabular-nums">{c.value}</p>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

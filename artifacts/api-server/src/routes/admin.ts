@@ -52,6 +52,14 @@ async function ensureUniqueSlug(base: string): Promise<string> {
   }
 }
 
+// ── Plan pricing (cents/month) — used for local MRR estimate ─────────────────
+
+const PLAN_MRR_CENTS: Record<string, number> = {
+  starter: 0,
+  growth: 29900,
+  enterprise: 99900,
+};
+
 // ── GET /admin/kpi ────────────────────────────────────────────────────────────
 
 router.get(
@@ -69,6 +77,17 @@ router.get(
       .from(tenantsTable)
       .where(isNull(tenantsTable.deletedAt));
 
+    // Compute local plan-tier MRR estimate from active + trial tenants
+    const activeTenants = await adminDb
+      .select({ planTier: tenantsTable.planTier })
+      .from(tenantsTable)
+      .where(isNull(tenantsTable.deletedAt));
+
+    const estimatedMrrCents = activeTenants.reduce(
+      (sum, t) => sum + (PLAN_MRR_CENTS[t.planTier] ?? 0),
+      0,
+    );
+
     res.json({
       totalTenants: Number(totals!.total),
       activeTenants: Number(totals!.active),
@@ -76,6 +95,8 @@ router.get(
       suspendedTenants: Number(totals!.suspended),
       stripeConnectedTenants: Number(totals!.withStripe),
       stripeConfigured: isStripeConfigured(),
+      estimatedMrrCents,
+      mrrIsEstimate: true,
     });
   },
 );
@@ -122,6 +143,7 @@ router.get(
         onboardingCompletedAt: t.onboardingCompletedAt?.toISOString() ?? null,
         createdAt: t.createdAt.toISOString(),
         memberCount: Number(t.memberCount),
+        storageUsageMb: 0,
       })),
     );
   },
@@ -301,6 +323,47 @@ router.patch(
       .set(updateFields)
       .where(eq(tenantsTable.id, id))
       .returning();
+
+    // If plan tier changed and tenant has a Stripe subscription, sync it
+    if (
+      parsed.data.planTier !== undefined &&
+      parsed.data.planTier !== existing.planTier &&
+      existing.stripeSubscriptionId &&
+      isStripeConfigured()
+    ) {
+      try {
+        const priceEnvMap: Record<string, string | undefined> = {
+          starter: process.env.STRIPE_PRICE_STARTER,
+          growth: process.env.STRIPE_PRICE_GROWTH,
+          enterprise: process.env.STRIPE_PRICE_ENTERPRISE,
+        };
+        const newPriceId = priceEnvMap[parsed.data.planTier];
+        if (newPriceId) {
+          const stripe = await getUncachableStripeClient();
+          const sub = await stripe.subscriptions.retrieve(
+            existing.stripeSubscriptionId,
+          );
+          const itemId = sub.items.data[0]?.id;
+          if (itemId) {
+            await stripe.subscriptions.update(existing.stripeSubscriptionId, {
+              items: [{ id: itemId, price: newPriceId }],
+              proration_behavior: "always_invoice",
+            });
+            logger.info(
+              { tenantId: id, planTier: parsed.data.planTier },
+              "Stripe subscription plan updated",
+            );
+          }
+        } else {
+          logger.warn(
+            { planTier: parsed.data.planTier },
+            "No Stripe price ID configured for plan tier — skipping subscription update",
+          );
+        }
+      } catch (err) {
+        logger.error({ err }, "Failed to sync Stripe subscription on plan change");
+      }
+    }
 
     await writeAuditLog({
       req,

@@ -92,6 +92,16 @@ export const GetAdminKpiResponse = zod.object({
   suspendedTenants: zod.number(),
   stripeConnectedTenants: zod.number(),
   stripeConfigured: zod.boolean(),
+  estimatedMrrCents: zod
+    .number()
+    .describe(
+      "Monthly recurring revenue in cents (plan-tier estimate for active\/trial tenants)",
+    ),
+  mrrIsEstimate: zod
+    .boolean()
+    .describe(
+      "True when MRR is a local plan-tier estimate rather than live Stripe data",
+    ),
 });
 
 /**
@@ -111,6 +121,9 @@ export const ListAdminTenantsResponseItem = zod.object({
   onboardingCompletedAt: zod.string().nullish(),
   createdAt: zod.string(),
   memberCount: zod.number(),
+  storageUsageMb: zod
+    .number()
+    .describe("Storage used by this tenant in megabytes"),
 });
 export const ListAdminTenantsResponse = zod.array(ListAdminTenantsResponseItem);
 

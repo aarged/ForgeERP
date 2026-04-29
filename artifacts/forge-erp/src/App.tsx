@@ -149,6 +149,35 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   );
 }
 
+/**
+ * SuperAdminRoute only renders for users with the `super_admin` role.
+ * All other signed-in users are redirected to /dashboard.
+ */
+function SuperAdminRoute({ component: Component }: { component: React.ComponentType }) {
+  const { data: currentUser, isLoading } = useGetCurrentUser({
+    query: { queryKey: getGetCurrentUserQueryKey() },
+  });
+
+  return (
+    <>
+      <Show when="signed-out">
+        <Redirect to="/" />
+      </Show>
+      <Show when="signed-in">
+        {isLoading ? null : (
+          currentUser?.role !== "super_admin" ? (
+            <Redirect to="/dashboard" />
+          ) : (
+            <AppShell>
+              <Component />
+            </AppShell>
+          )
+        )}
+      </Show>
+    </>
+  );
+}
+
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
   const queryClient = useQueryClient();
@@ -210,7 +239,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/sales"><ProtectedRoute component={Sales} /></Route>
           <Route path="/inventory"><ProtectedRoute component={Inventory} /></Route>
           <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
-          <Route path="/super-admin"><ProtectedRoute component={SuperAdmin} /></Route>
+          <Route path="/super-admin"><SuperAdminRoute component={SuperAdmin} /></Route>
           <Route path="/pending"><PendingPage /></Route>
           <Route component={NotFound} />
         </Switch>

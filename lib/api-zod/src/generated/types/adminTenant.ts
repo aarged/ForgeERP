@@ -26,4 +26,6 @@ export interface AdminTenant {
   onboardingCompletedAt?: string | null;
   createdAt: string;
   memberCount: number;
+  /** Storage used by this tenant in megabytes */
+  storageUsageMb: number;
 }
