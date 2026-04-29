@@ -5838,6 +5838,164 @@ export const ReportOutstandingInvoicesResponse = zod.array(
 );
 
 /**
+ * @summary Get delivery docket (printable HTML) for a despatch
+ */
+export const GetDespatchPdfParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetDespatchPdfHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Cancel (delete) a draft despatch
+ */
+export const CancelDespatchParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CancelDespatchHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Void (delete) a draft invoice
+ */
+export const VoidInvoiceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const VoidInvoiceHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Cancel (delete) a pending RMA
+ */
+export const CancelRmaParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CancelRmaHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Sales analysis by item (revenue, qty, invoice count)
+ */
+export const ReportSalesByItemQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ReportSalesByItemHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportSalesByItemResponseItem = zod.object({
+  itemId: zod.number().nullish(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  totalQty: zod.string().optional(),
+  totalRevenue: zod.string().optional(),
+  invoiceCount: zod.number().optional(),
+});
+export const ReportSalesByItemResponse = zod.array(
+  ReportSalesByItemResponseItem,
+);
+
+/**
+ * @summary Sales analysis by customer (revenue, invoice count, avg value)
+ */
+export const ReportSalesByCustomerQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ReportSalesByCustomerHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportSalesByCustomerResponseItem = zod.object({
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  totalRevenue: zod.string().optional(),
+  invoiceCount: zod.number().optional(),
+  avgInvoiceValue: zod.string().optional(),
+});
+export const ReportSalesByCustomerResponse = zod.array(
+  ReportSalesByCustomerResponseItem,
+);
+
+/**
+ * @summary Sales analysis by month/year period
+ */
+export const ReportSalesByPeriodQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ReportSalesByPeriodHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportSalesByPeriodResponseItem = zod.object({
+  period: zod.string().optional(),
+  totalRevenue: zod.string().optional(),
+  invoiceCount: zod.number().optional(),
+  orderCount: zod.number().optional(),
+});
+export const ReportSalesByPeriodResponse = zod.array(
+  ReportSalesByPeriodResponseItem,
+);
+
+/**
+ * @summary Customer statement — invoices vs payments
+ */
+export const ReportCustomerStatementQueryParams = zod.object({
+  customerId: zod.coerce.number(),
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ReportCustomerStatementHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportCustomerStatementResponse = zod.object({
+  customerId: zod.number().optional(),
+  invoices: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        soId: zod.number().optional(),
+        despatchId: zod.number().nullish(),
+        customerId: zod.number().nullish(),
+        customerName: zod.string().nullish(),
+        customerEmail: zod.string().nullish(),
+        status: zod.string().optional(),
+        invoiceDate: zod.string().nullish(),
+        dueDate: zod.string().nullish(),
+        currencyCode: zod.string().optional(),
+        subtotal: zod.string().optional(),
+        taxAmount: zod.string().optional(),
+        total: zod.string().optional(),
+        paidAmount: zod.string().optional(),
+        notes: zod.string().nullish(),
+        glPostingId: zod.number().nullish(),
+        sentAt: zod.coerce.date().nullish(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  totalBilled: zod.number().optional(),
+  totalPaid: zod.number().optional(),
+  balance: zod.number().optional(),
+});
+
+/**
  * @summary List notifications for the current user
  */
 export const ListNotificationsQueryParams = zod.object({

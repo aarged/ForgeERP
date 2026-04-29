@@ -160,9 +160,17 @@ import type {
   ReceiveRmaBody,
   ReleaseBackorderBody,
   ReportBackorders200Item,
+  ReportCustomerStatement200,
+  ReportCustomerStatementParams,
   ReportGoodsInTransit200Item,
   ReportGoodsInTransitParams,
   ReportPoSummaryParams,
+  ReportSalesByCustomer200Item,
+  ReportSalesByCustomerParams,
+  ReportSalesByItem200Item,
+  ReportSalesByItemParams,
+  ReportSalesByPeriod200Item,
+  ReportSalesByPeriodParams,
   ReportSalesSummaryParams,
   RequisitionLine,
   RequisitionLineInput,
@@ -15476,6 +15484,760 @@ export function useReportOutstandingInvoices<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getReportOutstandingInvoicesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get delivery docket (printable HTML) for a despatch
+ */
+export const getGetDespatchPdfUrl = (id: number) => {
+  return `/api/sales/despatches/${id}/pdf`;
+};
+
+export const getDespatchPdf = async (
+  id: number,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getGetDespatchPdfUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDespatchPdfQueryKey = (id: number) => {
+  return [`/api/sales/despatches/${id}/pdf`] as const;
+};
+
+export const getGetDespatchPdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDespatchPdf>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDespatchPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDespatchPdfQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getDespatchPdf>>> = ({
+    signal,
+  }) => getDespatchPdf(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDespatchPdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDespatchPdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDespatchPdf>>
+>;
+export type GetDespatchPdfQueryError = ErrorType<void>;
+
+/**
+ * @summary Get delivery docket (printable HTML) for a despatch
+ */
+
+export function useGetDespatchPdf<
+  TData = Awaited<ReturnType<typeof getDespatchPdf>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getDespatchPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDespatchPdfQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Cancel (delete) a draft despatch
+ */
+export const getCancelDespatchUrl = (id: number) => {
+  return `/api/sales/despatches/${id}/delete`;
+};
+
+export const cancelDespatch = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getCancelDespatchUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getCancelDespatchMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelDespatch>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cancelDespatch>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["cancelDespatch"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cancelDespatch>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return cancelDespatch(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CancelDespatchMutationResult = NonNullable<
+  Awaited<ReturnType<typeof cancelDespatch>>
+>;
+
+export type CancelDespatchMutationError = ErrorType<void>;
+
+/**
+ * @summary Cancel (delete) a draft despatch
+ */
+export const useCancelDespatch = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelDespatch>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cancelDespatch>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getCancelDespatchMutationOptions(options));
+};
+
+/**
+ * @summary Void (delete) a draft invoice
+ */
+export const getVoidInvoiceUrl = (id: number) => {
+  return `/api/sales/invoices/${id}/void`;
+};
+
+export const voidInvoice = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getVoidInvoiceUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getVoidInvoiceMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voidInvoice>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof voidInvoice>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["voidInvoice"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof voidInvoice>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return voidInvoice(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VoidInvoiceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof voidInvoice>>
+>;
+
+export type VoidInvoiceMutationError = ErrorType<void>;
+
+/**
+ * @summary Void (delete) a draft invoice
+ */
+export const useVoidInvoice = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voidInvoice>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof voidInvoice>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getVoidInvoiceMutationOptions(options));
+};
+
+/**
+ * @summary Cancel (delete) a pending RMA
+ */
+export const getCancelRmaUrl = (id: number) => {
+  return `/api/sales/rma/${id}/cancel`;
+};
+
+export const cancelRma = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getCancelRmaUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getCancelRmaMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelRma>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cancelRma>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["cancelRma"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cancelRma>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return cancelRma(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CancelRmaMutationResult = NonNullable<
+  Awaited<ReturnType<typeof cancelRma>>
+>;
+
+export type CancelRmaMutationError = ErrorType<void>;
+
+/**
+ * @summary Cancel (delete) a pending RMA
+ */
+export const useCancelRma = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelRma>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cancelRma>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getCancelRmaMutationOptions(options));
+};
+
+/**
+ * @summary Sales analysis by item (revenue, qty, invoice count)
+ */
+export const getReportSalesByItemUrl = (params?: ReportSalesByItemParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/sales/reports/by-item?${stringifiedParams}`
+    : `/api/sales/reports/by-item`;
+};
+
+export const reportSalesByItem = async (
+  params?: ReportSalesByItemParams,
+  options?: RequestInit,
+): Promise<ReportSalesByItem200Item[]> => {
+  return customFetch<ReportSalesByItem200Item[]>(
+    getReportSalesByItemUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getReportSalesByItemQueryKey = (
+  params?: ReportSalesByItemParams,
+) => {
+  return [`/api/sales/reports/by-item`, ...(params ? [params] : [])] as const;
+};
+
+export const getReportSalesByItemQueryOptions = <
+  TData = Awaited<ReturnType<typeof reportSalesByItem>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ReportSalesByItemParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof reportSalesByItem>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getReportSalesByItemQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof reportSalesByItem>>
+  > = ({ signal }) => reportSalesByItem(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof reportSalesByItem>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ReportSalesByItemQueryResult = NonNullable<
+  Awaited<ReturnType<typeof reportSalesByItem>>
+>;
+export type ReportSalesByItemQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Sales analysis by item (revenue, qty, invoice count)
+ */
+
+export function useReportSalesByItem<
+  TData = Awaited<ReturnType<typeof reportSalesByItem>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ReportSalesByItemParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof reportSalesByItem>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getReportSalesByItemQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Sales analysis by customer (revenue, invoice count, avg value)
+ */
+export const getReportSalesByCustomerUrl = (
+  params?: ReportSalesByCustomerParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/sales/reports/by-customer?${stringifiedParams}`
+    : `/api/sales/reports/by-customer`;
+};
+
+export const reportSalesByCustomer = async (
+  params?: ReportSalesByCustomerParams,
+  options?: RequestInit,
+): Promise<ReportSalesByCustomer200Item[]> => {
+  return customFetch<ReportSalesByCustomer200Item[]>(
+    getReportSalesByCustomerUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getReportSalesByCustomerQueryKey = (
+  params?: ReportSalesByCustomerParams,
+) => {
+  return [
+    `/api/sales/reports/by-customer`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getReportSalesByCustomerQueryOptions = <
+  TData = Awaited<ReturnType<typeof reportSalesByCustomer>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ReportSalesByCustomerParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof reportSalesByCustomer>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getReportSalesByCustomerQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof reportSalesByCustomer>>
+  > = ({ signal }) =>
+    reportSalesByCustomer(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof reportSalesByCustomer>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ReportSalesByCustomerQueryResult = NonNullable<
+  Awaited<ReturnType<typeof reportSalesByCustomer>>
+>;
+export type ReportSalesByCustomerQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Sales analysis by customer (revenue, invoice count, avg value)
+ */
+
+export function useReportSalesByCustomer<
+  TData = Awaited<ReturnType<typeof reportSalesByCustomer>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ReportSalesByCustomerParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof reportSalesByCustomer>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getReportSalesByCustomerQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Sales analysis by month/year period
+ */
+export const getReportSalesByPeriodUrl = (
+  params?: ReportSalesByPeriodParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/sales/reports/by-period?${stringifiedParams}`
+    : `/api/sales/reports/by-period`;
+};
+
+export const reportSalesByPeriod = async (
+  params?: ReportSalesByPeriodParams,
+  options?: RequestInit,
+): Promise<ReportSalesByPeriod200Item[]> => {
+  return customFetch<ReportSalesByPeriod200Item[]>(
+    getReportSalesByPeriodUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getReportSalesByPeriodQueryKey = (
+  params?: ReportSalesByPeriodParams,
+) => {
+  return [`/api/sales/reports/by-period`, ...(params ? [params] : [])] as const;
+};
+
+export const getReportSalesByPeriodQueryOptions = <
+  TData = Awaited<ReturnType<typeof reportSalesByPeriod>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ReportSalesByPeriodParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof reportSalesByPeriod>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getReportSalesByPeriodQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof reportSalesByPeriod>>
+  > = ({ signal }) =>
+    reportSalesByPeriod(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof reportSalesByPeriod>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ReportSalesByPeriodQueryResult = NonNullable<
+  Awaited<ReturnType<typeof reportSalesByPeriod>>
+>;
+export type ReportSalesByPeriodQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Sales analysis by month/year period
+ */
+
+export function useReportSalesByPeriod<
+  TData = Awaited<ReturnType<typeof reportSalesByPeriod>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ReportSalesByPeriodParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof reportSalesByPeriod>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getReportSalesByPeriodQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Customer statement — invoices vs payments
+ */
+export const getReportCustomerStatementUrl = (
+  params: ReportCustomerStatementParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/sales/reports/customer-statement?${stringifiedParams}`
+    : `/api/sales/reports/customer-statement`;
+};
+
+export const reportCustomerStatement = async (
+  params: ReportCustomerStatementParams,
+  options?: RequestInit,
+): Promise<ReportCustomerStatement200> => {
+  return customFetch<ReportCustomerStatement200>(
+    getReportCustomerStatementUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getReportCustomerStatementQueryKey = (
+  params?: ReportCustomerStatementParams,
+) => {
+  return [
+    `/api/sales/reports/customer-statement`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getReportCustomerStatementQueryOptions = <
+  TData = Awaited<ReturnType<typeof reportCustomerStatement>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ReportCustomerStatementParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof reportCustomerStatement>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getReportCustomerStatementQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof reportCustomerStatement>>
+  > = ({ signal }) =>
+    reportCustomerStatement(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof reportCustomerStatement>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ReportCustomerStatementQueryResult = NonNullable<
+  Awaited<ReturnType<typeof reportCustomerStatement>>
+>;
+export type ReportCustomerStatementQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Customer statement — invoices vs payments
+ */
+
+export function useReportCustomerStatement<
+  TData = Awaited<ReturnType<typeof reportCustomerStatement>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ReportCustomerStatementParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof reportCustomerStatement>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getReportCustomerStatementQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

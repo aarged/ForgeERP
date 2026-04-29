@@ -2883,6 +2883,59 @@ export type ReportSalesSummaryParams = {
 
 export type ReportBackorders200Item = { [key: string]: unknown };
 
+export type ReportSalesByItemParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type ReportSalesByItem200Item = {
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  totalQty?: string;
+  totalRevenue?: string;
+  invoiceCount?: number;
+};
+
+export type ReportSalesByCustomerParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type ReportSalesByCustomer200Item = {
+  customerId?: number | null;
+  customerName?: string | null;
+  totalRevenue?: string;
+  invoiceCount?: number;
+  avgInvoiceValue?: string;
+};
+
+export type ReportSalesByPeriodParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type ReportSalesByPeriod200Item = {
+  period?: string;
+  totalRevenue?: string;
+  invoiceCount?: number;
+  orderCount?: number;
+};
+
+export type ReportCustomerStatementParams = {
+  customerId: number;
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type ReportCustomerStatement200 = {
+  customerId?: number;
+  invoices?: CustomerInvoice[];
+  totalBilled?: number;
+  totalPaid?: number;
+  balance?: number;
+};
+
 export type ListNotificationsParams = {
   unreadOnly?: ListNotificationsUnreadOnly;
   page?: number;

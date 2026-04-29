@@ -853,12 +853,24 @@ router.post("/sales/despatches", ...tenantWriteMiddleware, async (req: Request, 
   if (!so) { res.status(404).json({ error: "Sales order not found" }); return; }
   if (!["confirmed", "picking", "partially_despatched"].includes(so.status)) { res.status(400).json({ error: `Cannot despatch SO in status: ${so.status}` }); return; }
 
-  // Resolve soLine data for any lines missing itemId
+  // Resolve soLine data and validate each line belongs to this SO
   const soLineIds = parsed.data.lines.map((l) => l.soLineId);
   const soLineMap = new Map<number, typeof soLinesTable.$inferSelect>();
   if (soLineIds.length > 0) {
     const soLineRows = await withTenantDb(tenantId, (db) => db.select().from(soLinesTable).where(and(inArray(soLinesTable.id, soLineIds), eq(soLinesTable.tenantId, tenantId))));
     for (const sl of soLineRows) soLineMap.set(sl.id, sl);
+  }
+
+  // Validate: each line must belong to the provided soId, and qty must not exceed remaining
+  for (const l of parsed.data.lines) {
+    const soLine = soLineMap.get(l.soLineId);
+    if (!soLine) { res.status(400).json({ error: `soLineId ${l.soLineId} does not exist or does not belong to this sales order` }); return; }
+    if (soLine.soId !== parsed.data.soId) { res.status(400).json({ error: `soLineId ${l.soLineId} belongs to a different sales order` }); return; }
+    const remaining = Number(soLine.quantity) - Number(soLine.despatched_qty ?? 0);
+    if (l.quantity > remaining + 0.0001) {
+      res.status(400).json({ error: `Despatch quantity ${l.quantity} for line ${l.soLineId} exceeds remaining unfulfilled quantity ${remaining.toFixed(4)}` });
+      return;
+    }
   }
 
   const result = await withTenantDb(tenantId, async (db) => {
@@ -918,9 +930,13 @@ router.post("/sales/despatches/:id/confirm", ...tenantWriteMiddleware, async (re
         .limit(1);
 
       if (stock) {
+        const currentQty = Number(stock.qtyOnHand ?? 0);
+        if (currentQty < qty - 0.0001) {
+          throw new Error(`Insufficient stock for item ${resolvedItemId}: on-hand ${currentQty.toFixed(4)}, required ${qty.toFixed(4)}. Adjust stock or reduce despatch quantity.`);
+        }
         const unitCostForMovement = line.unitCost ?? stock.averageCost ?? undefined;
         await db.update(inventoryStockTable)
-          .set({ qtyOnHand: sql`GREATEST(0, ${inventoryStockTable.qtyOnHand} - ${qty.toFixed(4)})`, qtyReserved: sql`GREATEST(0, ${inventoryStockTable.qtyReserved} - ${qty.toFixed(4)})`, lastMovementAt: new Date() })
+          .set({ qtyOnHand: sql`${inventoryStockTable.qtyOnHand} - ${qty.toFixed(4)}`, qtyReserved: sql`GREATEST(0, ${inventoryStockTable.qtyReserved} - ${qty.toFixed(4)})`, lastMovementAt: new Date() })
           .where(and(eq(inventoryStockTable.id, stock.id), eq(inventoryStockTable.tenantId, tenantId)));
         // Update despatch line unit cost from average cost if missing
         if (!line.unitCost && stock.averageCost) {
@@ -989,6 +1005,48 @@ router.post("/sales/despatches/:id/confirm", ...tenantWriteMiddleware, async (re
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "despatch.confirmed", entityType: "despatch", entityId: String(id) });
   res.json(result);
+});
+
+/** Delivery Docket PDF: print-ready HTML for a confirmed despatch */
+router.get("/sales/despatches/:id/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [despatch] = await withTenantDb(tenantId, (db) => db.select().from(despatchesTable).where(and(eq(despatchesTable.id, id), eq(despatchesTable.tenantId, tenantId))).limit(1));
+  if (!despatch) { res.status(404).json({ error: "Despatch not found" }); return; }
+  const lines = await withTenantDb(tenantId, (db) => db.select().from(despatchLinesTable).where(and(eq(despatchLinesTable.despatchId, id), eq(despatchLinesTable.tenantId, tenantId))));
+  const lineRows = lines.map((l) => `<tr><td>${l.itemCode ?? ""}</td><td>${l.itemName ?? ""}</td><td style="text-align:right">${Number(l.quantity).toFixed(2)}</td><td>${l.lotNumber ?? ""}</td><td>${l.serialNumber ?? ""}</td><td>${l.notes ?? ""}</td></tr>`).join("");
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Delivery Docket ${despatch.code}</title>
+  <style>body{font-family:Arial,sans-serif;font-size:13px;margin:32px}h1{font-size:20px}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#f3f4f6;text-align:left;padding:6px 8px;border:1px solid #e5e7eb}td{padding:6px 8px;border:1px solid #e5e7eb}@media print{body{margin:16px}}</style>
+  </head><body onload="window.print()">
+  <h1>Delivery Docket</h1>
+  <div style="display:flex;gap:48px;margin-bottom:24px">
+    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Docket No.</div><div style="font-weight:600">${despatch.code}</div></div>
+    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Despatch Date</div><div>${despatch.despatchDate ?? new Date().toISOString().split("T")[0]}</div></div>
+    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Sales Order</div><div>SO-${despatch.soId}</div></div>
+    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Carrier</div><div>${despatch.carrier ?? "—"}</div></div>
+    <div><div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Tracking</div><div>${despatch.trackingNumber ?? "—"}</div></div>
+  </div>
+  <table><thead><tr><th>Item Code</th><th>Description</th><th style="text-align:right">Qty</th><th>Lot/Batch</th><th>Serial</th><th>Notes</th></tr></thead>
+  <tbody>${lineRows}</tbody></table>
+  <div style="margin-top:40px;display:flex;gap:64px">
+    <div><div style="border-top:1px solid #374151;width:200px;padding-top:4px">Despatched by / Date</div></div>
+    <div><div style="border-top:1px solid #374151;width:200px;padding-top:4px">Received by / Date</div></div>
+  </div>
+  </body></html>`;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+/** Cancel (delete) a draft despatch */
+router.delete("/sales/despatches/:id", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [despatch] = await withTenantDb(tenantId, (db) => db.select().from(despatchesTable).where(and(eq(despatchesTable.id, id), eq(despatchesTable.tenantId, tenantId))).limit(1));
+  if (!despatch) { res.status(404).json({ error: "Despatch not found" }); return; }
+  if (despatch.status !== "draft") { res.status(400).json({ error: "Only draft despatches can be cancelled" }); return; }
+  await withTenantDb(tenantId, (db) => db.update(despatchesTable).set({ status: "cancelled" }).where(and(eq(despatchesTable.id, id), eq(despatchesTable.tenantId, tenantId))));
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "despatch.cancelled", entityType: "despatch", entityId: String(id) });
+  res.status(204).send();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1123,6 +1181,29 @@ router.post("/sales/invoices", ...tenantWriteMiddleware, async (req: Request, re
   const [so] = await withTenantDb(tenantId, (db) => db.select().from(salesOrdersTable).where(and(eq(salesOrdersTable.id, parsed.data.soId), eq(salesOrdersTable.tenantId, tenantId))).limit(1));
   if (!so) { res.status(404).json({ error: "Sales order not found" }); return; }
 
+  // Credit limit enforcement at invoice creation
+  if (so.customerId) {
+    const [cust] = await withTenantDb(tenantId, (db) =>
+      db.select({ creditLimit: customersTable.creditLimit }).from(customersTable).where(and(eq(customersTable.id, so.customerId!), eq(customersTable.tenantId, tenantId))).limit(1));
+    const creditLimit = cust?.creditLimit ? Number(cust.creditLimit) : 0;
+    if (creditLimit > 0) {
+      const [outstanding] = await withTenantDb(tenantId, (db) =>
+        db.select({ total: sql<string>`coalesce(sum(total),0)` }).from(customerInvoicesTable)
+          .where(and(eq(customerInvoicesTable.tenantId, tenantId), eq(customerInvoicesTable.customerId, so.customerId!),
+            isNull(customerInvoicesTable.deletedAt), sql`status NOT IN ('paid','voided')`)));
+      const outstandingBalance = Number(outstanding?.total ?? 0);
+      const newInvSubtotal = parsed.data.lines.reduce((s, l) => s + l.quantity * l.unitPrice * (1 - l.discountPct / 100) * (1 + l.taxPct / 100), 0);
+      if (outstandingBalance + newInvSubtotal > creditLimit) {
+        res.status(422).json({
+          error: "Credit limit exceeded",
+          detail: `Customer credit limit is ${creditLimit.toFixed(2)}. Outstanding balance ${outstandingBalance.toFixed(2)} plus this invoice ${newInvSubtotal.toFixed(2)} would exceed the limit.`,
+          creditLimit, outstandingBalance, newInvoiceTotal: newInvSubtotal,
+        });
+        return;
+      }
+    }
+  }
+
   let subtotal = 0; let taxAmount = 0;
   const lineValues = parsed.data.lines.map((l) => {
     const base = l.quantity * l.unitPrice * (1 - l.discountPct / 100);
@@ -1177,6 +1258,18 @@ router.post("/sales/invoices/:id/send", ...tenantWriteMiddleware, async (req: Re
   const [updated] = await withTenantDb(tenantId, (db) => db.update(customerInvoicesTable).set({ status: "sent", sentAt: new Date() }).where(and(eq(customerInvoicesTable.id, id), eq(customerInvoicesTable.tenantId, tenantId))).returning());
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "invoice.sent", entityType: "customer_invoice", entityId: String(id) });
   res.json({ ...updated, emailSent, sentTo: toEmail });
+});
+
+/** Void (delete) a draft invoice */
+router.delete("/sales/invoices/:id", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [invoice] = await withTenantDb(tenantId, (db) => db.select().from(customerInvoicesTable).where(and(eq(customerInvoicesTable.id, id), eq(customerInvoicesTable.tenantId, tenantId), isNull(customerInvoicesTable.deletedAt))).limit(1));
+  if (!invoice) { res.status(404).json({ error: "Invoice not found" }); return; }
+  if (!["draft"].includes(invoice.status)) { res.status(400).json({ error: "Only draft invoices can be voided; for sent invoices create a credit note" }); return; }
+  await withTenantDb(tenantId, (db) => db.update(customerInvoicesTable).set({ status: "voided", deletedAt: new Date() }).where(and(eq(customerInvoicesTable.id, id), eq(customerInvoicesTable.tenantId, tenantId))));
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "invoice.voided", entityType: "customer_invoice", entityId: String(id) });
+  res.status(204).send();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1386,6 +1479,18 @@ router.post("/sales/rma/:id/process", ...tenantWriteMiddleware, async (req: Requ
   res.json(updated);
 });
 
+/** Cancel (delete) a draft/pending RMA */
+router.delete("/sales/rma/:id", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [rma] = await withTenantDb(tenantId, (db) => db.select().from(rmaOrdersTable).where(and(eq(rmaOrdersTable.id, id), eq(rmaOrdersTable.tenantId, tenantId), isNull(rmaOrdersTable.deletedAt))).limit(1));
+  if (!rma) { res.status(404).json({ error: "RMA not found" }); return; }
+  if (["received", "processed", "closed"].includes(rma.status)) { res.status(400).json({ error: `Cannot cancel RMA in status: ${rma.status}` }); return; }
+  await withTenantDb(tenantId, (db) => db.update(rmaOrdersTable).set({ status: "cancelled", deletedAt: new Date() }).where(and(eq(rmaOrdersTable.id, id), eq(rmaOrdersTable.tenantId, tenantId))));
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "rma.cancelled", entityType: "rma_order", entityId: String(id) });
+  res.status(204).send();
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Backorders ──────────────────────────────────────────────────────────────
 
@@ -1499,6 +1604,111 @@ router.get("/sales/reports/outstanding-invoices", ...tenantUserMiddleware, async
       .where(and(eq(customerInvoicesTable.tenantId, tenantId), isNull(customerInvoicesTable.deletedAt), or(eq(customerInvoicesTable.status, "sent"), eq(customerInvoicesTable.status, "draft"))))
       .orderBy(customerInvoicesTable.dueDate));
   res.json(rows);
+});
+
+// ── Extended Sales Reports ─────────────────────────────────────────────────────
+
+/** Sales analysis by item: revenue, cost, qty sold, gross margin per item */
+router.get("/sales/reports/by-item", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      itemId: customerInvoiceLinesTable.itemId,
+      itemCode: customerInvoiceLinesTable.itemCode,
+      itemName: customerInvoiceLinesTable.itemName,
+      totalQty: sql<string>`coalesce(sum(${customerInvoiceLinesTable.quantity}::numeric), 0)`,
+      totalRevenue: sql<string>`coalesce(sum(${customerInvoiceLinesTable.lineTotal}::numeric), 0)`,
+      invoiceCount: sql<number>`count(distinct ${customerInvoiceLinesTable.invoiceId})`,
+    })
+    .from(customerInvoiceLinesTable)
+    .innerJoin(customerInvoicesTable, eq(customerInvoiceLinesTable.invoiceId, customerInvoicesTable.id))
+    .where(and(
+      eq(customerInvoiceLinesTable.tenantId, tenantId),
+      isNull(customerInvoicesTable.deletedAt),
+      sql`${customerInvoicesTable.status} NOT IN ('voided')`,
+      fromDate ? sql`${customerInvoicesTable.invoiceDate} >= ${fromDate}` : undefined,
+      toDate ? sql`${customerInvoicesTable.invoiceDate} <= ${toDate}` : undefined,
+    ))
+    .groupBy(customerInvoiceLinesTable.itemId, customerInvoiceLinesTable.itemCode, customerInvoiceLinesTable.itemName)
+    .orderBy(sql`sum(${customerInvoiceLinesTable.lineTotal}::numeric) desc`));
+  res.json(rows);
+});
+
+/** Sales analysis by customer: revenue, invoice count, average order value */
+router.get("/sales/reports/by-customer", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      customerId: customerInvoicesTable.customerId,
+      customerName: customerInvoicesTable.customerName,
+      totalRevenue: sql<string>`coalesce(sum(${customerInvoicesTable.total}::numeric), 0)`,
+      invoiceCount: sql<number>`count(*)`,
+      avgInvoiceValue: sql<string>`coalesce(avg(${customerInvoicesTable.total}::numeric), 0)`,
+    })
+    .from(customerInvoicesTable)
+    .where(and(
+      eq(customerInvoicesTable.tenantId, tenantId),
+      isNull(customerInvoicesTable.deletedAt),
+      sql`${customerInvoicesTable.status} NOT IN ('voided')`,
+      fromDate ? sql`${customerInvoicesTable.invoiceDate} >= ${fromDate}` : undefined,
+      toDate ? sql`${customerInvoicesTable.invoiceDate} <= ${toDate}` : undefined,
+    ))
+    .groupBy(customerInvoicesTable.customerId, customerInvoicesTable.customerName)
+    .orderBy(sql`sum(${customerInvoicesTable.total}::numeric) desc`));
+  res.json(rows);
+});
+
+/** Sales analysis by period (month/year): revenue and invoice count per month */
+router.get("/sales/reports/by-period", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      period: sql<string>`to_char(${customerInvoicesTable.invoiceDate}::date, 'YYYY-MM')`,
+      totalRevenue: sql<string>`coalesce(sum(${customerInvoicesTable.total}::numeric), 0)`,
+      invoiceCount: sql<number>`count(*)`,
+      orderCount: sql<number>`count(distinct ${customerInvoicesTable.soId})`,
+    })
+    .from(customerInvoicesTable)
+    .where(and(
+      eq(customerInvoicesTable.tenantId, tenantId),
+      isNull(customerInvoicesTable.deletedAt),
+      sql`${customerInvoicesTable.status} NOT IN ('voided')`,
+      fromDate ? sql`${customerInvoicesTable.invoiceDate} >= ${fromDate}` : undefined,
+      toDate ? sql`${customerInvoicesTable.invoiceDate} <= ${toDate}` : undefined,
+    ))
+    .groupBy(sql`to_char(${customerInvoicesTable.invoiceDate}::date, 'YYYY-MM')`)
+    .orderBy(sql`to_char(${customerInvoicesTable.invoiceDate}::date, 'YYYY-MM') asc`));
+  res.json(rows);
+});
+
+/** Customer statement: all invoices vs payments (amounts) for a customer */
+router.get("/sales/reports/customer-statement", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { customerId, fromDate, toDate } = req.query as Record<string, string>;
+  if (!customerId) { res.status(400).json({ error: "customerId is required" }); return; }
+  const invoices = await withTenantDb(tenantId, (db) =>
+    db.select({
+      id: customerInvoicesTable.id, code: customerInvoicesTable.code,
+      invoiceDate: customerInvoicesTable.invoiceDate, dueDate: customerInvoicesTable.dueDate,
+      total: customerInvoicesTable.total, status: customerInvoicesTable.status,
+      currencyCode: customerInvoicesTable.currencyCode,
+    })
+    .from(customerInvoicesTable)
+    .where(and(
+      eq(customerInvoicesTable.tenantId, tenantId),
+      eq(customerInvoicesTable.customerId, Number(customerId)),
+      isNull(customerInvoicesTable.deletedAt),
+      sql`${customerInvoicesTable.status} NOT IN ('voided')`,
+      fromDate ? sql`${customerInvoicesTable.invoiceDate} >= ${fromDate}` : undefined,
+      toDate ? sql`${customerInvoicesTable.invoiceDate} <= ${toDate}` : undefined,
+    ))
+    .orderBy(customerInvoicesTable.invoiceDate));
+  const totalBilled = invoices.reduce((s, i) => s + Number(i.total ?? 0), 0);
+  const totalPaid = invoices.filter((i) => i.status === "paid").reduce((s, i) => s + Number(i.total ?? 0), 0);
+  res.json({ customerId: Number(customerId), invoices, totalBilled, totalPaid, balance: totalBilled - totalPaid });
 });
 
 export default router;

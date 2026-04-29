@@ -4178,6 +4178,170 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/CustomerInvoice" }
 
+  /sales/despatches/{id}/pdf:
+    get:
+      operationId: getDespatchPdf
+      summary: Get delivery docket (printable HTML) for a despatch
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Printable HTML delivery docket
+          content:
+            text/html:
+              schema: { type: string }
+        "404": { description: Not found }
+
+  /sales/despatches/{id}/delete:
+    delete:
+      operationId: cancelDespatch
+      summary: Cancel (delete) a draft despatch
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Cancelled }
+        "400": { description: Cannot cancel non-draft despatch }
+        "404": { description: Not found }
+
+  /sales/invoices/{id}/void:
+    delete:
+      operationId: voidInvoice
+      summary: Void (delete) a draft invoice
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Voided }
+        "400": { description: Cannot void non-draft invoice }
+        "404": { description: Not found }
+
+  /sales/rma/{id}/cancel:
+    delete:
+      operationId: cancelRma
+      summary: Cancel (delete) a pending RMA
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Cancelled }
+        "400": { description: Cannot cancel received/processed RMA }
+        "404": { description: Not found }
+
+  /sales/reports/by-item:
+    get:
+      operationId: reportSalesByItem
+      summary: Sales analysis by item (revenue, qty, invoice count)
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Sales by item
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    itemId: { type: integer, nullable: true }
+                    itemCode: { type: string, nullable: true }
+                    itemName: { type: string, nullable: true }
+                    totalQty: { type: string }
+                    totalRevenue: { type: string }
+                    invoiceCount: { type: integer }
+
+  /sales/reports/by-customer:
+    get:
+      operationId: reportSalesByCustomer
+      summary: Sales analysis by customer (revenue, invoice count, avg value)
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Sales by customer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    customerId: { type: integer, nullable: true }
+                    customerName: { type: string, nullable: true }
+                    totalRevenue: { type: string }
+                    invoiceCount: { type: integer }
+                    avgInvoiceValue: { type: string }
+
+  /sales/reports/by-period:
+    get:
+      operationId: reportSalesByPeriod
+      summary: Sales analysis by month/year period
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Sales by period
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    period: { type: string }
+                    totalRevenue: { type: string }
+                    invoiceCount: { type: integer }
+                    orderCount: { type: integer }
+
+  /sales/reports/customer-statement:
+    get:
+      operationId: reportCustomerStatement
+      summary: Customer statement — invoices vs payments
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: customerId, required: true, schema: { type: integer } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Customer statement
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customerId: { type: integer }
+                  invoices:
+                    type: array
+                    items: { $ref: "#/components/schemas/CustomerInvoice" }
+                  totalBilled: { type: number }
+                  totalPaid: { type: number }
+                  balance: { type: number }
+
   /notifications:
     get:
       operationId: listNotifications

@@ -52,6 +52,17 @@ import {
   ListBackordersStatus,
   useGetAtp,
   getGetAtpQueryKey,
+  useCancelDespatch,
+  useVoidInvoice,
+  useCancelRma,
+  useReportSalesByItem,
+  useReportSalesByCustomer,
+  useReportSalesByPeriod,
+  useReportCustomerStatement,
+  getReportSalesByItemQueryKey,
+  getReportSalesByCustomerQueryKey,
+  getReportSalesByPeriodQueryKey,
+  getReportCustomerStatementQueryKey,
   useListCustomers,
   useListWarehouses,
   useListItems,
@@ -128,6 +139,8 @@ import {
   BadgeDollarSign,
   AlertCircle,
   Printer,
+  BarChart2,
+  Users,
 } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -378,6 +391,9 @@ function DashboardTab() {
   const { data: summary, isLoading } = useReportSalesSummary({});
   const { data: backorders } = useReportBackorders({});
   const { data: outstanding } = useReportOutstandingInvoices({});
+  const { data: byItem } = useReportSalesByItem({}, { query: { queryKey: getReportSalesByItemQueryKey({}) } });
+  const { data: byCustomer } = useReportSalesByCustomer({}, { query: { queryKey: getReportSalesByCustomerQueryKey({}) } });
+  const { data: byPeriod } = useReportSalesByPeriod({}, { query: { queryKey: getReportSalesByPeriodQueryKey({}) } });
 
   if (isLoading)
     return (
@@ -512,6 +528,104 @@ function DashboardTab() {
                         ${fmt(inv.total)}
                       </TableCell>
                       <TableCell className="text-xs">{fmtDate(inv.dueDate)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-indigo-500" /> Top Items by Revenue
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {!byItem || (byItem as unknown[]).length === 0 ? (
+              <p className="text-sm text-muted-foreground p-4">No invoice data yet.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(byItem as Array<Record<string, unknown>>).slice(0, 6).map((row, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-xs">{String(row.itemCode ?? row.itemName ?? "—")}</TableCell>
+                      <TableCell className="text-xs text-right font-medium">${fmt(String(row.totalRevenue ?? 0))}</TableCell>
+                      <TableCell className="text-xs text-right text-muted-foreground">{fmt(String(row.totalQty ?? 0))}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Users className="w-4 h-4 text-green-500" /> Top Customers
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {!byCustomer || (byCustomer as unknown[]).length === 0 ? (
+              <p className="text-sm text-muted-foreground p-4">No invoice data yet.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Customer</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead className="text-right">Inv.</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(byCustomer as Array<Record<string, unknown>>).slice(0, 6).map((row, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-xs">{String(row.customerName ?? "—")}</TableCell>
+                      <TableCell className="text-xs text-right font-medium">${fmt(String(row.totalRevenue ?? 0))}</TableCell>
+                      <TableCell className="text-xs text-right text-muted-foreground">{Number(row.invoiceCount ?? 0)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <BarChart2 className="w-4 h-4 text-purple-500" /> Revenue by Period
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {!byPeriod || (byPeriod as unknown[]).length === 0 ? (
+              <p className="text-sm text-muted-foreground p-4">No invoice data yet.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Period</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead className="text-right">Inv.</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(byPeriod as Array<Record<string, unknown>>).slice(-8).reverse().map((row, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-xs font-mono">{String(row.period ?? "—")}</TableCell>
+                      <TableCell className="text-xs text-right font-medium">${fmt(String(row.totalRevenue ?? 0))}</TableCell>
+                      <TableCell className="text-xs text-right text-muted-foreground">{Number(row.invoiceCount ?? 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1621,6 +1735,7 @@ function DespatchesTab() {
     },
   });
   const confirmMut = useConfirmDespatch();
+  const cancelDespMut = useCancelDespatch();
 
   async function handleConfirm(id: number) {
     try {
@@ -1631,6 +1746,16 @@ function DespatchesTab() {
       qc.invalidateQueries({ queryKey: getListSalesOrdersQueryKey() });
     } catch {
       toast({ title: "Failed to confirm despatch", variant: "destructive" });
+    }
+  }
+
+  async function handleCancelDesp(id: number) {
+    try {
+      await cancelDespMut.mutateAsync({ id });
+      toast({ title: "Despatch cancelled" });
+      qc.invalidateQueries({ queryKey: getListDespatchesQueryKey() });
+    } catch {
+      toast({ title: "Failed to cancel despatch", variant: "destructive" });
     }
   }
 
@@ -1704,7 +1829,7 @@ function DespatchesTab() {
                 <TableCell className="text-muted-foreground text-xs">
                   {fmtDate(d.createdAt)}
                 </TableCell>
-                <TableCell onClick={(e) => e.stopPropagation()}>
+                <TableCell onClick={(e) => e.stopPropagation()} className="space-x-1">
                   {d.status === "draft" && (
                     <Button
                       size="sm"
@@ -1713,6 +1838,28 @@ function DespatchesTab() {
                       disabled={confirmMut.isPending}
                     >
                       <CheckCircle2 className="w-3 h-3 mr-1" /> Confirm
+                    </Button>
+                  )}
+                  {d.status === "confirmed" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      asChild
+                    >
+                      <a href={`/forge-erp-api/api/sales/despatches/${d.id}/pdf`} target="_blank" rel="noreferrer">
+                        <Printer className="w-3 h-3 mr-1" /> Delivery Docket
+                      </a>
+                    </Button>
+                  )}
+                  {d.status === "draft" && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-600 hover:text-red-700"
+                      onClick={() => handleCancelDesp(d.id!)}
+                      disabled={cancelDespMut.isPending}
+                    >
+                      Cancel
                     </Button>
                   )}
                 </TableCell>
@@ -1831,6 +1978,18 @@ function InvoicesTab() {
 
   const createMut = useCreateCustomerInvoice();
   const sendMut = useSendCustomerInvoice();
+  const voidMut = useVoidInvoice();
+
+  async function handleVoidInvoice(id: number) {
+    try {
+      await voidMut.mutateAsync({ id });
+      toast({ title: "Invoice voided" });
+      qc.invalidateQueries({ queryKey: getListCustomerInvoicesQueryKey() });
+      if (detailId === id) setDetailId(null);
+    } catch {
+      toast({ title: "Failed to void invoice", variant: "destructive" });
+    }
+  }
 
   const form = useForm<InvForm>({ defaultValues: { lines: [] } });
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "lines" });
@@ -1962,7 +2121,7 @@ function InvoicesTab() {
                   <StatusBadge status={inv.status} />
                 </TableCell>
                 <TableCell className="text-right font-medium">${fmt(inv.total)}</TableCell>
-                <TableCell onClick={(e) => e.stopPropagation()}>
+                <TableCell onClick={(e) => e.stopPropagation()} className="space-x-1">
                   {["draft", "sent"].includes(inv.status ?? "") && (
                     <Button
                       size="sm"
@@ -1970,6 +2129,17 @@ function InvoicesTab() {
                       onClick={() => handleSend(inv.id!)}
                     >
                       <Send className="w-3 h-3 mr-1" /> Send
+                    </Button>
+                  )}
+                  {inv.status === "draft" && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-600 hover:text-red-700"
+                      onClick={() => handleVoidInvoice(inv.id!)}
+                      disabled={voidMut.isPending}
+                    >
+                      Void
                     </Button>
                   )}
                 </TableCell>
@@ -2280,6 +2450,18 @@ function RmaTab() {
   const authorizeMut = useAuthorizeRma();
   const receiveMut = useReceiveRma();
   const processMut = useProcessRma();
+  const cancelRmaMut = useCancelRma();
+
+  async function handleCancelRma(id: number) {
+    try {
+      await cancelRmaMut.mutateAsync({ id });
+      toast({ title: "RMA cancelled" });
+      invalidate();
+      if (detailId === id) setDetailId(null);
+    } catch {
+      toast({ title: "Failed to cancel RMA", variant: "destructive" });
+    }
+  }
 
   const form = useForm<RmaForm>({
     defaultValues: { resolution: "credit", lines: [] },
@@ -2439,6 +2621,14 @@ function RmaTab() {
                       {rma.status === "received" && (
                         <DropdownMenuItem onClick={() => handleProcess(rma.id!)}>
                           Mark Processed
+                        </DropdownMenuItem>
+                      )}
+                      {!["received", "processed", "closed", "cancelled"].includes(rma.status ?? "") && (
+                        <DropdownMenuItem
+                          className="text-red-600"
+                          onClick={() => handleCancelRma(rma.id!)}
+                        >
+                          Cancel RMA
                         </DropdownMenuItem>
                       )}
                     </DropdownMenuContent>
