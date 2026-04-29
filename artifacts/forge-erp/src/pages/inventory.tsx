@@ -38,6 +38,8 @@ import {
   useRegisterSerialNumber,
   useUpdateSerialNumber,
   useCreateDirectReceive,
+  useCreateInventoryRepack,
+  useCreateInventoryBuild,
   getTraceLotNumberQueryKey,
   getListInventoryTransfersQueryKey,
   getListSerialNumbersQueryKey,
@@ -1755,47 +1757,197 @@ function DirectReceiveTab() {
 
 // ── Repack / Build Tab ────────────────────────────────────────────────────────
 
-type RepackForm = { itemId: number; fromWarehouseId: number; fromLot?: string; fromQty: number; toItemId: number; toWarehouseId: number; toLot?: string; toQty: number; notes?: string };
+type RepackFormData = { itemId: number; warehouseId: number; fromLotNumber?: string; toLotNumber?: string; qtyIn: number; qtyOut: number; unitCost?: number; notes?: string };
+type BuildComponent = { itemId: number; qty: number; warehouseId: number; lotNumber?: string };
+type BuildFormData = { finishedItemId: number; finishedQty: number; finishedWarehouseId: number; finishedLotNumber?: string; notes?: string; components: BuildComponent[] };
 
-function RepackBuildTab() {
+function RepackTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [mode, setMode] = useState<"repack" | "build">("repack");
-
   const { data: items } = useListItems({ limit: 500 });
   const { data: warehouses } = useListWarehouses({ limit: 100 });
-  const { data: glAccounts } = useListGlAccounts({ limit: 200 });
-  const createAdjMut = useCreateInventoryAdjustment();
+  const repackMut = useCreateInventoryRepack();
+  const form = useForm<RepackFormData>({ defaultValues: { qtyIn: 1, qtyOut: 1, itemId: 0, warehouseId: 0 } });
 
-  const form = useForm<RepackForm>({ defaultValues: { fromQty: 0, toQty: 0 } });
-
-  const inventoryGlId = (glAccounts?.accounts ?? []).find((a) => a.accountType === "asset" || a.name?.toLowerCase().includes("inventor"))?.id;
-
-  async function onSubmit(vals: RepackForm) {
+  async function onSubmit(vals: RepackFormData) {
     try {
-      const label = mode === "repack" ? "Repack" : "Build";
-      if (!inventoryGlId) {
-        toast({ title: "No inventory GL account found. Please add an inventory asset account in the Chart of Accounts.", variant: "destructive" });
-        return;
-      }
-      await createAdjMut.mutateAsync({ data: {
-        adjustmentType: "decrease" as const,
-        reason: `${label}: ${vals.notes ?? ""}`.trim(),
-        glAccountId: inventoryGlId,
-        notes: vals.notes,
-        lines: [
-          { itemId: Number(vals.itemId), warehouseId: Number(vals.fromWarehouseId), lotNumber: vals.fromLot, qtyAdjusted: -Math.abs(vals.fromQty) },
-          { itemId: Number(vals.toItemId), warehouseId: Number(vals.toWarehouseId), lotNumber: vals.toLot, qtyAdjusted: Math.abs(vals.toQty) },
-        ],
-      }});
-      toast({ title: `${label} posted`, description: `Removed ${vals.fromQty} → Added ${vals.toQty}` });
-      form.reset({ fromQty: 0, toQty: 0 });
-      qc.invalidateQueries({ queryKey: getListInventoryAdjustmentsQueryKey() });
+      await repackMut.mutateAsync({ data: {
+        itemId: vals.itemId, warehouseId: vals.warehouseId,
+        qtyIn: vals.qtyIn, qtyOut: vals.qtyOut,
+        fromLotNumber: vals.fromLotNumber || undefined,
+        toLotNumber: vals.toLotNumber || undefined,
+        unitCost: vals.unitCost || undefined,
+        notes: vals.notes || undefined,
+      } });
+      toast({ title: "Repack posted", description: `Consumed ${vals.qtyIn} → Produced ${vals.qtyOut}` });
+      qc.invalidateQueries({ queryKey: getListInventoryMovementsQueryKey() });
+      form.reset({ qtyIn: 1, qtyOut: 1, itemId: 0, warehouseId: 0 });
     } catch (e: unknown) {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
     }
   }
 
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-w-2xl">
+      <p className="text-sm text-muted-foreground">Convert stock from one pack size or lot to another for the same item. Records paired OUT and IN movements of type "repack".</p>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Item *</Label>
+          <Select value={form.watch("itemId") ? String(form.watch("itemId")) : ""} onValueChange={(v) => form.setValue("itemId", Number(v))}>
+            <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
+            <SelectContent>{(items?.items ?? []).map((it) => <SelectItem key={it.id} value={String(it.id)}>{it.code} — {it.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Warehouse *</Label>
+          <Select value={form.watch("warehouseId") ? String(form.watch("warehouseId")) : ""} onValueChange={(v) => form.setValue("warehouseId", Number(v))}>
+            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+            <SelectContent>{(warehouses?.warehouses ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>From Lot</Label>
+          <Input {...form.register("fromLotNumber")} placeholder="Source lot (optional)" />
+        </div>
+        <div className="space-y-2">
+          <Label>To Lot</Label>
+          <Input {...form.register("toLotNumber")} placeholder="Destination lot (optional)" />
+        </div>
+        <div className="space-y-2">
+          <Label>Qty Consumed *</Label>
+          <Input type="number" step="0.0001" min="0.0001" {...form.register("qtyIn", { valueAsNumber: true })} />
+        </div>
+        <div className="space-y-2">
+          <Label>Qty Produced *</Label>
+          <Input type="number" step="0.0001" min="0.0001" {...form.register("qtyOut", { valueAsNumber: true })} />
+        </div>
+        <div className="space-y-2">
+          <Label>Unit Cost</Label>
+          <Input type="number" step="0.01" min="0" placeholder="0.00" {...form.register("unitCost", { valueAsNumber: true })} />
+        </div>
+        <div className="space-y-2">
+          <Label>Notes</Label>
+          <Input {...form.register("notes")} placeholder="Optional" />
+        </div>
+      </div>
+      <Button type="submit" disabled={repackMut.isPending}>
+        <PackageCheck className="h-4 w-4 mr-2" />{repackMut.isPending ? "Posting…" : "Post Repack"}
+      </Button>
+    </form>
+  );
+}
+
+function BuildTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: items } = useListItems({ limit: 500 });
+  const { data: warehouses } = useListWarehouses({ limit: 100 });
+  const buildMut = useCreateInventoryBuild();
+  const form = useForm<BuildFormData>({ defaultValues: { finishedQty: 1, finishedItemId: 0, finishedWarehouseId: 0, components: [{ itemId: 0, qty: 1, warehouseId: 0 }] } });
+  const { fields, append, remove } = useFieldArray({ control: form.control, name: "components" });
+
+  async function onSubmit(vals: BuildFormData) {
+    try {
+      await buildMut.mutateAsync({ data: {
+        finishedItemId: vals.finishedItemId,
+        finishedQty: vals.finishedQty,
+        finishedWarehouseId: vals.finishedWarehouseId,
+        finishedLotNumber: vals.finishedLotNumber || undefined,
+        notes: vals.notes || undefined,
+        components: vals.components.map((c) => ({ itemId: Number(c.itemId), qty: c.qty, warehouseId: Number(c.warehouseId), lotNumber: c.lotNumber || undefined })),
+      } });
+      toast({ title: "Build posted", description: `Produced ${vals.finishedQty} × finished item` });
+      qc.invalidateQueries({ queryKey: getListInventoryMovementsQueryKey() });
+      form.reset({ finishedQty: 1, finishedItemId: 0, finishedWarehouseId: 0, components: [{ itemId: 0, qty: 1, warehouseId: 0 }] });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+    }
+  }
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-w-3xl">
+      <p className="text-sm text-muted-foreground">Build a kit or assembly by consuming component items and producing a finished item. Records "build" movements.</p>
+
+      <div className="rounded-lg border p-4 space-y-3">
+        <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Finished Item</h4>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <Label>Item *</Label>
+            <Select value={form.watch("finishedItemId") ? String(form.watch("finishedItemId")) : ""} onValueChange={(v) => form.setValue("finishedItemId", Number(v))}>
+              <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
+              <SelectContent>{(items?.items ?? []).map((it) => <SelectItem key={it.id} value={String(it.id)}>{it.code} — {it.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label>Warehouse *</Label>
+            <Select value={form.watch("finishedWarehouseId") ? String(form.watch("finishedWarehouseId")) : ""} onValueChange={(v) => form.setValue("finishedWarehouseId", Number(v))}>
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent>{(warehouses?.warehouses ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label>Qty *</Label>
+            <Input type="number" step="0.0001" min="0.0001" {...form.register("finishedQty", { valueAsNumber: true })} />
+          </div>
+          <div className="space-y-1">
+            <Label>Lot Number</Label>
+            <Input {...form.register("finishedLotNumber")} placeholder="Optional" />
+          </div>
+          <div className="col-span-2 space-y-1">
+            <Label>Notes</Label>
+            <Input {...form.register("notes")} placeholder="Optional" />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Components</h4>
+          <Button type="button" size="sm" variant="outline" onClick={() => append({ itemId: 0, qty: 1, warehouseId: 0 })}>
+            <Plus className="h-3 w-3 mr-1" />Add Component
+          </Button>
+        </div>
+        {fields.map((field, i) => (
+          <div key={field.id} className="grid grid-cols-12 gap-2 items-end">
+            <div className="col-span-4">
+              {i === 0 && <Label className="text-xs">Item</Label>}
+              <Select value={form.watch(`components.${i}.itemId`) ? String(form.watch(`components.${i}.itemId`)) : ""} onValueChange={(v) => form.setValue(`components.${i}.itemId`, Number(v))}>
+                <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
+                <SelectContent>{(items?.items ?? []).map((it) => <SelectItem key={it.id} value={String(it.id)}>{it.code} — {it.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-3">
+              {i === 0 && <Label className="text-xs">Warehouse</Label>}
+              <Select value={form.watch(`components.${i}.warehouseId`) ? String(form.watch(`components.${i}.warehouseId`)) : ""} onValueChange={(v) => form.setValue(`components.${i}.warehouseId`, Number(v))}>
+                <SelectTrigger><SelectValue placeholder="Warehouse" /></SelectTrigger>
+                <SelectContent>{(warehouses?.warehouses ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2">
+              {i === 0 && <Label className="text-xs">Qty</Label>}
+              <Input type="number" step="0.0001" min="0.0001" {...form.register(`components.${i}.qty`, { valueAsNumber: true })} />
+            </div>
+            <div className="col-span-2">
+              {i === 0 && <Label className="text-xs">Lot</Label>}
+              <Input {...form.register(`components.${i}.lotNumber`)} placeholder="Optional" />
+            </div>
+            <div className="col-span-1">
+              {i === 0 && <Label className="text-xs invisible">Del</Label>}
+              <Button type="button" size="sm" variant="ghost" onClick={() => remove(i)} className="text-destructive w-full">✕</Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Button type="submit" disabled={buildMut.isPending}>
+        <PackageCheck className="h-4 w-4 mr-2" />{buildMut.isPending ? "Posting…" : "Post Build"}
+      </Button>
+    </form>
+  );
+}
+
+function RepackBuildTab() {
+  const [mode, setMode] = useState<"repack" | "build">("repack");
   return (
     <div className="space-y-4">
       <div className="flex gap-2 items-center">
@@ -1805,73 +1957,7 @@ function RepackBuildTab() {
           <button type="button" onClick={() => setMode("build")} className={`px-3 py-1.5 ${mode === "build" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>Build / Kit</button>
         </div>
       </div>
-      <p className="text-sm text-muted-foreground">
-        {mode === "repack" ? "Convert stock from one pack size/lot to another. Posts matching OUT and IN adjustments with a shared reference code." : "Build a kit or assembly by consuming components and producing the finished item. Posts paired OUT/IN adjustments with a shared reference code."}
-      </p>
-
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-w-2xl">
-        <div className="grid grid-cols-2 gap-6">
-          <div className="space-y-3 rounded-lg border p-4">
-            <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">FROM — Consume</h4>
-            <div>
-              <Label>{mode === "repack" ? "Source Item" : "Component Item"} *</Label>
-              <Select value={String(form.watch("itemId") || "")} onValueChange={(v) => form.setValue("itemId", Number(v))}>
-                <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
-                <SelectContent>{(items?.items ?? []).map((it) => <SelectItem key={it.id} value={String(it.id)}>{it.code} — {it.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Warehouse *</Label>
-              <Select value={String(form.watch("fromWarehouseId") || "")} onValueChange={(v) => form.setValue("fromWarehouseId", Number(v))}>
-                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{(warehouses?.warehouses ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Lot Number</Label>
-              <Input {...form.register("fromLot")} placeholder="Optional" />
-            </div>
-            <div>
-              <Label>Quantity to Consume *</Label>
-              <Input type="number" step="0.0001" {...form.register("fromQty", { valueAsNumber: true, min: 0.0001 })} />
-            </div>
-          </div>
-          <div className="space-y-3 rounded-lg border p-4">
-            <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">TO — Produce</h4>
-            <div>
-              <Label>{mode === "repack" ? "Destination Item" : "Finished Item"} *</Label>
-              <Select value={String(form.watch("toItemId") || "")} onValueChange={(v) => form.setValue("toItemId", Number(v))}>
-                <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
-                <SelectContent>{(items?.items ?? []).map((it) => <SelectItem key={it.id} value={String(it.id)}>{it.code} — {it.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Warehouse *</Label>
-              <Select value={String(form.watch("toWarehouseId") || "")} onValueChange={(v) => form.setValue("toWarehouseId", Number(v))}>
-                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{(warehouses?.warehouses ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>New Lot Number</Label>
-              <Input {...form.register("toLot")} placeholder="Optional" />
-            </div>
-            <div>
-              <Label>Quantity to Produce *</Label>
-              <Input type="number" step="0.0001" {...form.register("toQty", { valueAsNumber: true, min: 0.0001 })} />
-            </div>
-          </div>
-        </div>
-        <div>
-          <Label>Notes</Label>
-          <Textarea {...form.register("notes")} rows={2} placeholder="Reason or reference…" />
-        </div>
-        <div>
-          <Button type="submit" disabled={createAdjMut.isPending}>
-            <PackageCheck className="h-4 w-4 mr-2" />{createAdjMut.isPending ? "Posting…" : `Post ${mode === "repack" ? "Repack" : "Build"}`}
-          </Button>
-        </div>
-      </form>
+      {mode === "repack" ? <RepackTab /> : <BuildTab />}
     </div>
   );
 }
