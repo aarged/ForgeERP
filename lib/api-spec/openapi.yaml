@@ -14,6 +14,8 @@ tags:
     description: Authentication and user management
   - name: tenants
     description: Tenant management
+  - name: admin
+    description: Super-admin platform operations
 paths:
   /healthz:
     get:
@@ -134,6 +136,343 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/kpi:
+    get:
+      operationId: getAdminKpi
+      tags: [admin]
+      summary: Get platform KPI metrics
+      description: Returns platform-wide KPI metrics for the super-admin dashboard
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: KPI metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminKpi"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/tenants:
+    get:
+      operationId: listAdminTenants
+      tags: [admin]
+      summary: List all tenants
+      description: Returns all non-deleted tenants with member counts and Stripe info
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminTenant"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createAdminTenant
+      tags: [admin]
+      summary: Create a new tenant
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTenantBody"
+      responses:
+        "201":
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTenantCreated"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/tenants/{id}:
+    get:
+      operationId: getAdminTenant
+      tags: [admin]
+      summary: Get tenant details
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTenantDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateAdminTenant
+      tags: [admin]
+      summary: Update tenant
+      description: Update tenant status, plan, or other settings
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTenantBody"
+      responses:
+        "200":
+          description: Updated tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTenantCreated"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAdminTenant
+      tags: [admin]
+      summary: Soft-delete tenant
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/tenants/{id}/stripe-sync:
+    post:
+      operationId: syncTenantStripe
+      tags: [admin]
+      summary: Create or sync Stripe customer for tenant
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Stripe customer synced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StripeSyncResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Stripe not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/tenants/{id}/invoices:
+    get:
+      operationId: getTenantInvoices
+      tags: [admin]
+      summary: Get tenant Stripe invoices
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/audit-logs:
+    get:
+      operationId: getAdminAuditLogs
+      tags: [admin]
+      summary: Get audit logs
+      description: Returns up to 100 most recent audit log entries, optionally filtered by tenant
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     clerkAuth:
@@ -244,3 +583,288 @@ components:
         - email
         - role
         - joinedAt
+
+    AdminKpi:
+      type: object
+      properties:
+        totalTenants:
+          type: integer
+        activeTenants:
+          type: integer
+        trialTenants:
+          type: integer
+        suspendedTenants:
+          type: integer
+        stripeConnectedTenants:
+          type: integer
+        stripeConfigured:
+          type: boolean
+      required:
+        - totalTenants
+        - activeTenants
+        - trialTenants
+        - suspendedTenants
+        - stripeConnectedTenants
+        - stripeConfigured
+
+    AdminTenant:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended, trial, pending]
+        planTier:
+          type: string
+          enum: [starter, growth, enterprise]
+        currency:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        stripeCustomerId:
+          type: ["string", "null"]
+        stripeSubscriptionId:
+          type: ["string", "null"]
+        onboardingCompletedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        memberCount:
+          type: integer
+      required:
+        - id
+        - name
+        - slug
+        - status
+        - planTier
+        - createdAt
+        - memberCount
+
+    AdminTenantDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        tradingName:
+          type: ["string", "null"]
+        slug:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended, trial, pending]
+        planTier:
+          type: string
+          enum: [starter, growth, enterprise]
+        legalName:
+          type: ["string", "null"]
+        taxId:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        website:
+          type: ["string", "null"]
+        addressLine1:
+          type: ["string", "null"]
+        addressLine2:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        postalCode:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
+        currency:
+          type: ["string", "null"]
+        timezone:
+          type: ["string", "null"]
+        fiscalYearStart:
+          type: ["integer", "null"]
+        industryType:
+          type: ["string", "null"]
+        stripeCustomerId:
+          type: ["string", "null"]
+        stripeSubscriptionId:
+          type: ["string", "null"]
+        onboardingCompletedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        memberCount:
+          type: integer
+      required:
+        - id
+        - name
+        - slug
+        - status
+        - planTier
+        - createdAt
+        - updatedAt
+        - memberCount
+
+    AdminTenantCreated:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended, trial, pending]
+        planTier:
+          type: string
+          enum: [starter, growth, enterprise]
+        email:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - slug
+        - status
+        - planTier
+
+    CreateTenantBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        email:
+          type: string
+          format: email
+        planTier:
+          type: string
+          enum: [starter, growth, enterprise]
+        status:
+          type: string
+          enum: [active, suspended, trial, pending]
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        timezone:
+          type: string
+        slug:
+          type: string
+      required:
+        - name
+
+    UpdateTenantBody:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          type: string
+          enum: [active, suspended, trial, pending]
+        planTier:
+          type: string
+          enum: [starter, growth, enterprise]
+        email:
+          type: string
+          format: email
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        timezone:
+          type: string
+        industryType:
+          type: string
+
+    StripeSyncResult:
+      type: object
+      properties:
+        stripeCustomerId:
+          type: string
+      required:
+        - stripeCustomerId
+
+    InvoiceList:
+      type: object
+      properties:
+        stripeConfigured:
+          type: boolean
+        invoices:
+          type: array
+          items:
+            $ref: "#/components/schemas/Invoice"
+      required:
+        - stripeConfigured
+        - invoices
+
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: string
+        number:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        amountDue:
+          type: integer
+        amountPaid:
+          type: integer
+        currency:
+          type: string
+        created:
+          type: string
+        hostedInvoiceUrl:
+          type: ["string", "null"]
+      required:
+        - id
+        - amountDue
+        - amountPaid
+        - currency
+        - created
+
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: ["integer", "null"]
+        actorClerkId:
+          type: ["string", "null"]
+        actorEmail:
+          type: ["string", "null"]
+        action:
+          type: string
+        entityType:
+          type: ["string", "null"]
+        entityId:
+          type: ["string", "null"]
+        oldValues:
+          nullable: true
+        newValues:
+          nullable: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - action
+        - createdAt

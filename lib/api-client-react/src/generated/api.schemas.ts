@@ -81,3 +81,269 @@ export interface TenantMember {
   role: string;
   joinedAt: string;
 }
+
+export interface AdminKpi {
+  totalTenants: number;
+  activeTenants: number;
+  trialTenants: number;
+  suspendedTenants: number;
+  stripeConnectedTenants: number;
+  stripeConfigured: boolean;
+}
+
+export type AdminTenantStatus =
+  (typeof AdminTenantStatus)[keyof typeof AdminTenantStatus];
+
+export const AdminTenantStatus = {
+  active: "active",
+  suspended: "suspended",
+  trial: "trial",
+  pending: "pending",
+} as const;
+
+export type AdminTenantPlanTier =
+  (typeof AdminTenantPlanTier)[keyof typeof AdminTenantPlanTier];
+
+export const AdminTenantPlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+export interface AdminTenant {
+  id: number;
+  name: string;
+  slug: string;
+  status: AdminTenantStatus;
+  planTier: AdminTenantPlanTier;
+  /** @nullable */
+  currency?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  stripeCustomerId?: string | null;
+  /** @nullable */
+  stripeSubscriptionId?: string | null;
+  /** @nullable */
+  onboardingCompletedAt?: string | null;
+  createdAt: string;
+  memberCount: number;
+}
+
+export type AdminTenantDetailStatus =
+  (typeof AdminTenantDetailStatus)[keyof typeof AdminTenantDetailStatus];
+
+export const AdminTenantDetailStatus = {
+  active: "active",
+  suspended: "suspended",
+  trial: "trial",
+  pending: "pending",
+} as const;
+
+export type AdminTenantDetailPlanTier =
+  (typeof AdminTenantDetailPlanTier)[keyof typeof AdminTenantDetailPlanTier];
+
+export const AdminTenantDetailPlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+export interface AdminTenantDetail {
+  id: number;
+  name: string;
+  /** @nullable */
+  tradingName?: string | null;
+  slug: string;
+  status: AdminTenantDetailStatus;
+  planTier: AdminTenantDetailPlanTier;
+  /** @nullable */
+  legalName?: string | null;
+  /** @nullable */
+  taxId?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  website?: string | null;
+  /** @nullable */
+  addressLine1?: string | null;
+  /** @nullable */
+  addressLine2?: string | null;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  postalCode?: string | null;
+  /** @nullable */
+  country?: string | null;
+  /** @nullable */
+  currency?: string | null;
+  /** @nullable */
+  timezone?: string | null;
+  /** @nullable */
+  fiscalYearStart?: number | null;
+  /** @nullable */
+  industryType?: string | null;
+  /** @nullable */
+  stripeCustomerId?: string | null;
+  /** @nullable */
+  stripeSubscriptionId?: string | null;
+  /** @nullable */
+  onboardingCompletedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  memberCount: number;
+}
+
+export type AdminTenantCreatedStatus =
+  (typeof AdminTenantCreatedStatus)[keyof typeof AdminTenantCreatedStatus];
+
+export const AdminTenantCreatedStatus = {
+  active: "active",
+  suspended: "suspended",
+  trial: "trial",
+  pending: "pending",
+} as const;
+
+export type AdminTenantCreatedPlanTier =
+  (typeof AdminTenantCreatedPlanTier)[keyof typeof AdminTenantCreatedPlanTier];
+
+export const AdminTenantCreatedPlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+export interface AdminTenantCreated {
+  id: number;
+  name: string;
+  slug: string;
+  status: AdminTenantCreatedStatus;
+  planTier: AdminTenantCreatedPlanTier;
+  /** @nullable */
+  email?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type CreateTenantBodyPlanTier =
+  (typeof CreateTenantBodyPlanTier)[keyof typeof CreateTenantBodyPlanTier];
+
+export const CreateTenantBodyPlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+export type CreateTenantBodyStatus =
+  (typeof CreateTenantBodyStatus)[keyof typeof CreateTenantBodyStatus];
+
+export const CreateTenantBodyStatus = {
+  active: "active",
+  suspended: "suspended",
+  trial: "trial",
+  pending: "pending",
+} as const;
+
+export interface CreateTenantBody {
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  name: string;
+  email?: string;
+  planTier?: CreateTenantBodyPlanTier;
+  status?: CreateTenantBodyStatus;
+  /**
+   * @minLength 3
+   * @maxLength 3
+   */
+  currency?: string;
+  timezone?: string;
+  slug?: string;
+}
+
+export type UpdateTenantBodyStatus =
+  (typeof UpdateTenantBodyStatus)[keyof typeof UpdateTenantBodyStatus];
+
+export const UpdateTenantBodyStatus = {
+  active: "active",
+  suspended: "suspended",
+  trial: "trial",
+  pending: "pending",
+} as const;
+
+export type UpdateTenantBodyPlanTier =
+  (typeof UpdateTenantBodyPlanTier)[keyof typeof UpdateTenantBodyPlanTier];
+
+export const UpdateTenantBodyPlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+export interface UpdateTenantBody {
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  name?: string;
+  status?: UpdateTenantBodyStatus;
+  planTier?: UpdateTenantBodyPlanTier;
+  email?: string;
+  /**
+   * @minLength 3
+   * @maxLength 3
+   */
+  currency?: string;
+  timezone?: string;
+  industryType?: string;
+}
+
+export interface StripeSyncResult {
+  stripeCustomerId: string;
+}
+
+export interface Invoice {
+  id: string;
+  /** @nullable */
+  number?: string | null;
+  /** @nullable */
+  status?: string | null;
+  amountDue: number;
+  amountPaid: number;
+  currency: string;
+  created: string;
+  /** @nullable */
+  hostedInvoiceUrl?: string | null;
+}
+
+export interface InvoiceList {
+  stripeConfigured: boolean;
+  invoices: Invoice[];
+}
+
+export interface AuditLog {
+  id: number;
+  /** @nullable */
+  tenantId?: number | null;
+  /** @nullable */
+  actorClerkId?: string | null;
+  /** @nullable */
+  actorEmail?: string | null;
+  action: string;
+  /** @nullable */
+  entityType?: string | null;
+  /** @nullable */
+  entityId?: string | null;
+  oldValues?: unknown | null;
+  newValues?: unknown | null;
+  createdAt: string;
+}
+
+export type GetAdminAuditLogsParams = {
+  tenantId?: number;
+};

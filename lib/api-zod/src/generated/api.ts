@@ -80,3 +80,198 @@ export const GetTenantMembersResponseItem = zod.object({
   joinedAt: zod.string(),
 });
 export const GetTenantMembersResponse = zod.array(GetTenantMembersResponseItem);
+
+/**
+ * Returns platform-wide KPI metrics for the super-admin dashboard
+ * @summary Get platform KPI metrics
+ */
+export const GetAdminKpiResponse = zod.object({
+  totalTenants: zod.number(),
+  activeTenants: zod.number(),
+  trialTenants: zod.number(),
+  suspendedTenants: zod.number(),
+  stripeConnectedTenants: zod.number(),
+  stripeConfigured: zod.boolean(),
+});
+
+/**
+ * Returns all non-deleted tenants with member counts and Stripe info
+ * @summary List all tenants
+ */
+export const ListAdminTenantsResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  slug: zod.string(),
+  status: zod.enum(["active", "suspended", "trial", "pending"]),
+  planTier: zod.enum(["starter", "growth", "enterprise"]),
+  currency: zod.string().nullish(),
+  email: zod.string().nullish(),
+  stripeCustomerId: zod.string().nullish(),
+  stripeSubscriptionId: zod.string().nullish(),
+  onboardingCompletedAt: zod.string().nullish(),
+  createdAt: zod.string(),
+  memberCount: zod.number(),
+});
+export const ListAdminTenantsResponse = zod.array(ListAdminTenantsResponseItem);
+
+/**
+ * @summary Create a new tenant
+ */
+export const createAdminTenantBodyNameMax = 200;
+
+export const createAdminTenantBodyCurrencyMin = 3;
+export const createAdminTenantBodyCurrencyMax = 3;
+
+export const CreateAdminTenantBody = zod.object({
+  name: zod.string().min(1).max(createAdminTenantBodyNameMax),
+  email: zod.string().email().optional(),
+  planTier: zod.enum(["starter", "growth", "enterprise"]).optional(),
+  status: zod.enum(["active", "suspended", "trial", "pending"]).optional(),
+  currency: zod
+    .string()
+    .min(createAdminTenantBodyCurrencyMin)
+    .max(createAdminTenantBodyCurrencyMax)
+    .optional(),
+  timezone: zod.string().optional(),
+  slug: zod.string().optional(),
+});
+
+/**
+ * @summary Get tenant details
+ */
+export const GetAdminTenantParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetAdminTenantResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  tradingName: zod.string().nullish(),
+  slug: zod.string(),
+  status: zod.enum(["active", "suspended", "trial", "pending"]),
+  planTier: zod.enum(["starter", "growth", "enterprise"]),
+  legalName: zod.string().nullish(),
+  taxId: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  email: zod.string().nullish(),
+  website: zod.string().nullish(),
+  addressLine1: zod.string().nullish(),
+  addressLine2: zod.string().nullish(),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  postalCode: zod.string().nullish(),
+  country: zod.string().nullish(),
+  currency: zod.string().nullish(),
+  timezone: zod.string().nullish(),
+  fiscalYearStart: zod.number().nullish(),
+  industryType: zod.string().nullish(),
+  stripeCustomerId: zod.string().nullish(),
+  stripeSubscriptionId: zod.string().nullish(),
+  onboardingCompletedAt: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+  memberCount: zod.number(),
+});
+
+/**
+ * Update tenant status, plan, or other settings
+ * @summary Update tenant
+ */
+export const UpdateAdminTenantParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const updateAdminTenantBodyNameMax = 200;
+
+export const updateAdminTenantBodyCurrencyMin = 3;
+export const updateAdminTenantBodyCurrencyMax = 3;
+
+export const UpdateAdminTenantBody = zod.object({
+  name: zod.string().min(1).max(updateAdminTenantBodyNameMax).optional(),
+  status: zod.enum(["active", "suspended", "trial", "pending"]).optional(),
+  planTier: zod.enum(["starter", "growth", "enterprise"]).optional(),
+  email: zod.string().email().optional(),
+  currency: zod
+    .string()
+    .min(updateAdminTenantBodyCurrencyMin)
+    .max(updateAdminTenantBodyCurrencyMax)
+    .optional(),
+  timezone: zod.string().optional(),
+  industryType: zod.string().optional(),
+});
+
+export const UpdateAdminTenantResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  slug: zod.string(),
+  status: zod.enum(["active", "suspended", "trial", "pending"]),
+  planTier: zod.enum(["starter", "growth", "enterprise"]),
+  email: zod.string().nullish(),
+  createdAt: zod.string().optional(),
+  updatedAt: zod.string().optional(),
+});
+
+/**
+ * @summary Soft-delete tenant
+ */
+export const DeleteAdminTenantParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Create or sync Stripe customer for tenant
+ */
+export const SyncTenantStripeParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SyncTenantStripeResponse = zod.object({
+  stripeCustomerId: zod.string(),
+});
+
+/**
+ * @summary Get tenant Stripe invoices
+ */
+export const GetTenantInvoicesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetTenantInvoicesResponse = zod.object({
+  stripeConfigured: zod.boolean(),
+  invoices: zod.array(
+    zod.object({
+      id: zod.string(),
+      number: zod.string().nullish(),
+      status: zod.string().nullish(),
+      amountDue: zod.number(),
+      amountPaid: zod.number(),
+      currency: zod.string(),
+      created: zod.string(),
+      hostedInvoiceUrl: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * Returns up to 100 most recent audit log entries, optionally filtered by tenant
+ * @summary Get audit logs
+ */
+export const GetAdminAuditLogsQueryParams = zod.object({
+  tenantId: zod.coerce.number().optional(),
+});
+
+export const GetAdminAuditLogsResponseItem = zod.object({
+  id: zod.number(),
+  tenantId: zod.number().nullish(),
+  actorClerkId: zod.string().nullish(),
+  actorEmail: zod.string().nullish(),
+  action: zod.string(),
+  entityType: zod.string().nullish(),
+  entityId: zod.string().nullish(),
+  oldValues: zod.unknown().nullish(),
+  newValues: zod.unknown().nullish(),
+  createdAt: zod.string(),
+});
+export const GetAdminAuditLogsResponse = zod.array(
+  GetAdminAuditLogsResponseItem,
+);

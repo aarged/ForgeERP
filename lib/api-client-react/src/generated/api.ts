@@ -17,11 +17,21 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AdminKpi,
+  AdminTenant,
+  AdminTenantCreated,
+  AdminTenantDetail,
+  AuditLog,
+  CreateTenantBody,
   CurrentUser,
   ErrorResponse,
+  GetAdminAuditLogsParams,
   HealthStatus,
+  InvoiceList,
+  StripeSyncResult,
   Tenant,
   TenantMember,
+  UpdateTenantBody,
   UpdateUserBody,
 } from "./api.schemas";
 
@@ -416,6 +426,770 @@ export function useGetTenantMembers<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetTenantMembersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns platform-wide KPI metrics for the super-admin dashboard
+ * @summary Get platform KPI metrics
+ */
+export const getGetAdminKpiUrl = () => {
+  return `/api/admin/kpi`;
+};
+
+export const getAdminKpi = async (options?: RequestInit): Promise<AdminKpi> => {
+  return customFetch<AdminKpi>(getGetAdminKpiUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminKpiQueryKey = () => {
+  return [`/api/admin/kpi`] as const;
+};
+
+export const getGetAdminKpiQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminKpi>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminKpi>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminKpiQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminKpi>>> = ({
+    signal,
+  }) => getAdminKpi({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminKpi>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdminKpiQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminKpi>>
+>;
+export type GetAdminKpiQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get platform KPI metrics
+ */
+
+export function useGetAdminKpi<
+  TData = Awaited<ReturnType<typeof getAdminKpi>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminKpi>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminKpiQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns all non-deleted tenants with member counts and Stripe info
+ * @summary List all tenants
+ */
+export const getListAdminTenantsUrl = () => {
+  return `/api/admin/tenants`;
+};
+
+export const listAdminTenants = async (
+  options?: RequestInit,
+): Promise<AdminTenant[]> => {
+  return customFetch<AdminTenant[]>(getListAdminTenantsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminTenantsQueryKey = () => {
+  return [`/api/admin/tenants`] as const;
+};
+
+export const getListAdminTenantsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminTenants>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminTenants>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAdminTenantsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAdminTenants>>
+  > = ({ signal }) => listAdminTenants({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminTenants>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAdminTenantsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAdminTenants>>
+>;
+export type ListAdminTenantsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary List all tenants
+ */
+
+export function useListAdminTenants<
+  TData = Awaited<ReturnType<typeof listAdminTenants>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminTenants>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAdminTenantsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a new tenant
+ */
+export const getCreateAdminTenantUrl = () => {
+  return `/api/admin/tenants`;
+};
+
+export const createAdminTenant = async (
+  createTenantBody: CreateTenantBody,
+  options?: RequestInit,
+): Promise<AdminTenantCreated> => {
+  return customFetch<AdminTenantCreated>(getCreateAdminTenantUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createTenantBody),
+  });
+};
+
+export const getCreateAdminTenantMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAdminTenant>>,
+    TError,
+    { data: BodyType<CreateTenantBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createAdminTenant>>,
+  TError,
+  { data: BodyType<CreateTenantBody> },
+  TContext
+> => {
+  const mutationKey = ["createAdminTenant"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createAdminTenant>>,
+    { data: BodyType<CreateTenantBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createAdminTenant(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateAdminTenantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createAdminTenant>>
+>;
+export type CreateAdminTenantMutationBody = BodyType<CreateTenantBody>;
+export type CreateAdminTenantMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a new tenant
+ */
+export const useCreateAdminTenant = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAdminTenant>>,
+    TError,
+    { data: BodyType<CreateTenantBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createAdminTenant>>,
+  TError,
+  { data: BodyType<CreateTenantBody> },
+  TContext
+> => {
+  return useMutation(getCreateAdminTenantMutationOptions(options));
+};
+
+/**
+ * @summary Get tenant details
+ */
+export const getGetAdminTenantUrl = (id: number) => {
+  return `/api/admin/tenants/${id}`;
+};
+
+export const getAdminTenant = async (
+  id: number,
+  options?: RequestInit,
+): Promise<AdminTenantDetail> => {
+  return customFetch<AdminTenantDetail>(getGetAdminTenantUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminTenantQueryKey = (id: number) => {
+  return [`/api/admin/tenants/${id}`] as const;
+};
+
+export const getGetAdminTenantQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminTenant>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAdminTenant>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminTenantQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminTenant>>> = ({
+    signal,
+  }) => getAdminTenant(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminTenant>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdminTenantQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminTenant>>
+>;
+export type GetAdminTenantQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get tenant details
+ */
+
+export function useGetAdminTenant<
+  TData = Awaited<ReturnType<typeof getAdminTenant>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAdminTenant>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminTenantQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Update tenant status, plan, or other settings
+ * @summary Update tenant
+ */
+export const getUpdateAdminTenantUrl = (id: number) => {
+  return `/api/admin/tenants/${id}`;
+};
+
+export const updateAdminTenant = async (
+  id: number,
+  updateTenantBody: UpdateTenantBody,
+  options?: RequestInit,
+): Promise<AdminTenantCreated> => {
+  return customFetch<AdminTenantCreated>(getUpdateAdminTenantUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateTenantBody),
+  });
+};
+
+export const getUpdateAdminTenantMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAdminTenant>>,
+    TError,
+    { id: number; data: BodyType<UpdateTenantBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAdminTenant>>,
+  TError,
+  { id: number; data: BodyType<UpdateTenantBody> },
+  TContext
+> => {
+  const mutationKey = ["updateAdminTenant"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAdminTenant>>,
+    { id: number; data: BodyType<UpdateTenantBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateAdminTenant(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAdminTenantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAdminTenant>>
+>;
+export type UpdateAdminTenantMutationBody = BodyType<UpdateTenantBody>;
+export type UpdateAdminTenantMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update tenant
+ */
+export const useUpdateAdminTenant = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAdminTenant>>,
+    TError,
+    { id: number; data: BodyType<UpdateTenantBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAdminTenant>>,
+  TError,
+  { id: number; data: BodyType<UpdateTenantBody> },
+  TContext
+> => {
+  return useMutation(getUpdateAdminTenantMutationOptions(options));
+};
+
+/**
+ * @summary Soft-delete tenant
+ */
+export const getDeleteAdminTenantUrl = (id: number) => {
+  return `/api/admin/tenants/${id}`;
+};
+
+export const deleteAdminTenant = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteAdminTenantUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteAdminTenantMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAdminTenant>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAdminTenant>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteAdminTenant"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAdminTenant>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteAdminTenant(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAdminTenantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAdminTenant>>
+>;
+
+export type DeleteAdminTenantMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Soft-delete tenant
+ */
+export const useDeleteAdminTenant = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAdminTenant>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteAdminTenant>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteAdminTenantMutationOptions(options));
+};
+
+/**
+ * @summary Create or sync Stripe customer for tenant
+ */
+export const getSyncTenantStripeUrl = (id: number) => {
+  return `/api/admin/tenants/${id}/stripe-sync`;
+};
+
+export const syncTenantStripe = async (
+  id: number,
+  options?: RequestInit,
+): Promise<StripeSyncResult> => {
+  return customFetch<StripeSyncResult>(getSyncTenantStripeUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getSyncTenantStripeMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncTenantStripe>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof syncTenantStripe>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["syncTenantStripe"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof syncTenantStripe>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return syncTenantStripe(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SyncTenantStripeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof syncTenantStripe>>
+>;
+
+export type SyncTenantStripeMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create or sync Stripe customer for tenant
+ */
+export const useSyncTenantStripe = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncTenantStripe>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof syncTenantStripe>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getSyncTenantStripeMutationOptions(options));
+};
+
+/**
+ * @summary Get tenant Stripe invoices
+ */
+export const getGetTenantInvoicesUrl = (id: number) => {
+  return `/api/admin/tenants/${id}/invoices`;
+};
+
+export const getTenantInvoices = async (
+  id: number,
+  options?: RequestInit,
+): Promise<InvoiceList> => {
+  return customFetch<InvoiceList>(getGetTenantInvoicesUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTenantInvoicesQueryKey = (id: number) => {
+  return [`/api/admin/tenants/${id}/invoices`] as const;
+};
+
+export const getGetTenantInvoicesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTenantInvoices>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTenantInvoices>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTenantInvoicesQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTenantInvoices>>
+  > = ({ signal }) => getTenantInvoices(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTenantInvoices>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTenantInvoicesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTenantInvoices>>
+>;
+export type GetTenantInvoicesQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get tenant Stripe invoices
+ */
+
+export function useGetTenantInvoices<
+  TData = Awaited<ReturnType<typeof getTenantInvoices>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTenantInvoices>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTenantInvoicesQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns up to 100 most recent audit log entries, optionally filtered by tenant
+ * @summary Get audit logs
+ */
+export const getGetAdminAuditLogsUrl = (params?: GetAdminAuditLogsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/audit-logs?${stringifiedParams}`
+    : `/api/admin/audit-logs`;
+};
+
+export const getAdminAuditLogs = async (
+  params?: GetAdminAuditLogsParams,
+  options?: RequestInit,
+): Promise<AuditLog[]> => {
+  return customFetch<AuditLog[]>(getGetAdminAuditLogsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminAuditLogsQueryKey = (
+  params?: GetAdminAuditLogsParams,
+) => {
+  return [`/api/admin/audit-logs`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAdminAuditLogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminAuditLogs>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminAuditLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAdminAuditLogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAdminAuditLogsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAdminAuditLogs>>
+  > = ({ signal }) => getAdminAuditLogs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminAuditLogs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdminAuditLogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminAuditLogs>>
+>;
+export type GetAdminAuditLogsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get audit logs
+ */
+
+export function useGetAdminAuditLogs<
+  TData = Awaited<ReturnType<typeof getAdminAuditLogs>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminAuditLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAdminAuditLogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminAuditLogsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

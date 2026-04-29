@@ -62,6 +62,7 @@ export const tenantsTable = pgTable("tenants", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export const insertTenantSchema = createInsertSchema(tenantsTable).omit({
