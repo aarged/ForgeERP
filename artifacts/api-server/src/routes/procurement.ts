@@ -368,34 +368,41 @@ async function selectWorkflow(
         eq(approvalWorkflowsTable.isActive, true),
       )));
 
-  for (const w of workflows) {
-    const rules = (w.triggerRules ?? {}) as {
-      valueAbove?: number;
-      supplierIds?: number[];
-      warehouseIds?: number[];
-      itemCategories?: string[];
-    };
+  type WfRules = { valueAbove?: number; supplierIds?: number[]; warehouseIds?: number[]; itemCategories?: string[] };
 
-    // Value threshold filter
-    if (rules.valueAbove !== undefined && (context.totalValue === undefined || context.totalValue === null || Number(context.totalValue) < rules.valueAbove)) continue;
-    // Supplier filter
-    if (rules.supplierIds && rules.supplierIds.length > 0 && (!context.supplierId || !rules.supplierIds.includes(context.supplierId))) continue;
-    // Warehouse filter
-    if (rules.warehouseIds && rules.warehouseIds.length > 0 && (!context.warehouseId || !rules.warehouseIds.includes(context.warehouseId))) continue;
-    // Item category filter — any line's category must be in the list
+  // Filter to workflows whose rules are satisfied by the current context
+  const matching = workflows.filter((w) => {
+    const rules = (w.triggerRules ?? {}) as WfRules;
+    if (rules.valueAbove !== undefined && (context.totalValue === undefined || context.totalValue === null || Number(context.totalValue) < rules.valueAbove)) return false;
+    if (rules.supplierIds && rules.supplierIds.length > 0 && (!context.supplierId || !rules.supplierIds.includes(context.supplierId))) return false;
+    if (rules.warehouseIds && rules.warehouseIds.length > 0 && (!context.warehouseId || !rules.warehouseIds.includes(context.warehouseId))) return false;
     if (rules.itemCategories && rules.itemCategories.length > 0) {
       const hasMatchingCategory = (context.lineCategories ?? []).some((cat) => rules.itemCategories!.includes(cat));
-      if (!hasMatchingCategory) continue;
+      if (!hasMatchingCategory) return false;
     }
-
-    return w;
-  }
-  // No rule-matching workflow found — fall back to any unconstrained active workflow
-  const unconstrained = workflows.find((w) => {
-    const rules = (w.triggerRules ?? {}) as { valueAbove?: number; supplierIds?: number[]; warehouseIds?: number[]; itemCategories?: string[] };
-    return !rules.valueAbove && (!rules.supplierIds?.length) && (!rules.warehouseIds?.length) && (!rules.itemCategories?.length);
+    return true;
   });
-  return unconstrained ?? null;
+
+  if (matching.length === 0) return null;
+
+  // Deterministic selection: prefer the most-specific workflow (highest constraint count).
+  // If two workflows have equal specificity, prefer the one with the higher ID (created later).
+  const specificity = (w: typeof approvalWorkflowsTable.$inferSelect): number => {
+    const rules = (w.triggerRules ?? {}) as WfRules;
+    let score = 0;
+    if (rules.valueAbove !== undefined) score++;
+    if (rules.supplierIds && rules.supplierIds.length > 0) score++;
+    if (rules.warehouseIds && rules.warehouseIds.length > 0) score++;
+    if (rules.itemCategories && rules.itemCategories.length > 0) score++;
+    return score;
+  };
+
+  matching.sort((a, b) => {
+    const diff = specificity(b) - specificity(a);
+    return diff !== 0 ? diff : b.id - a.id;
+  });
+
+  return matching[0];
 }
 
 /** Resolve a GL account for a tenant by ID (with fallback code/name when not configured). */

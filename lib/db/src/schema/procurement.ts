@@ -272,7 +272,7 @@ export const poReturnLinesTable = pgTable("po_return_lines", {
   itemName: text("item_name"),
   quantity: numeric("quantity", { precision: 18, scale: 4 }).notNull(),
   unitCost: numeric("unit_cost", { precision: 18, scale: 4 }),
-  locationId: integer("location_id").references(() => warehousesTable.id),
+  locationId: integer("location_id").references(() => warehouseLocationsTable.id),
   lotNumber: text("lot_number"),
   serialNumber: text("serial_number"),
   batchNumber: text("batch_number"),
