@@ -442,15 +442,23 @@ async function executeApprovalDecision(opts: {
     if (step) {
       const approverRoles = (step.approverRoles as string[]) ?? [];
       const approverUserIds = (step.approverUserIds as string[]) ?? [];
+      const hasRoleConstraint = approverRoles.length > 0;
+      const hasUserConstraint = approverUserIds.length > 0;
 
-      // Eligibility: role match OR user match. Empty lists = any approver-role user.
-      const roleOk = approverRoles.length === 0 || approverRoles.includes(actorRole);
-      const userOk = approverUserIds.length === 0 || approverUserIds.includes(actorClerkId);
-      if (!roleOk && !userOk) {
-        throw Object.assign(
-          new Error("You are not an eligible approver for this step"),
-          { statusCode: 403 },
-        );
+      // Eligibility rules:
+      // • No constraints → any approver-role user is eligible (open step)
+      // • Role constraint only → actor's role must be in the list
+      // • User constraint only → actor's clerk ID must be in the list
+      // • Both constraints → either role OR user match is sufficient
+      if (hasRoleConstraint || hasUserConstraint) {
+        const roleOk = hasRoleConstraint && approverRoles.includes(actorRole);
+        const userOk = hasUserConstraint && approverUserIds.includes(actorClerkId);
+        if (!roleOk && !userOk) {
+          throw Object.assign(
+            new Error("You are not an eligible approver for this step"),
+            { statusCode: 403 },
+          );
+        }
       }
 
       // Authority / value limit — only enforced for "approved" decisions
