@@ -2280,13 +2280,24 @@ router.post("/procurement/receipts/:id/confirm", ...tenantWriteMiddleware, async
   });
 
   // Auto-release open sales backorders for items that just arrived via this PO receipt
+  // Uses FIFO quantity-aware allocation: receipt qty is consumed across backorders in order
   try {
     const receiptLines = await withTenantDb(tenantId, (db) =>
       db.select({ itemId: receiptLinesTable.itemId, receivedQty: receiptLinesTable.receivedQty })
         .from(receiptLinesTable)
         .where(and(eq(receiptLinesTable.receiptId, id), eq(receiptLinesTable.tenantId, tenantId))));
-    const arrivedItemIds = [...new Set(receiptLines.filter((l) => l.itemId && Number(l.receivedQty) > 0).map((l) => l.itemId!))];
-    if (arrivedItemIds.length > 0) {
+
+    // Aggregate received qty by itemId
+    const arrivedQtyByItem = new Map<number, number>();
+    for (const line of receiptLines) {
+      if (!line.itemId) continue;
+      const qty = Number(line.receivedQty ?? 0);
+      if (qty > 0) arrivedQtyByItem.set(line.itemId, (arrivedQtyByItem.get(line.itemId) ?? 0) + qty);
+    }
+
+    if (arrivedQtyByItem.size > 0) {
+      const arrivedItemIds = [...arrivedQtyByItem.keys()];
+      // Load open backorders sorted FIFO (oldest first) so oldest demand is fulfilled first
       const openBackorders = await withTenantDb(tenantId, (db) =>
         db.select().from(backordersTable)
           .where(and(
@@ -2294,17 +2305,41 @@ router.post("/procurement/receipts/:id/confirm", ...tenantWriteMiddleware, async
             eq(backordersTable.status, "open"),
             isNull(backordersTable.deletedAt),
             inArray(backordersTable.itemId, arrivedItemIds),
-          )));
-      for (const bo of openBackorders) {
-        const backorderQty = Number(bo.backorderQty);
-        if (backorderQty <= 0) continue;
-        const newReleasedQty = Number(bo.releasedQty) + backorderQty;
-        const newStatus = "released";
-        await withTenantDb(tenantId, (db) =>
-          db.update(backordersTable)
-            .set({ status: newStatus, releasedQty: newReleasedQty.toFixed(4), backorderQty: "0", releasedAt: new Date(), releasedByClerkId: clerkUserId, notes: (bo.notes ? bo.notes + "; " : "") + `Auto-released on PO receipt #${id}` })
-            .where(and(eq(backordersTable.id, bo.id), eq(backordersTable.tenantId, tenantId))));
-      }
+          ))
+          .orderBy(backordersTable.createdAt));
+
+      // Track remaining receipt qty available per item as we consume across backorders
+      const remainingByItem = new Map<number, number>(arrivedQtyByItem);
+
+      await withTenantDb(tenantId, async (db) => {
+        for (const bo of openBackorders) {
+          if (!bo.itemId) continue;
+          const remainingReceipt = remainingByItem.get(bo.itemId) ?? 0;
+          if (remainingReceipt <= 0) continue;
+
+          const backorderQty = Number(bo.backorderQty);
+          if (backorderQty <= 0) continue;
+
+          const canRelease = Math.min(remainingReceipt, backorderQty);
+          const newReleasedQty = Number(bo.releasedQty) + canRelease;
+          const newBackorderQty = backorderQty - canRelease;
+          const newStatus = newBackorderQty <= 0 ? "released" : "open";
+
+          await db.update(backordersTable)
+            .set({
+              status: newStatus,
+              releasedQty: newReleasedQty.toFixed(4),
+              backorderQty: newBackorderQty.toFixed(4),
+              releasedAt: newStatus === "released" ? new Date() : bo.releasedAt,
+              releasedByClerkId: newStatus === "released" ? clerkUserId : bo.releasedByClerkId,
+              notes: (bo.notes ? bo.notes + "; " : "") + `Auto-released ${canRelease.toFixed(4)} on PO receipt #${id}`,
+            })
+            .where(and(eq(backordersTable.id, bo.id), eq(backordersTable.tenantId, tenantId)));
+
+          // Reduce available receipt qty for this item
+          remainingByItem.set(bo.itemId, remainingReceipt - canRelease);
+        }
+      });
     }
   } catch { /* non-blocking — backorder release failures must not roll back the confirmed receipt */ }
 
