@@ -19,6 +19,7 @@ import { withTenantDb } from "@workspace/db/rls";
 import { requireAuth } from "../middlewares/requireAuth";
 import {
   tenantContext,
+  requireRole,
   type TenantRequest,
 } from "../middlewares/tenantContext";
 import type { IRouter } from "express";
@@ -41,7 +42,7 @@ const daysAgo = (n: number) => {
 router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, userRole: role } = req as TenantRequest;
 
-  if (role === "purchaser" || role === "admin" || role === "manager") {
+  if (role === "purchaser") {
     const [openPos, awaitingApproval, toReceive, spendMtd] = await Promise.all([
       withTenantDb(tenantId, (db) =>
         db.select({ count: sql<number>`count(*)` }).from(purchaseOrdersTable)
@@ -224,6 +225,12 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
     return;
   }
 
+  // Only tenant_admin and super_admin get the full overview; all other roles get a 403
+  if (role !== "tenant_admin" && role !== "super_admin") {
+    res.status(403).json({ error: "No dashboard view configured for this role" });
+    return;
+  }
+
   // Admin / default — all-module overview
   const [openPos, salesMtd, lowStockRows, pendingApprovals, invoicesDue, glPostingsWeek, itemCount, activeOrders] = await Promise.all([
     withTenantDb(tenantId, (db) =>
@@ -283,26 +290,45 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
 
 // ── Widget Data Endpoints ──────────────────────────────────────────────────────
 
+const WIDGET_ROLES: Record<string, string[]> = {
+  "recent-pos":        ["purchaser", "approver", "tenant_admin", "super_admin"],
+  "recent-orders":     ["accountant", "tenant_admin", "super_admin"],
+  "stock-alerts":      ["warehouse", "accountant", "tenant_admin", "super_admin"],
+  "pending-approvals": ["approver", "tenant_admin", "super_admin"],
+  "top-items":         ["warehouse", "accountant", "tenant_admin", "super_admin"],
+  "stock-value":       ["warehouse", "accountant", "tenant_admin", "super_admin"],
+  "gl-activity":       ["accountant", "tenant_admin", "super_admin"],
+  "sales-by-period":   ["accountant", "tenant_admin", "super_admin"],
+};
+
 router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId } = req as TenantRequest;
-  const { type } = req.params;
+  const { tenantId, userRole } = req as TenantRequest;
+  const widgetType = req.params["type"] as string;
   const { limit = "10" } = req.query as Record<string, string>;
   const lim = Math.min(50, Math.max(1, Number(limit)));
 
-  switch (type) {
+  const allowedRoles = WIDGET_ROLES[widgetType];
+  if (!allowedRoles) {
+    res.status(400).json({ error: `Unknown widget type: ${widgetType}` }); return;
+  }
+  if (!allowedRoles.includes(userRole)) {
+    res.status(403).json({ error: `Role '${userRole}' is not permitted to access widget '${widgetType}'` }); return;
+  }
+
+  switch (widgetType) {
     case "recent-pos": {
       const rows = await withTenantDb(tenantId, (db) =>
         db.select({ id: purchaseOrdersTable.id, code: purchaseOrdersTable.code, supplierName: purchaseOrdersTable.supplierName, status: purchaseOrdersTable.status, total: purchaseOrdersTable.total, createdAt: purchaseOrdersTable.createdAt })
           .from(purchaseOrdersTable).where(and(eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt)))
           .orderBy(desc(purchaseOrdersTable.createdAt)).limit(lim));
-      res.json({ type, data: rows }); return;
+      res.json({ type: widgetType, data: rows }); return;
     }
     case "recent-orders": {
       const rows = await withTenantDb(tenantId, (db) =>
         db.select({ id: salesOrdersTable.id, code: salesOrdersTable.code, customerName: salesOrdersTable.customerName, status: salesOrdersTable.status, total: salesOrdersTable.total, createdAt: salesOrdersTable.createdAt })
           .from(salesOrdersTable).where(and(eq(salesOrdersTable.tenantId, tenantId), isNull(salesOrdersTable.deletedAt)))
           .orderBy(desc(salesOrdersTable.createdAt)).limit(lim));
-      res.json({ type, data: rows }); return;
+      res.json({ type: widgetType, data: rows }); return;
     }
     case "stock-alerts": {
       const result = await withTenantDb(tenantId, (db) =>
@@ -319,7 +345,7 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
           LIMIT ${lim}
         `)
       );
-      res.json({ type, data: result.rows }); return;
+      res.json({ type: widgetType, data: result.rows }); return;
     }
     case "pending-approvals": {
       const [pos, reqs] = await Promise.all([
@@ -336,7 +362,7 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
         ...pos.map(p => ({ type: "purchase_order", code: p.code, requestedBy: p.supplierName ?? "—", amount: Number(p.total ?? 0), createdAt: p.createdAt })),
         ...reqs.map(r => ({ type: "requisition", code: r.code, requestedBy: r.requestedByEmail ?? "—", amount: Number(r.totalEstimated ?? 0), createdAt: r.createdAt })),
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      res.json({ type, data: combined }); return;
+      res.json({ type: widgetType, data: combined }); return;
     }
     case "top-items": {
       const result = await withTenantDb(tenantId, (db) =>
@@ -349,7 +375,7 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
           ORDER BY "totalQty" DESC LIMIT ${lim}
         `)
       );
-      res.json({ type, data: result.rows }); return;
+      res.json({ type: widgetType, data: result.rows }); return;
     }
     case "stock-value": {
       const result = await withTenantDb(tenantId, (db) =>
@@ -363,14 +389,14 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
           GROUP BY s.warehouse_id, w.name ORDER BY "totalValue" DESC
         `)
       );
-      res.json({ type, data: result.rows }); return;
+      res.json({ type: widgetType, data: result.rows }); return;
     }
     case "gl-activity": {
       const rows = await withTenantDb(tenantId, (db) =>
         db.select({ id: glPostingsTable.id, code: glPostingsTable.code, entityType: glPostingsTable.entityType, totalDebit: glPostingsTable.totalDebit, status: glPostingsTable.status, postedAt: glPostingsTable.postedAt, notes: glPostingsTable.notes, createdAt: glPostingsTable.createdAt })
           .from(glPostingsTable).where(and(eq(glPostingsTable.tenantId, tenantId), eq(glPostingsTable.status, "posted")))
           .orderBy(desc(glPostingsTable.createdAt)).limit(lim));
-      res.json({ type, data: rows }); return;
+      res.json({ type: widgetType, data: rows }); return;
     }
     case "sales-by-period": {
       const result = await withTenantDb(tenantId, (db) =>
@@ -385,10 +411,10 @@ router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Reque
           ORDER BY "period" ASC
         `)
       );
-      res.json({ type, data: result.rows }); return;
+      res.json({ type: widgetType, data: result.rows }); return;
     }
     default:
-      res.status(400).json({ error: `Unknown widget type: ${type}` });
+      res.status(400).json({ error: `Unknown widget type: ${widgetType}` });
   }
 });
 
