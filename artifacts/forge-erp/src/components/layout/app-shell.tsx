@@ -9,12 +9,13 @@ import {
   Moon,
   PackageSearch,
   Receipt,
+  Search,
   Settings,
   ShieldAlert,
   ShoppingCart,
   Sun,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { useClerk } from "@clerk/react";
 import { useGetCurrentUser } from "@workspace/api-client-react";
@@ -41,14 +42,100 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 
-function AppSidebar() {
+const COMMAND_ITEMS = [
+  { label: "Go to Dashboard", href: "/dashboard" },
+  { label: "Go to Procurement", href: "/procurement" },
+  { label: "Go to Sales", href: "/sales" },
+  { label: "Go to Inventory", href: "/inventory" },
+  { label: "Go to Reports", href: "/reports" },
+  { label: "Go to Settings", href: "/settings" },
+];
+
+function CommandPalette({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [, setLocation] = useLocation();
+  const [query, setQuery] = useState("");
+
+  const filtered = query.trim()
+    ? COMMAND_ITEMS.filter((item) =>
+        item.label.toLowerCase().includes(query.toLowerCase()),
+      )
+    : COMMAND_ITEMS;
+
+  function navigate(href: string) {
+    setLocation(href);
+    setQuery("");
+    onClose();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md p-0 overflow-hidden" aria-describedby={undefined}>
+        <DialogHeader className="sr-only">
+          <DialogTitle>Command Palette</DialogTitle>
+        </DialogHeader>
+        <div className="flex items-center gap-2 border-b px-4 py-3">
+          <Search className="size-4 text-muted-foreground shrink-0" />
+          <input
+            autoFocus
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            placeholder="Search commands…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") onClose();
+              if (e.key === "Enter" && filtered[0]) navigate(filtered[0].href);
+            }}
+          />
+          <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded border">
+            esc
+          </kbd>
+        </div>
+        <div className="py-2 max-h-72 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No results found.
+            </p>
+          ) : (
+            filtered.map((item) => (
+              <button
+                key={item.href}
+                className="w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer text-left"
+                onClick={() => navigate(item.href)}
+              >
+                {item.label}
+              </button>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AppSidebar({
+  onOpenCommandPalette,
+}: {
+  onOpenCommandPalette: () => void;
+}) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const { theme, setTheme } = useTheme();
-  const [location, setLocation] = useLocation();
+  const [location] = useLocation();
 
   const { data: currentUser } = useGetCurrentUser({
     query: { queryKey: getGetCurrentUserQueryKey() },
@@ -70,7 +157,7 @@ function AppSidebar() {
     (item) =>
       item.roles.includes("all") ||
       item.roles.includes(role) ||
-      role === "super_admin"
+      role === "super_admin",
   );
 
   return (
@@ -137,10 +224,8 @@ function AppSidebar() {
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            onClick={() => {
-              // placeholder cmd+k
-              console.log("cmd+k");
-            }}
+            onClick={onOpenCommandPalette}
+            title="Command palette (⌘K)"
             data-testid="button-command-palette"
           >
             <Command className="size-4" />
@@ -189,9 +274,25 @@ function AppSidebar() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const [commandOpen, setCommandOpen] = useState(false);
+
+  const openCommandPalette = useCallback(() => setCommandOpen(true), []);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCommandOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <SidebarProvider>
-      <AppSidebar />
+      <AppSidebar onOpenCommandPalette={openCommandPalette} />
+      <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
       <main className="flex-1 flex flex-col min-h-[100dvh] bg-background">
         <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background px-4 sm:px-6">
           <SidebarTrigger className="-ml-1" />

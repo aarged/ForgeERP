@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, tenantsTable, tenantMembershipsTable } from "@workspace/db";
+import { withTenantDb } from "@workspace/db/rls";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/requireAuth";
 import { tenantContext, type TenantRequest } from "../middlewares/tenantContext";
 import type { Request, Response } from "express";
@@ -70,35 +71,37 @@ router.patch("/auth/me", tenantContext, async (req: Request, res: Response): Pro
   const { clerkUserId: clerkId, tenantId } = req as TenantRequest;
   const { firstName, lastName } = req.body as { firstName?: string; lastName?: string };
 
-  await db
-    .update(tenantMembershipsTable)
-    .set({
-      ...(firstName !== undefined && { firstName }),
-      ...(lastName !== undefined && { lastName }),
-    })
-    .where(and(
-      eq(tenantMembershipsTable.clerkId, clerkId),
-      eq(tenantMembershipsTable.tenantId, tenantId),
-    ));
+  const membership = await withTenantDb(tenantId, async (txDb) => {
+    await txDb
+      .update(tenantMembershipsTable)
+      .set({
+        ...(firstName !== undefined && { firstName }),
+        ...(lastName !== undefined && { lastName }),
+      })
+      .where(and(
+        eq(tenantMembershipsTable.clerkId, clerkId),
+        eq(tenantMembershipsTable.tenantId, tenantId),
+      ));
 
-  const membership = await db
-    .select({
-      clerkId: tenantMembershipsTable.clerkId,
-      email: tenantMembershipsTable.email,
-      firstName: tenantMembershipsTable.firstName,
-      lastName: tenantMembershipsTable.lastName,
-      role: tenantMembershipsTable.role,
-      tenantId: tenantMembershipsTable.tenantId,
-      tenantName: tenantsTable.name,
-      onboardingCompletedAt: tenantsTable.onboardingCompletedAt,
-    })
-    .from(tenantMembershipsTable)
-    .leftJoin(tenantsTable, eq(tenantMembershipsTable.tenantId, tenantsTable.id))
-    .where(and(
-      eq(tenantMembershipsTable.clerkId, clerkId),
-      eq(tenantMembershipsTable.tenantId, tenantId),
-    ))
-    .limit(1);
+    return txDb
+      .select({
+        clerkId: tenantMembershipsTable.clerkId,
+        email: tenantMembershipsTable.email,
+        firstName: tenantMembershipsTable.firstName,
+        lastName: tenantMembershipsTable.lastName,
+        role: tenantMembershipsTable.role,
+        tenantId: tenantMembershipsTable.tenantId,
+        tenantName: tenantsTable.name,
+        onboardingCompletedAt: tenantsTable.onboardingCompletedAt,
+      })
+      .from(tenantMembershipsTable)
+      .leftJoin(tenantsTable, eq(tenantMembershipsTable.tenantId, tenantsTable.id))
+      .where(and(
+        eq(tenantMembershipsTable.clerkId, clerkId),
+        eq(tenantMembershipsTable.tenantId, tenantId),
+      ))
+      .limit(1);
+  });
 
   if (membership.length === 0) {
     res.status(404).json({ error: "User not found" });

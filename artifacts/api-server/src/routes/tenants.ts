@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, tenantsTable, tenantMembershipsTable } from "@workspace/db";
+import { tenantsTable, tenantMembershipsTable } from "@workspace/db";
+import { withTenantDb } from "@workspace/db/rls";
 import { tenantContext, type TenantRequest } from "../middlewares/tenantContext";
 import type { Request, Response } from "express";
 
@@ -9,11 +10,13 @@ const router: IRouter = Router();
 router.get("/tenants/current", tenantContext, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
 
-  const tenant = await db
-    .select()
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, tenantId))
-    .limit(1);
+  const tenant = await withTenantDb(tenantId, (txDb) =>
+    txDb
+      .select()
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId))
+      .limit(1),
+  );
 
   if (tenant.length === 0) {
     res.status(404).json({ error: "Tenant not found" });
@@ -39,13 +42,15 @@ router.get("/tenants/current", tenantContext, async (req: Request, res: Response
 router.get("/tenants/current/members", tenantContext, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
 
-  const members = await db
-    .select()
-    .from(tenantMembershipsTable)
-    .where(and(
-      eq(tenantMembershipsTable.tenantId, tenantId),
-      eq(tenantMembershipsTable.isActive, "true"),
-    ));
+  const members = await withTenantDb(tenantId, (txDb) =>
+    txDb
+      .select()
+      .from(tenantMembershipsTable)
+      .where(and(
+        eq(tenantMembershipsTable.tenantId, tenantId),
+        eq(tenantMembershipsTable.isActive, "true"),
+      )),
+  );
 
   res.json(
     members.map((m) => ({
