@@ -425,6 +425,22 @@ async function resolveGlAccount(tenantId: number, glAccountId: number | null | u
   return { accountCode: byCode?.code ?? fallbackCode, accountName: byCode?.name ?? fallbackName };
 }
 
+/** Transaction-local variant: resolves GL account using an already-open TenantDb connection. */
+async function resolveGlAccountInTx(db: TenantDb, tenantId: number, glAccountId: number | null | undefined, fallbackCode: string, fallbackName: string) {
+  if (glAccountId) {
+    const [acct] = await db.select({ code: glAccountsTable.code, name: glAccountsTable.name })
+      .from(glAccountsTable)
+      .where(and(eq(glAccountsTable.id, glAccountId), eq(glAccountsTable.tenantId, tenantId)))
+      .limit(1);
+    if (acct) return { accountCode: acct.code, accountName: acct.name };
+  }
+  const [byCode] = await db.select({ code: glAccountsTable.code, name: glAccountsTable.name })
+    .from(glAccountsTable)
+    .where(and(eq(glAccountsTable.code, fallbackCode), eq(glAccountsTable.tenantId, tenantId)))
+    .limit(1);
+  return { accountCode: byCode?.code ?? fallbackCode, accountName: byCode?.name ?? fallbackName };
+}
+
 async function createGlPosting(tenantId: number, receiptId: number, postedByClerkId: string, postedByEmail?: string) {
   const receipt = (await withTenantDb(tenantId, (db) =>
     db.select().from(poReceiptsTable)
@@ -583,7 +599,7 @@ async function createReturnGlPostingInTx(db: TenantDb, tenantId: number, returnI
   const lines = await db.select().from(poReturnLinesTable)
     .where(and(eq(poReturnLinesTable.returnId, returnId), eq(poReturnLinesTable.tenantId, tenantId)));
 
-  const apAccount = await resolveGlAccount(tenantId, null, "2100", "Accounts Payable");
+  const apAccount = await resolveGlAccountInTx(db, tenantId, null, "2100", "Accounts Payable");
 
   let totalValue = 0;
   const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
@@ -591,7 +607,7 @@ async function createReturnGlPostingInTx(db: TenantDb, tenantId: number, returnI
     if (Number(rl.quantity) <= 0) continue;
     const lineVal = Number(rl.quantity) * Number(rl.unitCost ?? 0);
     totalValue += lineVal;
-    const invAccount = await resolveGlAccount(tenantId, null, "1300", "Inventory");
+    const invAccount = await resolveGlAccountInTx(db, tenantId, null, "1300", "Inventory");
     glLines.push({ ...invAccount, debit: 0, credit: lineVal, description: `RTV of ${rl.itemCode ?? rl.itemName ?? "item"}` });
   }
   if (totalValue === 0) return null;
@@ -1184,11 +1200,26 @@ router.post("/procurement/requisitions/:id/decision", ...approverMiddleware, asy
     return;
   }
 
-  const [updated] = await withTenantDb(tenantId, (db) =>
+  // Optimistic lock: only advance if the entity is still in the same step we read
+  // (prevents duplicate PO creation / duplicate step advances on concurrent approvals)
+  const updatedRows = await withTenantDb(tenantId, (db) =>
     db.update(purchaseRequisitionsTable)
       .set({ status: result.newStatus, currentApprovalStep: result.newStepNum || undefined })
-      .where(and(eq(purchaseRequisitionsTable.id, id), eq(purchaseRequisitionsTable.tenantId, tenantId)))
+      .where(and(
+        eq(purchaseRequisitionsTable.id, id),
+        eq(purchaseRequisitionsTable.tenantId, tenantId),
+        eq(purchaseRequisitionsTable.status, "pending_approval"),
+        eq(purchaseRequisitionsTable.currentApprovalStep, req_.currentApprovalStep ?? 1),
+      ))
       .returning());
+  if (updatedRows.length === 0) {
+    // Another concurrent request already advanced this entity — return current state
+    const [cur] = await withTenantDb(tenantId, (db) =>
+      db.select().from(purchaseRequisitionsTable).where(and(eq(purchaseRequisitionsTable.id, id), eq(purchaseRequisitionsTable.tenantId, tenantId))).limit(1));
+    res.json(cur);
+    return;
+  }
+  const [updated] = updatedRows;
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: `requisition.${parsed.data.decision}`, entityType: "purchase_requisition", entityId: String(id), newValues: { decision: parsed.data.decision, comment: parsed.data.comment, newStatus: result.newStatus } });
 
   // Notify requester of the decision outcome
@@ -1250,6 +1281,8 @@ async function createPoFromRequisition(
       .where(and(eq(purchaseRequisitionsTable.id, requisitionId), eq(purchaseRequisitionsTable.tenantId, tenantId)))
       .limit(1));
   if (!req_ || !["approved"].includes(req_.status)) return null;
+  // Idempotency: if this requisition was already converted, return the existing PO id
+  if (req_.convertedPoId) return req_.convertedPoId;
 
   const lines = await withTenantDb(tenantId, (db) =>
     db.select().from(requisitionLinesTable)
@@ -1641,11 +1674,24 @@ router.post("/procurement/purchase-orders/:id/decision", ...approverMiddleware, 
     return;
   }
 
-  const [updated] = await withTenantDb(tenantId, (db) =>
+  // Optimistic lock: only advance if the PO is still in the same step we read
+  const poUpdatedRows = await withTenantDb(tenantId, (db) =>
     db.update(purchaseOrdersTable)
       .set({ status: result.newStatus, currentApprovalStep: result.newStepNum || undefined })
-      .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId)))
+      .where(and(
+        eq(purchaseOrdersTable.id, id),
+        eq(purchaseOrdersTable.tenantId, tenantId),
+        eq(purchaseOrdersTable.status, "pending_approval"),
+        eq(purchaseOrdersTable.currentApprovalStep, po.currentApprovalStep ?? 1),
+      ))
       .returning());
+  if (poUpdatedRows.length === 0) {
+    const [cur] = await withTenantDb(tenantId, (db) =>
+      db.select().from(purchaseOrdersTable).where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId))).limit(1));
+    res.json(cur);
+    return;
+  }
+  const [updated] = poUpdatedRows;
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: `purchase_order.${parsed.data.decision}`, entityType: "purchase_order", entityId: String(id), newValues: { decision: parsed.data.decision, comment: parsed.data.comment, newStatus: result.newStatus } });
 
   // Notify PO creator of the decision outcome
