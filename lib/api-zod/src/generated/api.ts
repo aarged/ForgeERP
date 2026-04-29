@@ -123,7 +123,15 @@ export const ListAdminTenantsResponseItem = zod.object({
   memberCount: zod.number(),
   storageUsageMb: zod
     .number()
-    .describe("Storage used by this tenant in megabytes"),
+    .describe(
+      "Storage used by this tenant in megabytes (estimated from data activity)",
+    ),
+  subscriptionStatus: zod
+    .string()
+    .nullish()
+    .describe(
+      "Stripe subscription status (active, trialing, past_due, canceled, etc.) or null if no subscription",
+    ),
 });
 export const ListAdminTenantsResponse = zod.array(ListAdminTenantsResponseItem);
 
@@ -180,6 +188,16 @@ export const GetAdminTenantResponse = zod.object({
   industryType: zod.string().nullish(),
   stripeCustomerId: zod.string().nullish(),
   stripeSubscriptionId: zod.string().nullish(),
+  subscriptionStatus: zod
+    .string()
+    .nullish()
+    .describe(
+      "Live Stripe subscription status (active, trialing, past_due, canceled, etc.)",
+    ),
+  currentPeriodEnd: zod
+    .string()
+    .nullish()
+    .describe("ISO timestamp of current billing period end from Stripe"),
   onboardingCompletedAt: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
@@ -240,6 +258,29 @@ export const SyncTenantStripeParams = zod.object({
 
 export const SyncTenantStripeResponse = zod.object({
   stripeCustomerId: zod.string(),
+});
+
+/**
+ * @summary Create or update Stripe subscription for tenant
+ */
+export const CreateTenantSubscriptionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateTenantSubscriptionBody = zod.object({
+  planTier: zod.enum(["starter", "growth", "enterprise"]).optional(),
+});
+
+export const CreateTenantSubscriptionResponse = zod.object({
+  subscriptionId: zod.string(),
+  status: zod.string(),
+  planTier: zod.string(),
+  currentPeriodEnd: zod.string().nullish(),
+  created: zod
+    .boolean()
+    .describe(
+      "True if a new subscription was created, false if existing was updated",
+    ),
 });
 
 /**

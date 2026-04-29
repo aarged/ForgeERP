@@ -398,6 +398,56 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/tenants/{id}/stripe-subscription:
+    post:
+      operationId: createTenantSubscription
+      tags: [admin]
+      summary: Create or update Stripe subscription for tenant
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubscriptionBody"
+      responses:
+        "200":
+          description: Stripe subscription created or updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Stripe not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/tenants/{id}/invoices:
     get:
       operationId: getTenantInvoices
@@ -646,7 +696,10 @@ components:
           type: integer
         storageUsageMb:
           type: integer
-          description: Storage used by this tenant in megabytes
+          description: Storage used by this tenant in megabytes (estimated from data activity)
+        subscriptionStatus:
+          type: ["string", "null"]
+          description: Stripe subscription status (active, trialing, past_due, canceled, etc.) or null if no subscription
       required:
         - id
         - name
@@ -708,6 +761,12 @@ components:
           type: ["string", "null"]
         stripeSubscriptionId:
           type: ["string", "null"]
+        subscriptionStatus:
+          type: ["string", "null"]
+          description: Live Stripe subscription status (active, trialing, past_due, canceled, etc.)
+        currentPeriodEnd:
+          type: ["string", "null"]
+          description: ISO timestamp of current billing period end from Stripe
         onboardingCompletedAt:
           type: ["string", "null"]
         createdAt:
@@ -813,6 +872,33 @@ components:
           type: string
       required:
         - stripeCustomerId
+
+    CreateSubscriptionBody:
+      type: object
+      properties:
+        planTier:
+          type: string
+          enum: [starter, growth, enterprise]
+
+    SubscriptionResult:
+      type: object
+      properties:
+        subscriptionId:
+          type: string
+        status:
+          type: string
+        planTier:
+          type: string
+        currentPeriodEnd:
+          type: ["string", "null"]
+        created:
+          type: boolean
+          description: True if a new subscription was created, false if existing was updated
+      required:
+        - subscriptionId
+        - status
+        - planTier
+        - created
 
     InvoiceList:
       type: object

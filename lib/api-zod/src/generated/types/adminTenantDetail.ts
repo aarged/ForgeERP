@@ -50,6 +50,16 @@ export interface AdminTenantDetail {
   stripeCustomerId?: string | null;
   /** @nullable */
   stripeSubscriptionId?: string | null;
+  /**
+   * Live Stripe subscription status (active, trialing, past_due, canceled, etc.)
+   * @nullable
+   */
+  subscriptionStatus?: string | null;
+  /**
+   * ISO timestamp of current billing period end from Stripe
+   * @nullable
+   */
+  currentPeriodEnd?: string | null;
   /** @nullable */
   onboardingCompletedAt?: string | null;
   createdAt: string;

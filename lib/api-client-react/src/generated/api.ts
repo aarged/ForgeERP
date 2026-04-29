@@ -22,6 +22,7 @@ import type {
   AdminTenantCreated,
   AdminTenantDetail,
   AuditLog,
+  CreateSubscriptionBody,
   CreateTenantBody,
   CurrentUser,
   ErrorResponse,
@@ -29,6 +30,7 @@ import type {
   HealthStatus,
   InvoiceList,
   StripeSyncResult,
+  SubscriptionResult,
   Tenant,
   TenantMember,
   UpdateTenantBody,
@@ -1011,6 +1013,94 @@ export const useSyncTenantStripe = <
   TContext
 > => {
   return useMutation(getSyncTenantStripeMutationOptions(options));
+};
+
+/**
+ * @summary Create or update Stripe subscription for tenant
+ */
+export const getCreateTenantSubscriptionUrl = (id: number) => {
+  return `/api/admin/tenants/${id}/stripe-subscription`;
+};
+
+export const createTenantSubscription = async (
+  id: number,
+  createSubscriptionBody: CreateSubscriptionBody,
+  options?: RequestInit,
+): Promise<SubscriptionResult> => {
+  return customFetch<SubscriptionResult>(getCreateTenantSubscriptionUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createSubscriptionBody),
+  });
+};
+
+export const getCreateTenantSubscriptionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createTenantSubscription>>,
+    TError,
+    { id: number; data: BodyType<CreateSubscriptionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createTenantSubscription>>,
+  TError,
+  { id: number; data: BodyType<CreateSubscriptionBody> },
+  TContext
+> => {
+  const mutationKey = ["createTenantSubscription"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createTenantSubscription>>,
+    { id: number; data: BodyType<CreateSubscriptionBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createTenantSubscription(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateTenantSubscriptionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createTenantSubscription>>
+>;
+export type CreateTenantSubscriptionMutationBody =
+  BodyType<CreateSubscriptionBody>;
+export type CreateTenantSubscriptionMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create or update Stripe subscription for tenant
+ */
+export const useCreateTenantSubscription = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createTenantSubscription>>,
+    TError,
+    { id: number; data: BodyType<CreateSubscriptionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createTenantSubscription>>,
+  TError,
+  { id: number; data: BodyType<CreateSubscriptionBody> },
+  TContext
+> => {
+  return useMutation(getCreateTenantSubscriptionMutationOptions(options));
 };
 
 /**

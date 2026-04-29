@@ -132,8 +132,13 @@ export interface AdminTenant {
   onboardingCompletedAt?: string | null;
   createdAt: string;
   memberCount: number;
-  /** Storage used by this tenant in megabytes */
+  /** Storage used by this tenant in megabytes (estimated from data activity) */
   storageUsageMb: number;
+  /**
+   * Stripe subscription status (active, trialing, past_due, canceled, etc.) or null if no subscription
+   * @nullable
+   */
+  subscriptionStatus?: string | null;
 }
 
 export type AdminTenantDetailStatus =
@@ -197,6 +202,16 @@ export interface AdminTenantDetail {
   stripeCustomerId?: string | null;
   /** @nullable */
   stripeSubscriptionId?: string | null;
+  /**
+   * Live Stripe subscription status (active, trialing, past_due, canceled, etc.)
+   * @nullable
+   */
+  subscriptionStatus?: string | null;
+  /**
+   * ISO timestamp of current billing period end from Stripe
+   * @nullable
+   */
+  currentPeriodEnd?: string | null;
   /** @nullable */
   onboardingCompletedAt?: string | null;
   createdAt: string;
@@ -311,6 +326,29 @@ export interface UpdateTenantBody {
 
 export interface StripeSyncResult {
   stripeCustomerId: string;
+}
+
+export type CreateSubscriptionBodyPlanTier =
+  (typeof CreateSubscriptionBodyPlanTier)[keyof typeof CreateSubscriptionBodyPlanTier];
+
+export const CreateSubscriptionBodyPlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+export interface CreateSubscriptionBody {
+  planTier?: CreateSubscriptionBodyPlanTier;
+}
+
+export interface SubscriptionResult {
+  subscriptionId: string;
+  status: string;
+  planTier: string;
+  /** @nullable */
+  currentPeriodEnd?: string | null;
+  /** True if a new subscription was created, false if existing was updated */
+  created: boolean;
 }
 
 export interface Invoice {

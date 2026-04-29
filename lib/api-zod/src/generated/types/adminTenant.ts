@@ -26,6 +26,11 @@ export interface AdminTenant {
   onboardingCompletedAt?: string | null;
   createdAt: string;
   memberCount: number;
-  /** Storage used by this tenant in megabytes */
+  /** Storage used by this tenant in megabytes (estimated from data activity) */
   storageUsageMb: number;
+  /**
+   * Stripe subscription status (active, trialing, past_due, canceled, etc.) or null if no subscription
+   * @nullable
+   */
+  subscriptionStatus?: string | null;
 }

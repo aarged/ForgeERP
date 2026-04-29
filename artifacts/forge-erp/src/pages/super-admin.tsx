@@ -7,6 +7,7 @@ import {
   useUpdateAdminTenant,
   useDeleteAdminTenant,
   useSyncTenantStripe,
+  useCreateTenantSubscription,
   useGetTenantInvoices,
   getListAdminTenantsQueryKey,
   getGetAdminKpiQueryKey,
@@ -292,6 +293,30 @@ function TenantDetailSheet({
     },
   });
 
+  const createSubscription = useCreateTenantSubscription({
+    mutation: {
+      onSuccess: (data) => {
+        toast({
+          title: data.created ? "Subscription created" : "Subscription updated",
+          description: `Status: ${data.status}`,
+        });
+        void queryClient.invalidateQueries({
+          queryKey: getListAdminTenantsQueryKey(),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: getGetAdminKpiQueryKey(),
+        });
+      },
+      onError: () => {
+        toast({
+          title: "Error",
+          description: "Stripe subscription failed — check STRIPE_PRICE_* env vars are set",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
   const tenantId = tenant?.id ?? 0;
   const { data: invoiceData, isLoading: invoicesLoading } =
     useGetTenantInvoices(tenantId, {
@@ -310,8 +335,10 @@ function TenantDetailSheet({
     ["Currency", tenant.currency ?? "—"],
     ["Email", tenant.email ?? "—"],
     ["Members", String(tenant.memberCount)],
+    ["Storage", `${tenant.storageUsageMb} MB`],
     ["Stripe Customer", tenant.stripeCustomerId ?? "—"],
     ["Stripe Subscription", tenant.stripeSubscriptionId ?? "—"],
+    ["Billing Status", tenant.subscriptionStatus ?? "—"],
     ["Created", new Date(tenant.createdAt).toLocaleDateString()],
   ];
 
@@ -347,18 +374,38 @@ function TenantDetailSheet({
             </CardContent>
           </Card>
 
-          {!tenant.stripeCustomerId && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => syncStripe.mutate({ id: tenant.id })}
-              disabled={syncStripe.isPending}
-            >
-              <CreditCard className="mr-2 h-4 w-4" />
-              {syncStripe.isPending ? "Creating..." : "Create Stripe Customer"}
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {!tenant.stripeCustomerId && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => syncStripe.mutate({ id: tenant.id })}
+                disabled={syncStripe.isPending}
+              >
+                <CreditCard className="mr-2 h-4 w-4" />
+                {syncStripe.isPending ? "Creating..." : "Create Stripe Customer"}
+              </Button>
+            )}
+            {tenant.stripeCustomerId && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() =>
+                  createSubscription.mutate({ id: tenant.id, data: { planTier: tenant.planTier } })
+                }
+                disabled={createSubscription.isPending}
+              >
+                <CreditCard className="mr-2 h-4 w-4" />
+                {createSubscription.isPending
+                  ? "Processing..."
+                  : tenant.stripeSubscriptionId
+                    ? "Sync Subscription"
+                    : "Create Subscription"}
+              </Button>
+            )}
+          </div>
 
           <Card>
             <CardHeader className="pb-2">

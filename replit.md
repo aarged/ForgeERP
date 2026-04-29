@@ -70,6 +70,7 @@ Connection URLs:
 - `PATCH /api/admin/tenants/:id` — Update tenant (name, status, planTier, email, currency)
 - `DELETE /api/admin/tenants/:id` — Soft-delete tenant (sets deletedAt, suspends)
 - `POST /api/admin/tenants/:id/stripe-sync` — Create Stripe customer for tenant
+- `POST /api/admin/tenants/:id/stripe-subscription` — Create or update Stripe subscription (set STRIPE_PRICE_STARTER/GROWTH/ENTERPRISE env vars)
 - `GET /api/admin/tenants/:id/invoices` — List Stripe invoices for tenant
 - `GET /api/admin/audit-logs` — Global audit log
 

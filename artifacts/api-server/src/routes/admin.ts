@@ -60,6 +60,32 @@ const PLAN_MRR_CENTS: Record<string, number> = {
   enterprise: 99900,
 };
 
+// ── Stripe subscription helpers ───────────────────────────────────────────────
+
+function getPriceIdForPlan(planTier: string): string | undefined {
+  const map: Record<string, string | undefined> = {
+    starter: process.env.STRIPE_PRICE_STARTER,
+    growth: process.env.STRIPE_PRICE_GROWTH,
+    enterprise: process.env.STRIPE_PRICE_ENTERPRISE,
+  };
+  return map[planTier];
+}
+
+/** Compute approximate MRR in cents from a single active Stripe subscription */
+function subToMonthlyCents(sub: { items: { data: Array<{ price: { unit_amount: number | null; recurring: { interval: string; interval_count: number } | null }; quantity?: number | null }> } }): number {
+  return sub.items.data.reduce((sum, item) => {
+    const amount = item.price.unit_amount ?? 0;
+    const qty = item.quantity ?? 1;
+    const interval = item.price.recurring?.interval ?? "month";
+    const intervalCount = item.price.recurring?.interval_count ?? 1;
+    const monthlyFactor =
+      interval === "year" ? 1 / (12 * intervalCount) :
+      interval === "week" ? 4.333 / intervalCount :
+      interval === "day" ? 30 / intervalCount : 1 / intervalCount;
+    return sum + Math.round(amount * qty * monthlyFactor);
+  }, 0);
+}
+
 // ── GET /admin/kpi ────────────────────────────────────────────────────────────
 
 router.get(
@@ -77,16 +103,50 @@ router.get(
       .from(tenantsTable)
       .where(isNull(tenantsTable.deletedAt));
 
-    // Compute local plan-tier MRR estimate from active + trial tenants
-    const activeTenants = await adminDb
-      .select({ planTier: tenantsTable.planTier })
-      .from(tenantsTable)
-      .where(isNull(tenantsTable.deletedAt));
+    // Try to compute live MRR from Stripe active subscriptions
+    let estimatedMrrCents = 0;
+    let mrrIsEstimate = true;
 
-    const estimatedMrrCents = activeTenants.reduce(
-      (sum, t) => sum + (PLAN_MRR_CENTS[t.planTier] ?? 0),
-      0,
-    );
+    if (isStripeConfigured()) {
+      try {
+        const stripe = await getUncachableStripeClient();
+        // Fetch active subscriptions — paginate up to 500 for accuracy
+        let hasMore = true;
+        let startingAfter: string | undefined;
+        let stripeMrr = 0;
+
+        while (hasMore) {
+          const batch = await stripe.subscriptions.list({
+            status: "active",
+            limit: 100,
+            ...(startingAfter ? { starting_after: startingAfter } : {}),
+          });
+          for (const sub of batch.data) {
+            stripeMrr += subToMonthlyCents(sub as Parameters<typeof subToMonthlyCents>[0]);
+          }
+          hasMore = batch.has_more;
+          startingAfter = batch.data[batch.data.length - 1]?.id;
+        }
+
+        estimatedMrrCents = stripeMrr;
+        mrrIsEstimate = false;
+      } catch (err) {
+        logger.warn({ err }, "Failed to fetch Stripe MRR, falling back to plan-tier estimate");
+        // Fall back to local estimate below
+      }
+    }
+
+    // Local plan-tier estimate (used as fallback or when Stripe not configured)
+    if (mrrIsEstimate) {
+      const allTenants = await adminDb
+        .select({ planTier: tenantsTable.planTier, status: tenantsTable.status })
+        .from(tenantsTable)
+        .where(isNull(tenantsTable.deletedAt));
+
+      estimatedMrrCents = allTenants
+        .filter((t) => t.status === "active")
+        .reduce((sum, t) => sum + (PLAN_MRR_CENTS[t.planTier] ?? 0), 0);
+    }
 
     res.json({
       totalTenants: Number(totals!.total),
@@ -96,7 +156,7 @@ router.get(
       stripeConnectedTenants: Number(totals!.withStripe),
       stripeConfigured: isStripeConfigured(),
       estimatedMrrCents,
-      mrrIsEstimate: true,
+      mrrIsEstimate,
     });
   },
 );
@@ -124,27 +184,42 @@ router.get(
           SELECT COUNT(*) FROM tenant_memberships
           WHERE tenant_id = tenants.id AND is_active = 'true'
         )`,
+        // Storage metering: count rows in key tables per tenant, estimate bytes
+        auditLogCount: sql<number>`(
+          SELECT COUNT(*) FROM audit_logs WHERE tenant_id = tenants.id
+        )`,
       })
       .from(tenantsTable)
       .where(isNull(tenantsTable.deletedAt))
       .orderBy(tenantsTable.createdAt);
 
     res.json(
-      tenants.map((t) => ({
-        id: t.id,
-        name: t.name,
-        slug: t.slug,
-        status: t.status,
-        planTier: t.planTier,
-        currency: t.currency ?? null,
-        email: t.email ?? null,
-        stripeCustomerId: t.stripeCustomerId ?? null,
-        stripeSubscriptionId: t.stripeSubscriptionId ?? null,
-        onboardingCompletedAt: t.onboardingCompletedAt?.toISOString() ?? null,
-        createdAt: t.createdAt.toISOString(),
-        memberCount: Number(t.memberCount),
-        storageUsageMb: 0,
-      })),
+      tenants.map((t) => {
+        // Estimate storage: ~500 bytes per audit log entry + 2KB base per membership
+        const auditBytes = Number(t.auditLogCount) * 500;
+        const memberBytes = Number(t.memberCount) * 2048;
+        const storageUsageMb = Math.max(
+          0,
+          Math.round((auditBytes + memberBytes) / (1024 * 1024) * 100) / 100,
+        );
+
+        return {
+          id: t.id,
+          name: t.name,
+          slug: t.slug,
+          status: t.status,
+          planTier: t.planTier,
+          currency: t.currency ?? null,
+          email: t.email ?? null,
+          stripeCustomerId: t.stripeCustomerId ?? null,
+          stripeSubscriptionId: t.stripeSubscriptionId ?? null,
+          onboardingCompletedAt: t.onboardingCompletedAt?.toISOString() ?? null,
+          createdAt: t.createdAt.toISOString(),
+          memberCount: Number(t.memberCount),
+          storageUsageMb: Math.round(storageUsageMb),
+          subscriptionStatus: null as string | null,
+        };
+      }),
     );
   },
 );
@@ -177,6 +252,23 @@ router.get(
       .from(tenantMembershipsTable)
       .where(eq(tenantMembershipsTable.tenantId, id));
 
+    // Fetch live Stripe subscription status if available
+    let subscriptionStatus: string | null = null;
+    let currentPeriodEnd: string | null = null;
+    if (tenant.stripeSubscriptionId && isStripeConfigured()) {
+      try {
+        const stripe = await getUncachableStripeClient();
+        const sub = await stripe.subscriptions.retrieve(tenant.stripeSubscriptionId);
+        subscriptionStatus = sub.status;
+        const subAny = sub as unknown as { current_period_end: number };
+        currentPeriodEnd = subAny.current_period_end
+          ? new Date(subAny.current_period_end * 1000).toISOString()
+          : null;
+      } catch (err) {
+        logger.warn({ err, tenantId: id }, "Failed to retrieve Stripe subscription for detail");
+      }
+    }
+
     res.json({
       id: tenant.id,
       name: tenant.name,
@@ -201,6 +293,8 @@ router.get(
       industryType: tenant.industryType ?? null,
       stripeCustomerId: tenant.stripeCustomerId ?? null,
       stripeSubscriptionId: tenant.stripeSubscriptionId ?? null,
+      subscriptionStatus,
+      currentPeriodEnd,
       onboardingCompletedAt: tenant.onboardingCompletedAt?.toISOString() ?? null,
       createdAt: tenant.createdAt.toISOString(),
       updatedAt: tenant.updatedAt.toISOString(),
@@ -324,40 +418,45 @@ router.patch(
       .where(eq(tenantsTable.id, id))
       .returning();
 
-    // If plan tier changed and tenant has a Stripe subscription, sync it
+    // If plan tier changed and Stripe is configured, sync subscription
     if (
       parsed.data.planTier !== undefined &&
       parsed.data.planTier !== existing.planTier &&
-      existing.stripeSubscriptionId &&
       isStripeConfigured()
     ) {
       try {
-        const priceEnvMap: Record<string, string | undefined> = {
-          starter: process.env.STRIPE_PRICE_STARTER,
-          growth: process.env.STRIPE_PRICE_GROWTH,
-          enterprise: process.env.STRIPE_PRICE_ENTERPRISE,
-        };
-        const newPriceId = priceEnvMap[parsed.data.planTier];
+        const newPriceId = getPriceIdForPlan(parsed.data.planTier);
         if (newPriceId) {
           const stripe = await getUncachableStripeClient();
-          const sub = await stripe.subscriptions.retrieve(
-            existing.stripeSubscriptionId,
-          );
-          const itemId = sub.items.data[0]?.id;
-          if (itemId) {
-            await stripe.subscriptions.update(existing.stripeSubscriptionId, {
-              items: [{ id: itemId, price: newPriceId }],
-              proration_behavior: "always_invoice",
+
+          if (existing.stripeSubscriptionId) {
+            // Update existing subscription
+            const sub = await stripe.subscriptions.retrieve(existing.stripeSubscriptionId);
+            const itemId = sub.items.data[0]?.id;
+            if (itemId) {
+              await stripe.subscriptions.update(existing.stripeSubscriptionId, {
+                items: [{ id: itemId, price: newPriceId }],
+                proration_behavior: "always_invoice",
+              });
+              logger.info({ tenantId: id, planTier: parsed.data.planTier }, "Stripe subscription updated");
+            }
+          } else if (existing.stripeCustomerId) {
+            // Create new subscription for existing customer
+            const sub = await stripe.subscriptions.create({
+              customer: existing.stripeCustomerId,
+              items: [{ price: newPriceId }],
+              metadata: { tenantId: String(id), planTier: parsed.data.planTier },
             });
-            logger.info(
-              { tenantId: id, planTier: parsed.data.planTier },
-              "Stripe subscription plan updated",
-            );
+            await adminDb
+              .update(tenantsTable)
+              .set({ stripeSubscriptionId: sub.id })
+              .where(eq(tenantsTable.id, id));
+            logger.info({ tenantId: id, subscriptionId: sub.id }, "Stripe subscription created on plan change");
           }
         } else {
           logger.warn(
             { planTier: parsed.data.planTier },
-            "No Stripe price ID configured for plan tier — skipping subscription update",
+            "No Stripe price ID configured for plan tier — skipping subscription sync",
           );
         }
       } catch (err) {
@@ -501,6 +600,155 @@ router.post(
       res.json({ stripeCustomerId: customerId });
     } catch (err) {
       logger.error({ err }, "Stripe sync failed");
+      res.status(502).json({ error: "Stripe API error" });
+    }
+  },
+);
+
+// ── POST /admin/tenants/:id/stripe-subscription ───────────────────────────────
+
+const createSubscriptionSchema = z.object({
+  planTier: z.enum(["starter", "growth", "enterprise"]).optional(),
+});
+
+router.post(
+  "/admin/tenants/:id/stripe-subscription",
+  ...superAdminOnly,
+  async (req: Request, res: Response): Promise<void> => {
+    const actor = req as TenantRequest;
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid tenant id" });
+      return;
+    }
+
+    if (!isStripeConfigured()) {
+      res.status(503).json({
+        error: "Stripe integration not configured",
+        code: "STRIPE_NOT_CONFIGURED",
+      });
+      return;
+    }
+
+    const parsed = createSubscriptionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request body", details: parsed.error.issues });
+      return;
+    }
+
+    const [tenant] = await adminDb
+      .select()
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, id))
+      .limit(1);
+
+    if (!tenant || tenant.deletedAt) {
+      res.status(404).json({ error: "Tenant not found" });
+      return;
+    }
+
+    const planTier = parsed.data.planTier ?? tenant.planTier;
+    const priceId = getPriceIdForPlan(planTier);
+
+    if (!priceId) {
+      res.status(400).json({
+        error: `No Stripe price configured for plan tier "${planTier}". Set STRIPE_PRICE_${planTier.toUpperCase()} environment variable.`,
+        code: "STRIPE_PRICE_NOT_CONFIGURED",
+      });
+      return;
+    }
+
+    try {
+      const stripe = await getUncachableStripeClient();
+
+      // Ensure Stripe customer exists
+      let customerId = tenant.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          name: tenant.name,
+          email: tenant.email ?? undefined,
+          metadata: { tenantId: String(tenant.id), slug: tenant.slug },
+        });
+        customerId = customer.id;
+        await adminDb
+          .update(tenantsTable)
+          .set({ stripeCustomerId: customerId })
+          .where(eq(tenantsTable.id, id));
+        await writeAuditLog({
+          req,
+          actorClerkId: actor.clerkUserId,
+          actorEmail: actor.userEmail,
+          tenantId: id,
+          action: "tenant.stripe_customer_created",
+          entityType: "tenant",
+          entityId: id,
+          newValues: { stripeCustomerId: customerId },
+        });
+      }
+
+      let wasCreated = false;
+      let subscription;
+
+      if (tenant.stripeSubscriptionId) {
+        // Update existing subscription to new plan price
+        const existing = await stripe.subscriptions.retrieve(tenant.stripeSubscriptionId);
+        const itemId = existing.items.data[0]?.id;
+        if (itemId) {
+          subscription = await stripe.subscriptions.update(tenant.stripeSubscriptionId, {
+            items: [{ id: itemId, price: priceId }],
+            proration_behavior: "always_invoice",
+          });
+        } else {
+          // No items — create fresh
+          subscription = await stripe.subscriptions.create({
+            customer: customerId,
+            items: [{ price: priceId }],
+            metadata: { tenantId: String(id), planTier },
+          });
+          wasCreated = true;
+        }
+      } else {
+        // Create new subscription
+        subscription = await stripe.subscriptions.create({
+          customer: customerId,
+          items: [{ price: priceId }],
+          metadata: { tenantId: String(id), planTier },
+        });
+        wasCreated = true;
+      }
+
+      // Persist subscription ID and plan tier to DB
+      await adminDb
+        .update(tenantsTable)
+        .set({
+          stripeSubscriptionId: subscription.id,
+          planTier,
+        })
+        .where(eq(tenantsTable.id, id));
+
+      await writeAuditLog({
+        req,
+        actorClerkId: actor.clerkUserId,
+        actorEmail: actor.userEmail,
+        tenantId: id,
+        action: wasCreated ? "tenant.stripe_subscription_created" : "tenant.stripe_subscription_updated",
+        entityType: "tenant",
+        entityId: id,
+        newValues: { stripeSubscriptionId: subscription.id, planTier, status: subscription.status },
+      });
+
+      res.json({
+        subscriptionId: subscription.id,
+        status: subscription.status,
+        planTier,
+        currentPeriodEnd: (() => {
+          const s = subscription as unknown as { current_period_end?: number };
+          return s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null;
+        })(),
+        created: wasCreated,
+      });
+    } catch (err) {
+      logger.error({ err }, "Stripe subscription create/update failed");
       res.status(502).json({ error: "Stripe API error" });
     }
   },
