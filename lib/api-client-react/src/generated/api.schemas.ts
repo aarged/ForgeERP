@@ -8,3 +8,76 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export interface CurrentUser {
+  clerkId: string;
+  email: string;
+  /** @nullable */
+  firstName?: string | null;
+  /** @nullable */
+  lastName?: string | null;
+  /** @nullable */
+  role?: string | null;
+  /** @nullable */
+  tenantId?: number | null;
+  /** @nullable */
+  tenantName?: string | null;
+  onboardingCompleted: boolean;
+}
+
+export interface UpdateUserBody {
+  firstName?: string;
+  lastName?: string;
+}
+
+export type TenantStatus = (typeof TenantStatus)[keyof typeof TenantStatus];
+
+export const TenantStatus = {
+  active: "active",
+  suspended: "suspended",
+  trial: "trial",
+  pending: "pending",
+} as const;
+
+export type TenantPlanTier =
+  (typeof TenantPlanTier)[keyof typeof TenantPlanTier];
+
+export const TenantPlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+export interface Tenant {
+  id: number;
+  name: string;
+  slug: string;
+  status: TenantStatus;
+  planTier: TenantPlanTier;
+  /** @nullable */
+  currency?: string | null;
+  /** @nullable */
+  timezone?: string | null;
+  /** @nullable */
+  fiscalYearStart?: number | null;
+  /** @nullable */
+  industryType?: string | null;
+  /** @nullable */
+  onboardingCompletedAt?: string | null;
+  createdAt: string;
+}
+
+export interface TenantMember {
+  clerkId: string;
+  email: string;
+  /** @nullable */
+  firstName?: string | null;
+  /** @nullable */
+  lastName?: string | null;
+  role: string;
+  joinedAt: string;
+}

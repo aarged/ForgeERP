@@ -14,3 +14,69 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Returns the authenticated user's profile, tenant, and role
+ * @summary Get current user
+ */
+export const GetCurrentUserResponse = zod.object({
+  clerkId: zod.string(),
+  email: zod.string(),
+  firstName: zod.string().nullish(),
+  lastName: zod.string().nullish(),
+  role: zod.string().nullish(),
+  tenantId: zod.number().nullish(),
+  tenantName: zod.string().nullish(),
+  onboardingCompleted: zod.boolean(),
+});
+
+/**
+ * @summary Update current user profile
+ */
+export const UpdateCurrentUserBody = zod.object({
+  firstName: zod.string().optional(),
+  lastName: zod.string().optional(),
+});
+
+export const UpdateCurrentUserResponse = zod.object({
+  clerkId: zod.string(),
+  email: zod.string(),
+  firstName: zod.string().nullish(),
+  lastName: zod.string().nullish(),
+  role: zod.string().nullish(),
+  tenantId: zod.number().nullish(),
+  tenantName: zod.string().nullish(),
+  onboardingCompleted: zod.boolean(),
+});
+
+/**
+ * Returns the current tenant's info for the authenticated user
+ * @summary Get current tenant
+ */
+export const GetCurrentTenantResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  slug: zod.string(),
+  status: zod.enum(["active", "suspended", "trial", "pending"]),
+  planTier: zod.enum(["starter", "growth", "enterprise"]),
+  currency: zod.string().nullish(),
+  timezone: zod.string().nullish(),
+  fiscalYearStart: zod.number().nullish(),
+  industryType: zod.string().nullish(),
+  onboardingCompletedAt: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * Returns all members of the current tenant
+ * @summary List tenant members
+ */
+export const GetTenantMembersResponseItem = zod.object({
+  clerkId: zod.string(),
+  email: zod.string(),
+  firstName: zod.string().nullish(),
+  lastName: zod.string().nullish(),
+  role: zod.string(),
+  joinedAt: zod.string(),
+});
+export const GetTenantMembersResponse = zod.array(GetTenantMembersResponseItem);

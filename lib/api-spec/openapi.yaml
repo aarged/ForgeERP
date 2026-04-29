@@ -10,6 +10,10 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication and user management
+  - name: tenants
+    description: Tenant management
 paths:
   /healthz:
     get:
@@ -24,7 +28,118 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Get current user
+      description: Returns the authenticated user's profile, tenant, and role
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateCurrentUser
+      tags: [auth]
+      summary: Update current user profile
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/current:
+    get:
+      operationId: getCurrentTenant
+      tags: [tenants]
+      summary: Get current tenant
+      description: Returns the current tenant's info for the authenticated user
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Current tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No tenant found for user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/current/members:
+    get:
+      operationId: getTenantMembers
+      tags: [tenants]
+      summary: List tenant members
+      description: Returns all members of the current tenant
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Tenant members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TenantMember"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
+  securitySchemes:
+    clerkAuth:
+      type: http
+      scheme: bearer
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +149,98 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    CurrentUser:
+      type: object
+      properties:
+        clerkId:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+        role:
+          type: ["string", "null"]
+        tenantId:
+          type: ["integer", "null"]
+        tenantName:
+          type: ["string", "null"]
+        onboardingCompleted:
+          type: boolean
+      required:
+        - clerkId
+        - email
+        - onboardingCompleted
+
+    UpdateUserBody:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended, trial, pending]
+        planTier:
+          type: string
+          enum: [starter, growth, enterprise]
+        currency:
+          type: ["string", "null"]
+        timezone:
+          type: ["string", "null"]
+        fiscalYearStart:
+          type: ["integer", "null"]
+        industryType:
+          type: ["string", "null"]
+        onboardingCompletedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - slug
+        - status
+        - planTier
+        - createdAt
+
+    TenantMember:
+      type: object
+      properties:
+        clerkId:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+        role:
+          type: string
+        joinedAt:
+          type: string
+      required:
+        - clerkId
+        - email
+        - role
+        - joinedAt
