@@ -90,11 +90,28 @@ import type {
   DespatchDetail,
   DespatchListResponse,
   ErrorResponse,
+  ExportFinanceJournalsCsvParams,
   ExportFinanceJournalsXlsxParams,
+  ExportGoodsInTransitCsvParams,
+  ExportGoodsInTransitPdfParams,
   ExportGrnCsvParams,
   ExportGrnPdfParams,
   ExportInvoiceAgingCsvParams,
   ExportInvoiceAgingPdfParams,
+  ExportMovementHistoryCsvParams,
+  ExportMovementHistoryPdfParams,
+  ExportPoSummaryCsvParams,
+  ExportPoSummaryPdfParams,
+  ExportSalesByItemCsvParams,
+  ExportSalesByItemPdfParams,
+  ExportSalesByPeriodCsvParams,
+  ExportSalesByPeriodPdfParams,
+  ExportSlowMovingCsvParams,
+  ExportSlowMovingPdfParams,
+  ExportStockValuationCsvParams,
+  ExportStockValuationPdfParams,
+  ExportStocktakeVarianceCsvParams,
+  ExportStocktakeVariancePdfParams,
   GeneratePurchaseOrderPdf200,
   GeneratePurchaseOrderPdfBody,
   GetAdminAuditLogsParams,
@@ -117,7 +134,6 @@ import type {
   GetInventoryReportsSlowMoving200,
   GetInventoryReportsSlowMovingParams,
   GetInventoryReportsStockValuation200,
-  GetInventoryReportsStockValuationExportCsvParams,
   GetInventoryReportsStockValuationParams,
   GetInventoryReportsStocktakeVariance200,
   GetInventoryReportsStocktakeVarianceParams,
@@ -11295,6 +11311,360 @@ export function useReportPoSummary<
 }
 
 /**
+ * @summary Export PO summary as CSV
+ */
+export const getExportPoSummaryCsvUrl = (params?: ExportPoSummaryCsvParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/procurement/reports/po-summary/export/csv?${stringifiedParams}`
+    : `/api/procurement/reports/po-summary/export/csv`;
+};
+
+export const exportPoSummaryCsv = async (
+  params?: ExportPoSummaryCsvParams,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getExportPoSummaryCsvUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportPoSummaryCsvQueryKey = (
+  params?: ExportPoSummaryCsvParams,
+) => {
+  return [
+    `/api/procurement/reports/po-summary/export/csv`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportPoSummaryCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportPoSummaryCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportPoSummaryCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportPoSummaryCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportPoSummaryCsvQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportPoSummaryCsv>>
+  > = ({ signal }) => exportPoSummaryCsv(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportPoSummaryCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportPoSummaryCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportPoSummaryCsv>>
+>;
+export type ExportPoSummaryCsvQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export PO summary as CSV
+ */
+
+export function useExportPoSummaryCsv<
+  TData = Awaited<ReturnType<typeof exportPoSummaryCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportPoSummaryCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportPoSummaryCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportPoSummaryCsvQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export PO summary as PDF
+ */
+export const getExportPoSummaryPdfUrl = (params?: ExportPoSummaryPdfParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/procurement/reports/po-summary/export/pdf?${stringifiedParams}`
+    : `/api/procurement/reports/po-summary/export/pdf`;
+};
+
+export const exportPoSummaryPdf = async (
+  params?: ExportPoSummaryPdfParams,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getExportPoSummaryPdfUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportPoSummaryPdfQueryKey = (
+  params?: ExportPoSummaryPdfParams,
+) => {
+  return [
+    `/api/procurement/reports/po-summary/export/pdf`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportPoSummaryPdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportPoSummaryPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportPoSummaryPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportPoSummaryPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportPoSummaryPdfQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportPoSummaryPdf>>
+  > = ({ signal }) => exportPoSummaryPdf(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportPoSummaryPdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportPoSummaryPdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportPoSummaryPdf>>
+>;
+export type ExportPoSummaryPdfQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export PO summary as PDF
+ */
+
+export function useExportPoSummaryPdf<
+  TData = Awaited<ReturnType<typeof exportPoSummaryPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportPoSummaryPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportPoSummaryPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportPoSummaryPdfQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export supplier performance as CSV
+ */
+export const getExportSupplierPerformanceCsvUrl = () => {
+  return `/api/procurement/reports/supplier-performance/export/csv`;
+};
+
+export const exportSupplierPerformanceCsv = async (
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getExportSupplierPerformanceCsvUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportSupplierPerformanceCsvQueryKey = () => {
+  return [`/api/procurement/reports/supplier-performance/export/csv`] as const;
+};
+
+export const getExportSupplierPerformanceCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportSupplierPerformanceCsv>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof exportSupplierPerformanceCsv>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportSupplierPerformanceCsvQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportSupplierPerformanceCsv>>
+  > = ({ signal }) =>
+    exportSupplierPerformanceCsv({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportSupplierPerformanceCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportSupplierPerformanceCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportSupplierPerformanceCsv>>
+>;
+export type ExportSupplierPerformanceCsvQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export supplier performance as CSV
+ */
+
+export function useExportSupplierPerformanceCsv<
+  TData = Awaited<ReturnType<typeof exportSupplierPerformanceCsv>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof exportSupplierPerformanceCsv>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportSupplierPerformanceCsvQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export supplier performance as PDF
+ */
+export const getExportSupplierPerformancePdfUrl = () => {
+  return `/api/procurement/reports/supplier-performance/export/pdf`;
+};
+
+export const exportSupplierPerformancePdf = async (
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getExportSupplierPerformancePdfUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportSupplierPerformancePdfQueryKey = () => {
+  return [`/api/procurement/reports/supplier-performance/export/pdf`] as const;
+};
+
+export const getExportSupplierPerformancePdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportSupplierPerformancePdf>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof exportSupplierPerformancePdf>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportSupplierPerformancePdfQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportSupplierPerformancePdf>>
+  > = ({ signal }) =>
+    exportSupplierPerformancePdf({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportSupplierPerformancePdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportSupplierPerformancePdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportSupplierPerformancePdf>>
+>;
+export type ExportSupplierPerformancePdfQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export supplier performance as PDF
+ */
+
+export function useExportSupplierPerformancePdf<
+  TData = Awaited<ReturnType<typeof exportSupplierPerformancePdf>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof exportSupplierPerformancePdf>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportSupplierPerformancePdfQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Report — goods in transit (sent POs not yet fully received)
  */
 export const getReportGoodsInTransitUrl = (
@@ -11392,6 +11762,212 @@ export function useReportGoodsInTransit<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getReportGoodsInTransitQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export goods-in-transit as CSV
+ */
+export const getExportGoodsInTransitCsvUrl = (
+  params?: ExportGoodsInTransitCsvParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/procurement/reports/goods-in-transit/export/csv?${stringifiedParams}`
+    : `/api/procurement/reports/goods-in-transit/export/csv`;
+};
+
+export const exportGoodsInTransitCsv = async (
+  params?: ExportGoodsInTransitCsvParams,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getExportGoodsInTransitCsvUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportGoodsInTransitCsvQueryKey = (
+  params?: ExportGoodsInTransitCsvParams,
+) => {
+  return [
+    `/api/procurement/reports/goods-in-transit/export/csv`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportGoodsInTransitCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportGoodsInTransitCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportGoodsInTransitCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportGoodsInTransitCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportGoodsInTransitCsvQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportGoodsInTransitCsv>>
+  > = ({ signal }) =>
+    exportGoodsInTransitCsv(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportGoodsInTransitCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportGoodsInTransitCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportGoodsInTransitCsv>>
+>;
+export type ExportGoodsInTransitCsvQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export goods-in-transit as CSV
+ */
+
+export function useExportGoodsInTransitCsv<
+  TData = Awaited<ReturnType<typeof exportGoodsInTransitCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportGoodsInTransitCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportGoodsInTransitCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportGoodsInTransitCsvQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export goods-in-transit as PDF
+ */
+export const getExportGoodsInTransitPdfUrl = (
+  params?: ExportGoodsInTransitPdfParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/procurement/reports/goods-in-transit/export/pdf?${stringifiedParams}`
+    : `/api/procurement/reports/goods-in-transit/export/pdf`;
+};
+
+export const exportGoodsInTransitPdf = async (
+  params?: ExportGoodsInTransitPdfParams,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getExportGoodsInTransitPdfUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportGoodsInTransitPdfQueryKey = (
+  params?: ExportGoodsInTransitPdfParams,
+) => {
+  return [
+    `/api/procurement/reports/goods-in-transit/export/pdf`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportGoodsInTransitPdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportGoodsInTransitPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportGoodsInTransitPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportGoodsInTransitPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportGoodsInTransitPdfQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportGoodsInTransitPdf>>
+  > = ({ signal }) =>
+    exportGoodsInTransitPdf(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportGoodsInTransitPdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportGoodsInTransitPdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportGoodsInTransitPdf>>
+>;
+export type ExportGoodsInTransitPdfQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export goods-in-transit as PDF
+ */
+
+export function useExportGoodsInTransitPdf<
+  TData = Awaited<ReturnType<typeof exportGoodsInTransitPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportGoodsInTransitPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportGoodsInTransitPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportGoodsInTransitPdfQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -16771,6 +17347,212 @@ export function useReportSalesByItem<
 }
 
 /**
+ * @summary Export sales by item as CSV
+ */
+export const getExportSalesByItemCsvUrl = (
+  params?: ExportSalesByItemCsvParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/sales/reports/by-item/export/csv?${stringifiedParams}`
+    : `/api/sales/reports/by-item/export/csv`;
+};
+
+export const exportSalesByItemCsv = async (
+  params?: ExportSalesByItemCsvParams,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getExportSalesByItemCsvUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportSalesByItemCsvQueryKey = (
+  params?: ExportSalesByItemCsvParams,
+) => {
+  return [
+    `/api/sales/reports/by-item/export/csv`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportSalesByItemCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportSalesByItemCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSalesByItemCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSalesByItemCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportSalesByItemCsvQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportSalesByItemCsv>>
+  > = ({ signal }) =>
+    exportSalesByItemCsv(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportSalesByItemCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportSalesByItemCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportSalesByItemCsv>>
+>;
+export type ExportSalesByItemCsvQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export sales by item as CSV
+ */
+
+export function useExportSalesByItemCsv<
+  TData = Awaited<ReturnType<typeof exportSalesByItemCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSalesByItemCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSalesByItemCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportSalesByItemCsvQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export sales by item as PDF
+ */
+export const getExportSalesByItemPdfUrl = (
+  params?: ExportSalesByItemPdfParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/sales/reports/by-item/export/pdf?${stringifiedParams}`
+    : `/api/sales/reports/by-item/export/pdf`;
+};
+
+export const exportSalesByItemPdf = async (
+  params?: ExportSalesByItemPdfParams,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getExportSalesByItemPdfUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportSalesByItemPdfQueryKey = (
+  params?: ExportSalesByItemPdfParams,
+) => {
+  return [
+    `/api/sales/reports/by-item/export/pdf`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportSalesByItemPdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportSalesByItemPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSalesByItemPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSalesByItemPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportSalesByItemPdfQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportSalesByItemPdf>>
+  > = ({ signal }) =>
+    exportSalesByItemPdf(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportSalesByItemPdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportSalesByItemPdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportSalesByItemPdf>>
+>;
+export type ExportSalesByItemPdfQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export sales by item as PDF
+ */
+
+export function useExportSalesByItemPdf<
+  TData = Awaited<ReturnType<typeof exportSalesByItemPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSalesByItemPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSalesByItemPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportSalesByItemPdfQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Sales analysis by customer (revenue, invoice count, avg value)
  */
 export const getReportSalesByCustomerUrl = (
@@ -16971,6 +17753,212 @@ export function useReportSalesByPeriod<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getReportSalesByPeriodQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export sales by period as CSV
+ */
+export const getExportSalesByPeriodCsvUrl = (
+  params?: ExportSalesByPeriodCsvParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/sales/reports/by-period/export/csv?${stringifiedParams}`
+    : `/api/sales/reports/by-period/export/csv`;
+};
+
+export const exportSalesByPeriodCsv = async (
+  params?: ExportSalesByPeriodCsvParams,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getExportSalesByPeriodCsvUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportSalesByPeriodCsvQueryKey = (
+  params?: ExportSalesByPeriodCsvParams,
+) => {
+  return [
+    `/api/sales/reports/by-period/export/csv`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportSalesByPeriodCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportSalesByPeriodCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSalesByPeriodCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSalesByPeriodCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportSalesByPeriodCsvQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportSalesByPeriodCsv>>
+  > = ({ signal }) =>
+    exportSalesByPeriodCsv(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportSalesByPeriodCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportSalesByPeriodCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportSalesByPeriodCsv>>
+>;
+export type ExportSalesByPeriodCsvQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export sales by period as CSV
+ */
+
+export function useExportSalesByPeriodCsv<
+  TData = Awaited<ReturnType<typeof exportSalesByPeriodCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSalesByPeriodCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSalesByPeriodCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportSalesByPeriodCsvQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export sales by period as PDF
+ */
+export const getExportSalesByPeriodPdfUrl = (
+  params?: ExportSalesByPeriodPdfParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/sales/reports/by-period/export/pdf?${stringifiedParams}`
+    : `/api/sales/reports/by-period/export/pdf`;
+};
+
+export const exportSalesByPeriodPdf = async (
+  params?: ExportSalesByPeriodPdfParams,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getExportSalesByPeriodPdfUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportSalesByPeriodPdfQueryKey = (
+  params?: ExportSalesByPeriodPdfParams,
+) => {
+  return [
+    `/api/sales/reports/by-period/export/pdf`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportSalesByPeriodPdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportSalesByPeriodPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSalesByPeriodPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSalesByPeriodPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportSalesByPeriodPdfQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportSalesByPeriodPdf>>
+  > = ({ signal }) =>
+    exportSalesByPeriodPdf(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportSalesByPeriodPdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportSalesByPeriodPdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportSalesByPeriodPdf>>
+>;
+export type ExportSalesByPeriodPdfQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export sales by period as PDF
+ */
+
+export function useExportSalesByPeriodPdf<
+  TData = Awaited<ReturnType<typeof exportSalesByPeriodPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSalesByPeriodPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSalesByPeriodPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportSalesByPeriodPdfQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -21059,6 +22047,109 @@ export const useApproveFinanceJournal = <
 };
 
 /**
+ * @summary Export GL journal entries as CSV
+ */
+export const getExportFinanceJournalsCsvUrl = (
+  params?: ExportFinanceJournalsCsvParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/finance/journals/export/csv?${stringifiedParams}`
+    : `/api/finance/journals/export/csv`;
+};
+
+export const exportFinanceJournalsCsv = async (
+  params?: ExportFinanceJournalsCsvParams,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getExportFinanceJournalsCsvUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportFinanceJournalsCsvQueryKey = (
+  params?: ExportFinanceJournalsCsvParams,
+) => {
+  return [
+    `/api/finance/journals/export/csv`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportFinanceJournalsCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportFinanceJournalsCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportFinanceJournalsCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportFinanceJournalsCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportFinanceJournalsCsvQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportFinanceJournalsCsv>>
+  > = ({ signal }) =>
+    exportFinanceJournalsCsv(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportFinanceJournalsCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportFinanceJournalsCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportFinanceJournalsCsv>>
+>;
+export type ExportFinanceJournalsCsvQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export GL journal entries as CSV
+ */
+
+export function useExportFinanceJournalsCsv<
+  TData = Awaited<ReturnType<typeof exportFinanceJournalsCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportFinanceJournalsCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportFinanceJournalsCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportFinanceJournalsCsvQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Export GL journal entries as Excel workbook
  */
 export const getExportFinanceJournalsXlsxUrl = (
@@ -21956,8 +23047,8 @@ export function useGetInventoryReportsStockValuation<
 /**
  * @summary Export stock valuation as CSV
  */
-export const getGetInventoryReportsStockValuationExportCsvUrl = (
-  params?: GetInventoryReportsStockValuationExportCsvParams,
+export const getExportStockValuationCsvUrl = (
+  params?: ExportStockValuationCsvParams,
 ) => {
   const normalizedParams = new URLSearchParams();
 
@@ -21974,21 +23065,18 @@ export const getGetInventoryReportsStockValuationExportCsvUrl = (
     : `/api/inventory/reports/stock-valuation/export/csv`;
 };
 
-export const getInventoryReportsStockValuationExportCsv = async (
-  params?: GetInventoryReportsStockValuationExportCsvParams,
+export const exportStockValuationCsv = async (
+  params?: ExportStockValuationCsvParams,
   options?: RequestInit,
 ): Promise<string> => {
-  return customFetch<string>(
-    getGetInventoryReportsStockValuationExportCsvUrl(params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<string>(getExportStockValuationCsvUrl(params), {
+    ...options,
+    method: "GET",
+  });
 };
 
-export const getGetInventoryReportsStockValuationExportCsvQueryKey = (
-  params?: GetInventoryReportsStockValuationExportCsvParams,
+export const getExportStockValuationCsvQueryKey = (
+  params?: ExportStockValuationCsvParams,
 ) => {
   return [
     `/api/inventory/reports/stock-valuation/export/csv`,
@@ -21996,16 +23084,14 @@ export const getGetInventoryReportsStockValuationExportCsvQueryKey = (
   ] as const;
 };
 
-export const getGetInventoryReportsStockValuationExportCsvQueryOptions = <
-  TData = Awaited<
-    ReturnType<typeof getInventoryReportsStockValuationExportCsv>
-  >,
+export const getExportStockValuationCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportStockValuationCsv>>,
   TError = ErrorType<unknown>,
 >(
-  params?: GetInventoryReportsStockValuationExportCsvParams,
+  params?: ExportStockValuationCsvParams,
   options?: {
     query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getInventoryReportsStockValuationExportCsv>>,
+      Awaited<ReturnType<typeof exportStockValuationCsv>>,
       TError,
       TData
     >;
@@ -22015,52 +23101,771 @@ export const getGetInventoryReportsStockValuationExportCsvQueryOptions = <
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ??
-    getGetInventoryReportsStockValuationExportCsvQueryKey(params);
+    queryOptions?.queryKey ?? getExportStockValuationCsvQueryKey(params);
 
   const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getInventoryReportsStockValuationExportCsv>>
+    Awaited<ReturnType<typeof exportStockValuationCsv>>
   > = ({ signal }) =>
-    getInventoryReportsStockValuationExportCsv(params, {
-      signal,
-      ...requestOptions,
-    });
+    exportStockValuationCsv(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getInventoryReportsStockValuationExportCsv>>,
+    Awaited<ReturnType<typeof exportStockValuationCsv>>,
     TError,
     TData
   > & { queryKey: QueryKey };
 };
 
-export type GetInventoryReportsStockValuationExportCsvQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getInventoryReportsStockValuationExportCsv>>
+export type ExportStockValuationCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportStockValuationCsv>>
 >;
-export type GetInventoryReportsStockValuationExportCsvQueryError =
-  ErrorType<unknown>;
+export type ExportStockValuationCsvQueryError = ErrorType<unknown>;
 
 /**
  * @summary Export stock valuation as CSV
  */
 
-export function useGetInventoryReportsStockValuationExportCsv<
-  TData = Awaited<
-    ReturnType<typeof getInventoryReportsStockValuationExportCsv>
-  >,
+export function useExportStockValuationCsv<
+  TData = Awaited<ReturnType<typeof exportStockValuationCsv>>,
   TError = ErrorType<unknown>,
 >(
-  params?: GetInventoryReportsStockValuationExportCsvParams,
+  params?: ExportStockValuationCsvParams,
   options?: {
     query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getInventoryReportsStockValuationExportCsv>>,
+      Awaited<ReturnType<typeof exportStockValuationCsv>>,
       TError,
       TData
     >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions =
-    getGetInventoryReportsStockValuationExportCsvQueryOptions(params, options);
+  const queryOptions = getExportStockValuationCsvQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export stock valuation as PDF
+ */
+export const getExportStockValuationPdfUrl = (
+  params?: ExportStockValuationPdfParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/stock-valuation/export/pdf?${stringifiedParams}`
+    : `/api/inventory/reports/stock-valuation/export/pdf`;
+};
+
+export const exportStockValuationPdf = async (
+  params?: ExportStockValuationPdfParams,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getExportStockValuationPdfUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportStockValuationPdfQueryKey = (
+  params?: ExportStockValuationPdfParams,
+) => {
+  return [
+    `/api/inventory/reports/stock-valuation/export/pdf`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportStockValuationPdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportStockValuationPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportStockValuationPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportStockValuationPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportStockValuationPdfQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportStockValuationPdf>>
+  > = ({ signal }) =>
+    exportStockValuationPdf(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportStockValuationPdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportStockValuationPdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportStockValuationPdf>>
+>;
+export type ExportStockValuationPdfQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export stock valuation as PDF
+ */
+
+export function useExportStockValuationPdf<
+  TData = Awaited<ReturnType<typeof exportStockValuationPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportStockValuationPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportStockValuationPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportStockValuationPdfQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export movement history as CSV
+ */
+export const getExportMovementHistoryCsvUrl = (
+  params?: ExportMovementHistoryCsvParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/movement-history/export/csv?${stringifiedParams}`
+    : `/api/inventory/reports/movement-history/export/csv`;
+};
+
+export const exportMovementHistoryCsv = async (
+  params?: ExportMovementHistoryCsvParams,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getExportMovementHistoryCsvUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportMovementHistoryCsvQueryKey = (
+  params?: ExportMovementHistoryCsvParams,
+) => {
+  return [
+    `/api/inventory/reports/movement-history/export/csv`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportMovementHistoryCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportMovementHistoryCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportMovementHistoryCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportMovementHistoryCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportMovementHistoryCsvQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportMovementHistoryCsv>>
+  > = ({ signal }) =>
+    exportMovementHistoryCsv(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportMovementHistoryCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportMovementHistoryCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportMovementHistoryCsv>>
+>;
+export type ExportMovementHistoryCsvQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export movement history as CSV
+ */
+
+export function useExportMovementHistoryCsv<
+  TData = Awaited<ReturnType<typeof exportMovementHistoryCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportMovementHistoryCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportMovementHistoryCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportMovementHistoryCsvQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export movement history as PDF
+ */
+export const getExportMovementHistoryPdfUrl = (
+  params?: ExportMovementHistoryPdfParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/movement-history/export/pdf?${stringifiedParams}`
+    : `/api/inventory/reports/movement-history/export/pdf`;
+};
+
+export const exportMovementHistoryPdf = async (
+  params?: ExportMovementHistoryPdfParams,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getExportMovementHistoryPdfUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportMovementHistoryPdfQueryKey = (
+  params?: ExportMovementHistoryPdfParams,
+) => {
+  return [
+    `/api/inventory/reports/movement-history/export/pdf`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportMovementHistoryPdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportMovementHistoryPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportMovementHistoryPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportMovementHistoryPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportMovementHistoryPdfQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportMovementHistoryPdf>>
+  > = ({ signal }) =>
+    exportMovementHistoryPdf(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportMovementHistoryPdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportMovementHistoryPdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportMovementHistoryPdf>>
+>;
+export type ExportMovementHistoryPdfQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export movement history as PDF
+ */
+
+export function useExportMovementHistoryPdf<
+  TData = Awaited<ReturnType<typeof exportMovementHistoryPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportMovementHistoryPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportMovementHistoryPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportMovementHistoryPdfQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export slow-moving items as CSV
+ */
+export const getExportSlowMovingCsvUrl = (
+  params?: ExportSlowMovingCsvParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/slow-moving/export/csv?${stringifiedParams}`
+    : `/api/inventory/reports/slow-moving/export/csv`;
+};
+
+export const exportSlowMovingCsv = async (
+  params?: ExportSlowMovingCsvParams,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getExportSlowMovingCsvUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportSlowMovingCsvQueryKey = (
+  params?: ExportSlowMovingCsvParams,
+) => {
+  return [
+    `/api/inventory/reports/slow-moving/export/csv`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportSlowMovingCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportSlowMovingCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSlowMovingCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSlowMovingCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportSlowMovingCsvQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportSlowMovingCsv>>
+  > = ({ signal }) =>
+    exportSlowMovingCsv(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportSlowMovingCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportSlowMovingCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportSlowMovingCsv>>
+>;
+export type ExportSlowMovingCsvQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export slow-moving items as CSV
+ */
+
+export function useExportSlowMovingCsv<
+  TData = Awaited<ReturnType<typeof exportSlowMovingCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSlowMovingCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSlowMovingCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportSlowMovingCsvQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export slow-moving items as PDF
+ */
+export const getExportSlowMovingPdfUrl = (
+  params?: ExportSlowMovingPdfParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/slow-moving/export/pdf?${stringifiedParams}`
+    : `/api/inventory/reports/slow-moving/export/pdf`;
+};
+
+export const exportSlowMovingPdf = async (
+  params?: ExportSlowMovingPdfParams,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getExportSlowMovingPdfUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportSlowMovingPdfQueryKey = (
+  params?: ExportSlowMovingPdfParams,
+) => {
+  return [
+    `/api/inventory/reports/slow-moving/export/pdf`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportSlowMovingPdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportSlowMovingPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSlowMovingPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSlowMovingPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportSlowMovingPdfQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportSlowMovingPdf>>
+  > = ({ signal }) =>
+    exportSlowMovingPdf(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportSlowMovingPdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportSlowMovingPdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportSlowMovingPdf>>
+>;
+export type ExportSlowMovingPdfQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export slow-moving items as PDF
+ */
+
+export function useExportSlowMovingPdf<
+  TData = Awaited<ReturnType<typeof exportSlowMovingPdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportSlowMovingPdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportSlowMovingPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportSlowMovingPdfQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export stocktake variance as CSV
+ */
+export const getExportStocktakeVarianceCsvUrl = (
+  params?: ExportStocktakeVarianceCsvParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/stocktake-variance/export/csv?${stringifiedParams}`
+    : `/api/inventory/reports/stocktake-variance/export/csv`;
+};
+
+export const exportStocktakeVarianceCsv = async (
+  params?: ExportStocktakeVarianceCsvParams,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getExportStocktakeVarianceCsvUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportStocktakeVarianceCsvQueryKey = (
+  params?: ExportStocktakeVarianceCsvParams,
+) => {
+  return [
+    `/api/inventory/reports/stocktake-variance/export/csv`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportStocktakeVarianceCsvQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportStocktakeVarianceCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportStocktakeVarianceCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportStocktakeVarianceCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportStocktakeVarianceCsvQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportStocktakeVarianceCsv>>
+  > = ({ signal }) =>
+    exportStocktakeVarianceCsv(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportStocktakeVarianceCsv>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportStocktakeVarianceCsvQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportStocktakeVarianceCsv>>
+>;
+export type ExportStocktakeVarianceCsvQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export stocktake variance as CSV
+ */
+
+export function useExportStocktakeVarianceCsv<
+  TData = Awaited<ReturnType<typeof exportStocktakeVarianceCsv>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportStocktakeVarianceCsvParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportStocktakeVarianceCsv>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportStocktakeVarianceCsvQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export stocktake variance as PDF
+ */
+export const getExportStocktakeVariancePdfUrl = (
+  params?: ExportStocktakeVariancePdfParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/reports/stocktake-variance/export/pdf?${stringifiedParams}`
+    : `/api/inventory/reports/stocktake-variance/export/pdf`;
+};
+
+export const exportStocktakeVariancePdf = async (
+  params?: ExportStocktakeVariancePdfParams,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getExportStocktakeVariancePdfUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getExportStocktakeVariancePdfQueryKey = (
+  params?: ExportStocktakeVariancePdfParams,
+) => {
+  return [
+    `/api/inventory/reports/stocktake-variance/export/pdf`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getExportStocktakeVariancePdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportStocktakeVariancePdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportStocktakeVariancePdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportStocktakeVariancePdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportStocktakeVariancePdfQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof exportStocktakeVariancePdf>>
+  > = ({ signal }) =>
+    exportStocktakeVariancePdf(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportStocktakeVariancePdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportStocktakeVariancePdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportStocktakeVariancePdf>>
+>;
+export type ExportStocktakeVariancePdfQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export stocktake variance as PDF
+ */
+
+export function useExportStocktakeVariancePdf<
+  TData = Awaited<ReturnType<typeof exportStocktakeVariancePdf>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ExportStocktakeVariancePdfParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportStocktakeVariancePdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportStocktakeVariancePdfQueryOptions(
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

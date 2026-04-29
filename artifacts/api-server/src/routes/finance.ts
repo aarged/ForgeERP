@@ -271,8 +271,8 @@ router.post("/finance/journals/:id/approve", ...tenantWriteMiddleware, async (re
   const id = Number(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  if (!["admin", "super_admin"].includes(userRole)) {
-    res.status(403).json({ error: "Only admins can approve journals" });
+  if (!["admin", "super_admin", "accountant", "manager"].includes(userRole)) {
+    res.status(403).json({ error: "Insufficient permissions to approve journals" });
     return;
   }
 

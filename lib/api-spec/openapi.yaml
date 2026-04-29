@@ -3253,6 +3253,70 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/PoSummaryRow" }
 
+  /procurement/reports/po-summary/export/csv:
+    get:
+      operationId: exportPoSummaryCsv
+      summary: Export PO summary as CSV
+      tags: [Procurement]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /procurement/reports/po-summary/export/pdf:
+    get:
+      operationId: exportPoSummaryPdf
+      summary: Export PO summary as PDF
+      tags: [Procurement]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
+  /procurement/reports/supplier-performance/export/csv:
+    get:
+      operationId: exportSupplierPerformanceCsv
+      summary: Export supplier performance as CSV
+      tags: [Procurement]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /procurement/reports/supplier-performance/export/pdf:
+    get:
+      operationId: exportSupplierPerformancePdf
+      summary: Export supplier performance as PDF
+      tags: [Procurement]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
   /procurement/reports/goods-in-transit:
     get:
       operationId: reportGoodsInTransit
@@ -3296,6 +3360,42 @@ paths:
                     totalReceived: { type: number }
                     outstandingQty: { type: number }
                     outstandingPct: { type: integer }
+
+  /procurement/reports/goods-in-transit/export/csv:
+    get:
+      operationId: exportGoodsInTransitCsv
+      summary: Export goods-in-transit as CSV
+      tags: [Procurement]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { in: query, name: supplierId, schema: { type: integer } }
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /procurement/reports/goods-in-transit/export/pdf:
+    get:
+      operationId: exportGoodsInTransitPdf
+      summary: Export goods-in-transit as PDF
+      tags: [Procurement]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { in: query, name: supplierId, schema: { type: integer } }
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
 
   /procurement/reports/grn:
     get:
@@ -4428,6 +4528,40 @@ paths:
                     totalRevenue: { type: string }
                     invoiceCount: { type: integer }
 
+  /sales/reports/by-item/export/csv:
+    get:
+      operationId: exportSalesByItemCsv
+      summary: Export sales by item as CSV
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: string } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /sales/reports/by-item/export/pdf:
+    get:
+      operationId: exportSalesByItemPdf
+      summary: Export sales by item as PDF
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: string } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
   /sales/reports/by-customer:
     get:
       operationId: reportSalesByCustomer
@@ -4478,6 +4612,40 @@ paths:
                     totalRevenue: { type: string }
                     invoiceCount: { type: integer }
                     orderCount: { type: integer }
+
+  /sales/reports/by-period/export/csv:
+    get:
+      operationId: exportSalesByPeriodCsv
+      summary: Export sales by period as CSV
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: string } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /sales/reports/by-period/export/pdf:
+    get:
+      operationId: exportSalesByPeriodPdf
+      summary: Export sales by period as PDF
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: string } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
 
   /sales/reports/customer-statement:
     get:
@@ -5726,6 +5894,26 @@ paths:
         "403": { description: Insufficient role }
         "404": { description: Posting not found }
 
+  /finance/journals/export/csv:
+    get:
+      operationId: exportFinanceJournalsCsv
+      tags: [Finance]
+      summary: Export GL journal entries as CSV
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+        - { in: query, name: entityType, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: accountCode, schema: { type: string } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
   /finance/journals/export/xlsx:
     get:
       operationId: exportFinanceJournalsXlsx
@@ -5947,6 +6135,7 @@ paths:
 
   /inventory/reports/stock-valuation/export/csv:
     get:
+      operationId: exportStockValuationCsv
       tags: [Inventory]
       summary: Export stock valuation as CSV
       security: [{ clerkAuth: [] }]
@@ -5960,6 +6149,131 @@ paths:
           content:
             text/csv:
               schema: { type: string }
+
+  /inventory/reports/stock-valuation/export/pdf:
+    get:
+      operationId: exportStockValuationPdf
+      tags: [Inventory]
+      summary: Export stock valuation as PDF
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+        - { name: itemId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
+  /inventory/reports/movement-history/export/csv:
+    get:
+      operationId: exportMovementHistoryCsv
+      tags: [Inventory]
+      summary: Export movement history as CSV
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: fromDate, in: query, schema: { type: string } }
+        - { name: toDate, in: query, schema: { type: string } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+        - { name: itemId, in: query, schema: { type: integer } }
+        - { name: movementType, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /inventory/reports/movement-history/export/pdf:
+    get:
+      operationId: exportMovementHistoryPdf
+      tags: [Inventory]
+      summary: Export movement history as PDF
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: fromDate, in: query, schema: { type: string } }
+        - { name: toDate, in: query, schema: { type: string } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+        - { name: itemId, in: query, schema: { type: integer } }
+        - { name: movementType, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
+  /inventory/reports/slow-moving/export/csv:
+    get:
+      operationId: exportSlowMovingCsv
+      tags: [Inventory]
+      summary: Export slow-moving items as CSV
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: days, in: query, schema: { type: integer } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /inventory/reports/slow-moving/export/pdf:
+    get:
+      operationId: exportSlowMovingPdf
+      tags: [Inventory]
+      summary: Export slow-moving items as PDF
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: days, in: query, schema: { type: integer } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
+  /inventory/reports/stocktake-variance/export/csv:
+    get:
+      operationId: exportStocktakeVarianceCsv
+      tags: [Inventory]
+      summary: Export stocktake variance as CSV
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: stocktakeRunId, in: query, schema: { type: integer } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /inventory/reports/stocktake-variance/export/pdf:
+    get:
+      operationId: exportStocktakeVariancePdf
+      tags: [Inventory]
+      summary: Export stocktake variance as PDF
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { name: stocktakeRunId, in: query, schema: { type: integer } }
+        - { name: warehouseId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
 
   /inventory/reports/movement-history:
     get:

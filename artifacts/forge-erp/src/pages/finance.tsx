@@ -7,6 +7,7 @@ import {
   usePostFinanceJournals,
   usePostFinanceJournalsIdReverse,
   useApproveFinanceJournal,
+  getExportFinanceJournalsCsvUrl,
   getExportFinanceJournalsXlsxUrl,
   useGetFinanceTrialBalance,
   getGetFinanceTrialBalanceQueryKey,
@@ -199,11 +200,12 @@ function JournalTab() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => {
-            const params = new URLSearchParams();
-            if (status !== "all") params.set("status", status);
-            if (fromDate) params.set("fromDate", fromDate);
-            if (toDate) params.set("toDate", toDate);
-            window.open(`/api/finance/journals/export/csv?${params.toString()}`, "_blank");
+            const csvUrl = getExportFinanceJournalsCsvUrl({
+              ...(status !== "all" ? { status } : {}),
+              ...(fromDate ? { fromDate } : {}),
+              ...(toDate ? { toDate } : {}),
+            });
+            window.open(csvUrl, "_blank");
           }}><Download className="h-4 w-4 mr-2" />CSV</Button>
           <Button variant="outline" onClick={() => {
             const xlsxUrl = getExportFinanceJournalsXlsxUrl({

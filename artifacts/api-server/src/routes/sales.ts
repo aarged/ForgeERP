@@ -2243,4 +2243,169 @@ router.get("/sales/reports/backorders/export/csv", ...tenantUserMiddleware, asyn
   res.send(lines.join("\r\n"));
 });
 
+/** Sales by Period CSV Export */
+router.get("/sales/reports/by-period/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      period: sql<string>`to_char(${customerInvoicesTable.invoiceDate}::date, 'YYYY-MM')`,
+      totalRevenue: sql<string>`coalesce(sum(${customerInvoicesTable.total}::numeric), 0)`,
+      invoiceCount: sql<number>`count(*)`,
+    })
+    .from(customerInvoicesTable)
+    .where(and(
+      eq(customerInvoicesTable.tenantId, tenantId),
+      isNull(customerInvoicesTable.deletedAt),
+      sql`${customerInvoicesTable.status} NOT IN ('voided')`,
+      fromDate ? sql`${customerInvoicesTable.invoiceDate} >= ${fromDate}` : undefined,
+      toDate ? sql`${customerInvoicesTable.invoiceDate} <= ${toDate}` : undefined,
+    ))
+    .groupBy(sql`to_char(${customerInvoicesTable.invoiceDate}::date, 'YYYY-MM')`)
+    .orderBy(sql`to_char(${customerInvoicesTable.invoiceDate}::date, 'YYYY-MM') asc`)
+  );
+
+  const lines = ["Period,Total Revenue,Invoice Count"];
+  for (const r of rows) {
+    lines.push([r.period, Number(r.totalRevenue).toFixed(2), r.invoiceCount].join(","));
+  }
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="revenue-by-period.csv"`);
+  res.send(lines.join("\n"));
+});
+
+/** Sales by Period PDF Export */
+router.get("/sales/reports/by-period/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      period: sql<string>`to_char(${customerInvoicesTable.invoiceDate}::date, 'YYYY-MM')`,
+      totalRevenue: sql<string>`coalesce(sum(${customerInvoicesTable.total}::numeric), 0)`,
+      invoiceCount: sql<number>`count(*)`,
+    })
+    .from(customerInvoicesTable)
+    .where(and(
+      eq(customerInvoicesTable.tenantId, tenantId),
+      isNull(customerInvoicesTable.deletedAt),
+      sql`${customerInvoicesTable.status} NOT IN ('voided')`,
+      fromDate ? sql`${customerInvoicesTable.invoiceDate} >= ${fromDate}` : undefined,
+      toDate ? sql`${customerInvoicesTable.invoiceDate} <= ${toDate}` : undefined,
+    ))
+    .groupBy(sql`to_char(${customerInvoicesTable.invoiceDate}::date, 'YYYY-MM')`)
+    .orderBy(sql`to_char(${customerInvoicesTable.invoiceDate}::date, 'YYYY-MM') asc`)
+  );
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="revenue-by-period.pdf"`);
+  doc.pipe(res);
+  doc.fontSize(16).text("Sales Revenue by Period", { align: "center" });
+  doc.moveDown(0.5);
+  doc.fontSize(9).text(`Generated: ${new Date().toISOString().split("T")[0]}`, { align: "right" });
+  doc.moveDown();
+  const cols = [150, 200, 150];
+  const headers = ["Period", "Total Revenue", "Invoice Count"];
+  let x = doc.page.margins.left;
+  headers.forEach((h, i) => { doc.fontSize(9).font("Helvetica-Bold").text(h, x, doc.y, { width: cols[i], lineBreak: false }); x += cols[i]; });
+  doc.moveDown(0.5);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.3);
+  for (const r of rows) {
+    x = doc.page.margins.left;
+    const rowY = doc.y;
+    [r.period, Number(r.totalRevenue).toFixed(2), String(r.invoiceCount)].forEach((v, i) => {
+      doc.fontSize(9).font("Helvetica").text(v, x, rowY, { width: cols[i], lineBreak: false }); x += cols[i];
+    });
+    doc.moveDown(0.7);
+  }
+  doc.end();
+});
+
+/** Sales by Item CSV Export */
+router.get("/sales/reports/by-item/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      itemCode: customerInvoiceLinesTable.itemCode,
+      itemName: customerInvoiceLinesTable.itemName,
+      totalQty: sql<string>`coalesce(sum(${customerInvoiceLinesTable.quantity}::numeric), 0)`,
+      totalRevenue: sql<string>`coalesce(sum(${customerInvoiceLinesTable.lineTotal}::numeric), 0)`,
+      invoiceCount: sql<number>`count(distinct ${customerInvoiceLinesTable.invoiceId})`,
+    })
+    .from(customerInvoiceLinesTable)
+    .innerJoin(customerInvoicesTable, eq(customerInvoiceLinesTable.invoiceId, customerInvoicesTable.id))
+    .where(and(
+      eq(customerInvoiceLinesTable.tenantId, tenantId),
+      isNull(customerInvoicesTable.deletedAt),
+      sql`${customerInvoicesTable.status} NOT IN ('voided')`,
+      fromDate ? sql`${customerInvoicesTable.invoiceDate} >= ${fromDate}` : undefined,
+      toDate ? sql`${customerInvoicesTable.invoiceDate} <= ${toDate}` : undefined,
+    ))
+    .groupBy(customerInvoiceLinesTable.itemId, customerInvoiceLinesTable.itemCode, customerInvoiceLinesTable.itemName)
+    .orderBy(sql`sum(${customerInvoiceLinesTable.lineTotal}::numeric) desc`)
+  );
+
+  const lines = ["Item Code,Item Name,Total Qty,Total Revenue,Invoice Count"];
+  for (const r of rows) {
+    lines.push([r.itemCode ?? "", `"${r.itemName ?? ""}"`, Number(r.totalQty).toFixed(2), Number(r.totalRevenue).toFixed(2), r.invoiceCount].join(","));
+  }
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="sales-by-item.csv"`);
+  res.send(lines.join("\n"));
+});
+
+/** Sales by Item PDF Export */
+router.get("/sales/reports/by-item/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      itemCode: customerInvoiceLinesTable.itemCode,
+      itemName: customerInvoiceLinesTable.itemName,
+      totalQty: sql<string>`coalesce(sum(${customerInvoiceLinesTable.quantity}::numeric), 0)`,
+      totalRevenue: sql<string>`coalesce(sum(${customerInvoiceLinesTable.lineTotal}::numeric), 0)`,
+      invoiceCount: sql<number>`count(distinct ${customerInvoiceLinesTable.invoiceId})`,
+    })
+    .from(customerInvoiceLinesTable)
+    .innerJoin(customerInvoicesTable, eq(customerInvoiceLinesTable.invoiceId, customerInvoicesTable.id))
+    .where(and(
+      eq(customerInvoiceLinesTable.tenantId, tenantId),
+      isNull(customerInvoicesTable.deletedAt),
+      sql`${customerInvoicesTable.status} NOT IN ('voided')`,
+      fromDate ? sql`${customerInvoicesTable.invoiceDate} >= ${fromDate}` : undefined,
+      toDate ? sql`${customerInvoicesTable.invoiceDate} <= ${toDate}` : undefined,
+    ))
+    .groupBy(customerInvoiceLinesTable.itemId, customerInvoiceLinesTable.itemCode, customerInvoiceLinesTable.itemName)
+    .orderBy(sql`sum(${customerInvoiceLinesTable.lineTotal}::numeric) desc`)
+  );
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="sales-by-item.pdf"`);
+  doc.pipe(res);
+  doc.fontSize(16).text("Sales by Item Report", { align: "center" });
+  doc.moveDown(0.5);
+  doc.fontSize(9).text(`Generated: ${new Date().toISOString().split("T")[0]}`, { align: "right" });
+  doc.moveDown();
+  const cols = [80, 180, 80, 100, 80];
+  const headers = ["Item Code", "Item Name", "Total Qty", "Total Revenue", "Invoices"];
+  let x = doc.page.margins.left;
+  headers.forEach((h, i) => { doc.fontSize(9).font("Helvetica-Bold").text(h, x, doc.y, { width: cols[i], lineBreak: false }); x += cols[i]; });
+  doc.moveDown(0.5);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.3);
+  for (const r of rows) {
+    x = doc.page.margins.left;
+    const rowY = doc.y;
+    [r.itemCode ?? "", String(r.itemName ?? "").slice(0, 30), Number(r.totalQty).toFixed(2), Number(r.totalRevenue).toFixed(2), String(r.invoiceCount)].forEach((v, i) => {
+      doc.fontSize(9).font("Helvetica").text(v, x, rowY, { width: cols[i], lineBreak: false }); x += cols[i];
+    });
+    doc.moveDown(0.7);
+    if (doc.y > doc.page.height - 80) { doc.addPage(); }
+  }
+  doc.end();
+});
+
 export default router;

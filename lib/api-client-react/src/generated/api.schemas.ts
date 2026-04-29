@@ -2926,6 +2926,16 @@ export type ReportPoSummaryParams = {
   to?: string;
 };
 
+export type ExportPoSummaryCsvParams = {
+  from?: string;
+  to?: string;
+};
+
+export type ExportPoSummaryPdfParams = {
+  from?: string;
+  to?: string;
+};
+
 export type ReportGoodsInTransitParams = {
   supplierId?: number;
   from?: string;
@@ -2946,6 +2956,18 @@ export type ReportGoodsInTransit200Item = {
   totalReceived?: number;
   outstandingQty?: number;
   outstandingPct?: number;
+};
+
+export type ExportGoodsInTransitCsvParams = {
+  supplierId?: number;
+  from?: string;
+  to?: string;
+};
+
+export type ExportGoodsInTransitPdfParams = {
+  supplierId?: number;
+  from?: string;
+  to?: string;
 };
 
 export type ReportGrnParams = {
@@ -3151,6 +3173,16 @@ export type ReportSalesByItem200Item = {
   invoiceCount?: number;
 };
 
+export type ExportSalesByItemCsvParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type ExportSalesByItemPdfParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
 export type ReportSalesByCustomerParams = {
   fromDate?: string;
   toDate?: string;
@@ -3174,6 +3206,16 @@ export type ReportSalesByPeriod200Item = {
   totalRevenue?: string;
   invoiceCount?: number;
   orderCount?: number;
+};
+
+export type ExportSalesByPeriodCsvParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type ExportSalesByPeriodPdfParams = {
+  fromDate?: string;
+  toDate?: string;
 };
 
 export type ReportCustomerStatementParams = {
@@ -3817,6 +3859,14 @@ export type PostFinanceJournalsIdReverseBody = {
   memo?: string;
 };
 
+export type ExportFinanceJournalsCsvParams = {
+  fromDate?: string;
+  toDate?: string;
+  entityType?: string;
+  status?: string;
+  accountCode?: string;
+};
+
 export type ExportFinanceJournalsXlsxParams = {
   fromDate?: string;
   toDate?: string;
@@ -3951,9 +4001,50 @@ export type GetInventoryReportsStockValuation200 = {
   rows?: GetInventoryReportsStockValuation200RowsItem[];
 };
 
-export type GetInventoryReportsStockValuationExportCsvParams = {
+export type ExportStockValuationCsvParams = {
   warehouseId?: number;
   itemId?: number;
+};
+
+export type ExportStockValuationPdfParams = {
+  warehouseId?: number;
+  itemId?: number;
+};
+
+export type ExportMovementHistoryCsvParams = {
+  fromDate?: string;
+  toDate?: string;
+  warehouseId?: number;
+  itemId?: number;
+  movementType?: string;
+};
+
+export type ExportMovementHistoryPdfParams = {
+  fromDate?: string;
+  toDate?: string;
+  warehouseId?: number;
+  itemId?: number;
+  movementType?: string;
+};
+
+export type ExportSlowMovingCsvParams = {
+  days?: number;
+  warehouseId?: number;
+};
+
+export type ExportSlowMovingPdfParams = {
+  days?: number;
+  warehouseId?: number;
+};
+
+export type ExportStocktakeVarianceCsvParams = {
+  stocktakeRunId?: number;
+  warehouseId?: number;
+};
+
+export type ExportStocktakeVariancePdfParams = {
+  stocktakeRunId?: number;
+  warehouseId?: number;
 };
 
 export type GetInventoryReportsMovementHistoryParams = {

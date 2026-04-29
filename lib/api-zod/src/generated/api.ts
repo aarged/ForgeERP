@@ -4091,6 +4091,44 @@ export const ReportPoSummaryResponseItem = zod.object({
 export const ReportPoSummaryResponse = zod.array(ReportPoSummaryResponseItem);
 
 /**
+ * @summary Export PO summary as CSV
+ */
+export const ExportPoSummaryCsvQueryParams = zod.object({
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+});
+
+export const ExportPoSummaryCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export PO summary as PDF
+ */
+export const ExportPoSummaryPdfQueryParams = zod.object({
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+});
+
+export const ExportPoSummaryPdfHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export supplier performance as CSV
+ */
+export const ExportSupplierPerformanceCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export supplier performance as PDF
+ */
+export const ExportSupplierPerformancePdfHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
  * @summary Report — goods in transit (sent POs not yet fully received)
  */
 export const ReportGoodsInTransitQueryParams = zod.object({
@@ -4121,6 +4159,32 @@ export const ReportGoodsInTransitResponseItem = zod.object({
 export const ReportGoodsInTransitResponse = zod.array(
   ReportGoodsInTransitResponseItem,
 );
+
+/**
+ * @summary Export goods-in-transit as CSV
+ */
+export const ExportGoodsInTransitCsvQueryParams = zod.object({
+  supplierId: zod.coerce.number().optional(),
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+});
+
+export const ExportGoodsInTransitCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export goods-in-transit as PDF
+ */
+export const ExportGoodsInTransitPdfQueryParams = zod.object({
+  supplierId: zod.coerce.number().optional(),
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+});
+
+export const ExportGoodsInTransitPdfHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
 
 /**
  * @summary Goods received note summary report
@@ -6034,6 +6098,30 @@ export const ReportSalesByItemResponse = zod.array(
 );
 
 /**
+ * @summary Export sales by item as CSV
+ */
+export const ExportSalesByItemCsvQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ExportSalesByItemCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export sales by item as PDF
+ */
+export const ExportSalesByItemPdfQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ExportSalesByItemPdfHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
  * @summary Sales analysis by customer (revenue, invoice count, avg value)
  */
 export const ReportSalesByCustomerQueryParams = zod.object({
@@ -6077,6 +6165,30 @@ export const ReportSalesByPeriodResponseItem = zod.object({
 export const ReportSalesByPeriodResponse = zod.array(
   ReportSalesByPeriodResponseItem,
 );
+
+/**
+ * @summary Export sales by period as CSV
+ */
+export const ExportSalesByPeriodCsvQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ExportSalesByPeriodCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export sales by period as PDF
+ */
+export const ExportSalesByPeriodPdfQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ExportSalesByPeriodPdfHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
 
 /**
  * @summary Customer statement — invoices vs payments
@@ -7512,6 +7624,21 @@ export const ApproveFinanceJournalResponse = zod.object({
 });
 
 /**
+ * @summary Export GL journal entries as CSV
+ */
+export const ExportFinanceJournalsCsvQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+  entityType: zod.coerce.string().optional(),
+  status: zod.coerce.string().optional(),
+  accountCode: zod.coerce.string().optional(),
+});
+
+export const ExportFinanceJournalsCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
  * @summary Export GL journal entries as Excel workbook
  */
 export const ExportFinanceJournalsXlsxQueryParams = zod.object({
@@ -7714,14 +7841,102 @@ export const GetInventoryReportsStockValuationResponse = zod.object({
 /**
  * @summary Export stock valuation as CSV
  */
-export const GetInventoryReportsStockValuationExportCsvQueryParams = zod.object(
-  {
-    warehouseId: zod.coerce.number().optional(),
-    itemId: zod.coerce.number().optional(),
-  },
-);
+export const ExportStockValuationCsvQueryParams = zod.object({
+  warehouseId: zod.coerce.number().optional(),
+  itemId: zod.coerce.number().optional(),
+});
 
-export const GetInventoryReportsStockValuationExportCsvHeader = zod.object({
+export const ExportStockValuationCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export stock valuation as PDF
+ */
+export const ExportStockValuationPdfQueryParams = zod.object({
+  warehouseId: zod.coerce.number().optional(),
+  itemId: zod.coerce.number().optional(),
+});
+
+export const ExportStockValuationPdfHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export movement history as CSV
+ */
+export const ExportMovementHistoryCsvQueryParams = zod.object({
+  fromDate: zod.coerce.string().optional(),
+  toDate: zod.coerce.string().optional(),
+  warehouseId: zod.coerce.number().optional(),
+  itemId: zod.coerce.number().optional(),
+  movementType: zod.coerce.string().optional(),
+});
+
+export const ExportMovementHistoryCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export movement history as PDF
+ */
+export const ExportMovementHistoryPdfQueryParams = zod.object({
+  fromDate: zod.coerce.string().optional(),
+  toDate: zod.coerce.string().optional(),
+  warehouseId: zod.coerce.number().optional(),
+  itemId: zod.coerce.number().optional(),
+  movementType: zod.coerce.string().optional(),
+});
+
+export const ExportMovementHistoryPdfHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export slow-moving items as CSV
+ */
+export const ExportSlowMovingCsvQueryParams = zod.object({
+  days: zod.coerce.number().optional(),
+  warehouseId: zod.coerce.number().optional(),
+});
+
+export const ExportSlowMovingCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export slow-moving items as PDF
+ */
+export const ExportSlowMovingPdfQueryParams = zod.object({
+  days: zod.coerce.number().optional(),
+  warehouseId: zod.coerce.number().optional(),
+});
+
+export const ExportSlowMovingPdfHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export stocktake variance as CSV
+ */
+export const ExportStocktakeVarianceCsvQueryParams = zod.object({
+  stocktakeRunId: zod.coerce.number().optional(),
+  warehouseId: zod.coerce.number().optional(),
+});
+
+export const ExportStocktakeVarianceCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export stocktake variance as PDF
+ */
+export const ExportStocktakeVariancePdfQueryParams = zod.object({
+  stocktakeRunId: zod.coerce.number().optional(),
+  warehouseId: zod.coerce.number().optional(),
+});
+
+export const ExportStocktakeVariancePdfHeader = zod.object({
   "x-tenant-id": zod.string(),
 });
 

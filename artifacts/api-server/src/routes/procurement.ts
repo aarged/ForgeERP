@@ -3076,4 +3076,238 @@ router.get("/procurement/reports/grn/export/csv", ...tenantUserMiddleware, async
   res.send(lines.join("\r\n"));
 });
 
+/** PO Summary CSV Export */
+router.get("/procurement/reports/po-summary/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { from, to } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      status: purchaseOrdersTable.status,
+      count: sql<number>`count(*)::int`,
+      total: sql<number>`sum(${purchaseOrdersTable.total})`,
+    })
+      .from(purchaseOrdersTable)
+      .where(and(
+        eq(purchaseOrdersTable.tenantId, tenantId),
+        isNull(purchaseOrdersTable.deletedAt),
+        from ? sql`${purchaseOrdersTable.createdAt} >= ${from}::timestamptz` : undefined,
+        to ? sql`${purchaseOrdersTable.createdAt} <= ${to}::timestamptz` : undefined,
+      ))
+      .groupBy(purchaseOrdersTable.status),
+  );
+
+  const lines = ["Status,Count,Total Value"];
+  for (const r of rows) {
+    lines.push([r.status, r.count, Number(r.total ?? 0).toFixed(2)].join(","));
+  }
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="po-summary.csv"`);
+  res.send(lines.join("\n"));
+});
+
+/** PO Summary PDF Export */
+router.get("/procurement/reports/po-summary/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { from, to } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      status: purchaseOrdersTable.status,
+      count: sql<number>`count(*)::int`,
+      total: sql<number>`sum(${purchaseOrdersTable.total})`,
+    })
+      .from(purchaseOrdersTable)
+      .where(and(
+        eq(purchaseOrdersTable.tenantId, tenantId),
+        isNull(purchaseOrdersTable.deletedAt),
+        from ? sql`${purchaseOrdersTable.createdAt} >= ${from}::timestamptz` : undefined,
+        to ? sql`${purchaseOrdersTable.createdAt} <= ${to}::timestamptz` : undefined,
+      ))
+      .groupBy(purchaseOrdersTable.status),
+  );
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="po-summary.pdf"`);
+  doc.pipe(res);
+  doc.fontSize(16).text("Purchase Order Summary", { align: "center" });
+  doc.moveDown(0.5);
+  doc.fontSize(9).text(`Generated: ${new Date().toISOString().split("T")[0]}`, { align: "right" });
+  doc.moveDown();
+  const cols = [200, 100, 150];
+  const headers = ["Status", "Count", "Total Value"];
+  let x = doc.page.margins.left;
+  headers.forEach((h, i) => { doc.fontSize(9).font("Helvetica-Bold").text(h, x, doc.y, { width: cols[i], lineBreak: false }); x += cols[i]; });
+  doc.moveDown(0.5);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.3);
+  const grandTotal = rows.reduce((s, r) => s + Number(r.total ?? 0), 0);
+  for (const r of rows) {
+    x = doc.page.margins.left;
+    const rowY = doc.y;
+    [String(r.status), String(r.count), Number(r.total ?? 0).toFixed(2)].forEach((v, i) => {
+      doc.fontSize(9).font("Helvetica").text(v, x, rowY, { width: cols[i], lineBreak: false }); x += cols[i];
+    });
+    doc.moveDown(0.7);
+  }
+  doc.moveDown(0.3);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.fontSize(9).font("Helvetica-Bold").text(`Grand Total: ${grandTotal.toFixed(2)}`, doc.page.margins.left);
+  doc.end();
+});
+
+/** Supplier Performance CSV Export */
+router.get("/procurement/reports/supplier-performance/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      supplierName: purchaseOrdersTable.supplierName,
+      totalOrders: sql<number>`count(*)::int`,
+      totalValue: sql<number>`sum(${purchaseOrdersTable.total})`,
+      avgOrderValue: sql<number>`avg(${purchaseOrdersTable.total})`,
+    })
+      .from(purchaseOrdersTable)
+      .where(and(eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt)))
+      .groupBy(purchaseOrdersTable.supplierId, purchaseOrdersTable.supplierName)
+      .orderBy(desc(sql`sum(${purchaseOrdersTable.total})`)),
+  );
+
+  const lines = ["Supplier,Total Orders,Total Value,Avg Order Value"];
+  for (const r of rows) {
+    lines.push([`"${r.supplierName ?? ""}"`, r.totalOrders, Number(r.totalValue ?? 0).toFixed(2), Number(r.avgOrderValue ?? 0).toFixed(2)].join(","));
+  }
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="supplier-performance.csv"`);
+  res.send(lines.join("\n"));
+});
+
+/** Supplier Performance PDF Export */
+router.get("/procurement/reports/supplier-performance/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      supplierName: purchaseOrdersTable.supplierName,
+      totalOrders: sql<number>`count(*)::int`,
+      totalValue: sql<number>`sum(${purchaseOrdersTable.total})`,
+      avgOrderValue: sql<number>`avg(${purchaseOrdersTable.total})`,
+    })
+      .from(purchaseOrdersTable)
+      .where(and(eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt)))
+      .groupBy(purchaseOrdersTable.supplierId, purchaseOrdersTable.supplierName)
+      .orderBy(desc(sql`sum(${purchaseOrdersTable.total})`)),
+  );
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="supplier-performance.pdf"`);
+  doc.pipe(res);
+  doc.fontSize(16).text("Supplier Performance Report", { align: "center" });
+  doc.moveDown(0.5);
+  doc.fontSize(9).text(`Generated: ${new Date().toISOString().split("T")[0]}`, { align: "right" });
+  doc.moveDown();
+  const cols = [200, 80, 110, 110];
+  const headers = ["Supplier", "Orders", "Total Value", "Avg Order"];
+  let x = doc.page.margins.left;
+  headers.forEach((h, i) => { doc.fontSize(9).font("Helvetica-Bold").text(h, x, doc.y, { width: cols[i], lineBreak: false }); x += cols[i]; });
+  doc.moveDown(0.5);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.3);
+  for (const r of rows) {
+    x = doc.page.margins.left;
+    const rowY = doc.y;
+    [String(r.supplierName ?? "").slice(0, 35), String(r.totalOrders), Number(r.totalValue ?? 0).toFixed(2), Number(r.avgOrderValue ?? 0).toFixed(2)].forEach((v, i) => {
+      doc.fontSize(9).font("Helvetica").text(v, x, rowY, { width: cols[i], lineBreak: false }); x += cols[i];
+    });
+    doc.moveDown(0.7);
+    if (doc.y > doc.page.height - 80) { doc.addPage(); }
+  }
+  doc.end();
+});
+
+/** Goods in Transit CSV Export */
+router.get("/procurement/reports/goods-in-transit/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { supplierId, from, to } = req.query as Record<string, string>;
+  const pos = await withTenantDb(tenantId, (db) =>
+    db.select({
+      code: purchaseOrdersTable.code,
+      supplierName: purchaseOrdersTable.supplierName,
+      status: purchaseOrdersTable.status,
+      total: purchaseOrdersTable.total,
+      currencyCode: purchaseOrdersTable.currencyCode,
+      deliveryDate: purchaseOrdersTable.deliveryDate,
+    })
+      .from(purchaseOrdersTable)
+      .where(and(
+        eq(purchaseOrdersTable.tenantId, tenantId),
+        isNull(purchaseOrdersTable.deletedAt),
+        sql`${purchaseOrdersTable.status} IN ('sent', 'partially_received')`,
+        supplierId ? eq(purchaseOrdersTable.supplierId, Number(supplierId)) : undefined,
+        from ? sql`${purchaseOrdersTable.createdAt} >= ${from}::timestamptz` : undefined,
+        to ? sql`${purchaseOrdersTable.createdAt} <= ${to}::timestamptz` : undefined,
+      ))
+      .orderBy(asc(purchaseOrdersTable.deliveryDate))
+  );
+
+  const lines = ["PO Code,Supplier,Status,Total,Currency,Expected Delivery"];
+  for (const r of pos) {
+    lines.push([r.code, `"${r.supplierName ?? ""}"`, r.status, Number(r.total ?? 0).toFixed(2), r.currencyCode ?? "", r.deliveryDate ? String(r.deliveryDate).split("T")[0] : ""].join(","));
+  }
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="goods-in-transit.csv"`);
+  res.send(lines.join("\n"));
+});
+
+/** Goods in Transit PDF Export */
+router.get("/procurement/reports/goods-in-transit/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { supplierId, from, to } = req.query as Record<string, string>;
+  const pos = await withTenantDb(tenantId, (db) =>
+    db.select({
+      code: purchaseOrdersTable.code,
+      supplierName: purchaseOrdersTable.supplierName,
+      status: purchaseOrdersTable.status,
+      total: purchaseOrdersTable.total,
+      currencyCode: purchaseOrdersTable.currencyCode,
+      deliveryDate: purchaseOrdersTable.deliveryDate,
+    })
+      .from(purchaseOrdersTable)
+      .where(and(
+        eq(purchaseOrdersTable.tenantId, tenantId),
+        isNull(purchaseOrdersTable.deletedAt),
+        sql`${purchaseOrdersTable.status} IN ('sent', 'partially_received')`,
+        supplierId ? eq(purchaseOrdersTable.supplierId, Number(supplierId)) : undefined,
+        from ? sql`${purchaseOrdersTable.createdAt} >= ${from}::timestamptz` : undefined,
+        to ? sql`${purchaseOrdersTable.createdAt} <= ${to}::timestamptz` : undefined,
+      ))
+      .orderBy(asc(purchaseOrdersTable.deliveryDate))
+  );
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="goods-in-transit.pdf"`);
+  doc.pipe(res);
+  doc.fontSize(16).text("Goods In Transit Report", { align: "center" });
+  doc.moveDown(0.5);
+  doc.fontSize(9).text(`Generated: ${new Date().toISOString().split("T")[0]}`, { align: "right" });
+  doc.moveDown();
+  const cols = [80, 160, 100, 80, 70, 90];
+  const headers = ["PO Code", "Supplier", "Status", "Total", "Currency", "Delivery"];
+  let x = doc.page.margins.left;
+  headers.forEach((h, i) => { doc.fontSize(8).font("Helvetica-Bold").text(h, x, doc.y, { width: cols[i], lineBreak: false }); x += cols[i]; });
+  doc.moveDown(0.5);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.3);
+  for (const r of pos) {
+    x = doc.page.margins.left;
+    const rowY = doc.y;
+    [r.code, String(r.supplierName ?? "").slice(0, 28), r.status, Number(r.total ?? 0).toFixed(2), r.currencyCode ?? "", r.deliveryDate ? String(r.deliveryDate).split("T")[0] : ""].forEach((v, i) => {
+      doc.fontSize(8).font("Helvetica").text(v, x, rowY, { width: cols[i], lineBreak: false }); x += cols[i];
+    });
+    doc.moveDown(0.6);
+    if (doc.y > doc.page.height - 80) { doc.addPage(); }
+  }
+  doc.end();
+});
+
 export default router;

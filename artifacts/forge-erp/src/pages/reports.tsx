@@ -5,13 +5,31 @@ import {
   useGetInventoryReportsSlowMoving,
   useGetInventoryReportsStocktakeVariance,
   getGetInventoryReportsStocktakeVarianceQueryKey,
+  getExportStockValuationCsvUrl,
+  getExportStockValuationPdfUrl,
+  getExportMovementHistoryCsvUrl,
+  getExportMovementHistoryPdfUrl,
+  getExportSlowMovingCsvUrl,
+  getExportSlowMovingPdfUrl,
+  getExportStocktakeVarianceCsvUrl,
+  getExportStocktakeVariancePdfUrl,
   useListWarehouses,
   useReportPoSummary,
+  getExportPoSummaryCsvUrl,
+  getExportPoSummaryPdfUrl,
   useReportSupplierPerformance,
+  getExportSupplierPerformanceCsvUrl,
+  getExportSupplierPerformancePdfUrl,
   useReportSalesByPeriod,
+  getExportSalesByPeriodCsvUrl,
+  getExportSalesByPeriodPdfUrl,
   useReportSalesByItem,
+  getExportSalesByItemCsvUrl,
+  getExportSalesByItemPdfUrl,
   useReportBackorders,
   useReportGoodsInTransit,
+  getExportGoodsInTransitCsvUrl,
+  getExportGoodsInTransitPdfUrl,
   useReportGrn,
   getReportGrnQueryKey,
   getExportGrnCsvUrl,
@@ -99,9 +117,14 @@ function StockValuationTab() {
             ))}
           </SelectContent>
         </Select>
-        <Button variant="outline" onClick={() => exportCsv(`/api/inventory/reports/stock-valuation/export/csv${warehouseId !== "all" ? `?warehouseId=${warehouseId}` : ""}`)}>
-          <Download className="h-4 w-4 mr-2" />Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => exportCsv(getExportStockValuationCsvUrl(warehouseId !== "all" ? { warehouseId: Number(warehouseId) } : undefined))}>
+            <Download className="h-4 w-4 mr-2" />CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportCsv(getExportStockValuationPdfUrl(warehouseId !== "all" ? { warehouseId: Number(warehouseId) } : undefined))}>
+            <Download className="h-4 w-4 mr-2" />PDF
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-md border">
@@ -159,22 +182,37 @@ function MovementHistoryTab() {
   });
 
   const rows = (data?.data as unknown as MovementHistoryRow[] | undefined) ?? [];
+  const exportParams = {
+    fromDate: fromDate || undefined,
+    toDate: toDate || undefined,
+    movementType: movementType !== "all" ? movementType : undefined,
+  };
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-        <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-        <Select value={movementType} onValueChange={setMovementType}>
-          <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Types" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Movement Types</SelectItem>
-            <SelectItem value="receipt">Receipt</SelectItem>
-            <SelectItem value="despatch">Despatch</SelectItem>
-            <SelectItem value="adjustment">Adjustment</SelectItem>
-            <SelectItem value="transfer">Transfer</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2">
+          <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          <Select value={movementType} onValueChange={setMovementType}>
+            <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Types" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Movement Types</SelectItem>
+              <SelectItem value="receipt">Receipt</SelectItem>
+              <SelectItem value="despatch">Despatch</SelectItem>
+              <SelectItem value="adjustment">Adjustment</SelectItem>
+              <SelectItem value="transfer">Transfer</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => exportCsv(getExportMovementHistoryCsvUrl(exportParams))}>
+            <Download className="h-4 w-4 mr-2" />CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportCsv(getExportMovementHistoryPdfUrl(exportParams))}>
+            <Download className="h-4 w-4 mr-2" />PDF
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-md border">
@@ -251,6 +289,14 @@ function SlowMovingTab() {
           </div>
           <Slider min={30} max={365} step={15} value={days} onValueChange={setDays} />
         </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => exportCsv(getExportSlowMovingCsvUrl({ days: days[0], ...(warehouseId !== "all" ? { warehouseId: Number(warehouseId) } : {}) }))}>
+            <Download className="h-4 w-4 mr-2" />CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportCsv(getExportSlowMovingPdfUrl({ days: days[0], ...(warehouseId !== "all" ? { warehouseId: Number(warehouseId) } : {}) }))}>
+            <Download className="h-4 w-4 mr-2" />PDF
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-md border">
@@ -306,14 +352,26 @@ function StocktakeVarianceTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-4 items-center">
-        <Input
-          placeholder="Stocktake Run ID..."
-          value={stocktakeRunId}
-          onChange={(e) => setStocktakeRunId(e.target.value)}
-          className="w-[200px]"
-        />
-        <p className="text-sm text-muted-foreground">Enter a completed run ID to view variance report</p>
+      <div className="flex items-center justify-between">
+        <div className="flex gap-4 items-center">
+          <Input
+            placeholder="Stocktake Run ID..."
+            value={stocktakeRunId}
+            onChange={(e) => setStocktakeRunId(e.target.value)}
+            className="w-[200px]"
+          />
+          <p className="text-sm text-muted-foreground">Enter a completed run ID to view variance report</p>
+        </div>
+        {stocktakeRunId && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => exportCsv(getExportStocktakeVarianceCsvUrl({ stocktakeRunId: Number(stocktakeRunId) }))}>
+              <Download className="h-4 w-4 mr-2" />CSV
+            </Button>
+            <Button variant="outline" onClick={() => exportCsv(getExportStocktakeVariancePdfUrl({ stocktakeRunId: Number(stocktakeRunId) }))}>
+              <Download className="h-4 w-4 mr-2" />PDF
+            </Button>
+          </div>
+        )}
       </div>
 
       {!stocktakeRunId ? (
@@ -390,9 +448,14 @@ function ProcurementPoSummaryTab() {
           <Label className="whitespace-nowrap">To</Label>
           <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
-        <Button variant="outline" onClick={() => exportCsv(`/api/procurement/reports/po-summary/export/csv${fromDate || toDate ? `?${new URLSearchParams({ from: fromDate, to: toDate })}` : ""}`)}>
-          <Download className="h-4 w-4 mr-2" />Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => exportCsv(getExportPoSummaryCsvUrl({ from: fromDate || undefined, to: toDate || undefined }))}>
+            <Download className="h-4 w-4 mr-2" />CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportCsv(getExportPoSummaryPdfUrl({ from: fromDate || undefined, to: toDate || undefined }))}>
+            <Download className="h-4 w-4 mr-2" />PDF
+          </Button>
+        </div>
       </div>
       <div className="rounded-md border">
         <Table>
@@ -435,9 +498,12 @@ function SupplierSpendTab() {
   const rows = (data as unknown as SupplierRow[] | undefined) ?? [];
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={() => exportCsv("/api/procurement/reports/supplier-performance/export/csv")}>
-          <Download className="h-4 w-4 mr-2" />Export CSV
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => exportCsv(getExportSupplierPerformanceCsvUrl())}>
+          <Download className="h-4 w-4 mr-2" />CSV
+        </Button>
+        <Button variant="outline" onClick={() => exportCsv(getExportSupplierPerformancePdfUrl())}>
+          <Download className="h-4 w-4 mr-2" />PDF
         </Button>
       </div>
       <div className="rounded-md border">
@@ -545,7 +611,16 @@ function GoodsInTransitTab() {
   const { data, isLoading } = useReportGoodsInTransit({});
   const rows = (data as unknown as GoodsInTransitRow[] | undefined) ?? [];
   return (
-    <div className="rounded-md border">
+    <div className="space-y-4">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => exportCsv(getExportGoodsInTransitCsvUrl())}>
+          <Download className="h-4 w-4 mr-2" />CSV
+        </Button>
+        <Button variant="outline" onClick={() => exportCsv(getExportGoodsInTransitPdfUrl())}>
+          <Download className="h-4 w-4 mr-2" />PDF
+        </Button>
+      </div>
+      <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
@@ -574,6 +649,7 @@ function GoodsInTransitTab() {
           ))}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }
@@ -597,9 +673,14 @@ function SalesByPeriodTab() {
           <Label className="whitespace-nowrap">To</Label>
           <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
-        <Button variant="outline" onClick={() => exportCsv(`/api/sales/reports/by-period/export/csv${fromDate || toDate ? `?${new URLSearchParams({ fromDate, toDate })}` : ""}`)}>
-          <Download className="h-4 w-4 mr-2" />Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => exportCsv(getExportSalesByPeriodCsvUrl({ fromDate: fromDate || undefined, toDate: toDate || undefined }))}>
+            <Download className="h-4 w-4 mr-2" />CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportCsv(getExportSalesByPeriodPdfUrl({ fromDate: fromDate || undefined, toDate: toDate || undefined }))}>
+            <Download className="h-4 w-4 mr-2" />PDF
+          </Button>
+        </div>
       </div>
       <div className="rounded-md border">
         <Table>
@@ -655,9 +736,14 @@ function SalesByItemTab() {
           <Label className="whitespace-nowrap">To</Label>
           <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
-        <Button variant="outline" onClick={() => exportCsv(`/api/sales/reports/by-item/export/csv${fromDate || toDate ? `?${new URLSearchParams({ fromDate, toDate })}` : ""}`)}>
-          <Download className="h-4 w-4 mr-2" />Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => exportCsv(getExportSalesByItemCsvUrl({ fromDate: fromDate || undefined, toDate: toDate || undefined }))}>
+            <Download className="h-4 w-4 mr-2" />CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportCsv(getExportSalesByItemPdfUrl({ fromDate: fromDate || undefined, toDate: toDate || undefined }))}>
+            <Download className="h-4 w-4 mr-2" />PDF
+          </Button>
+        </div>
       </div>
       <div className="rounded-md border">
         <Table>

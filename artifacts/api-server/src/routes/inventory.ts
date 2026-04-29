@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import PDFDocument from "pdfkit";
 import { eq, and, isNull, desc, sql, or, ilike, asc, gt, inArray, ne } from "drizzle-orm";
 import {
   inventoryStockTable,
@@ -2359,6 +2360,302 @@ router.get("/inventory/reports/stock-valuation/export/csv", ...tenantUserMiddlew
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", "attachment; filename=\"stock-valuation.csv\"");
   res.send(lines.join("\n"));
+});
+
+/** Stock Valuation PDF Export */
+router.get("/inventory/reports/stock-valuation/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { warehouseId, itemId } = req.query as Record<string, string>;
+
+  type CsvStockRow = { itemCode: string; itemName: string; warehouseName: string; qtyOnHand: number; averageCost: number; totalValue: number };
+  const rows = await withTenantDb(tenantId, async (db) =>
+    db.execute(sql`
+      SELECT i.code AS "itemCode", i.name AS "itemName", w.name AS "warehouseName",
+             SUM(s.qty_on_hand::numeric) AS "qtyOnHand",
+             AVG(COALESCE(s.average_cost::numeric,0)) AS "averageCost",
+             SUM(s.qty_on_hand::numeric * COALESCE(s.average_cost::numeric,0)) AS "totalValue"
+      FROM inventory_stock s
+      JOIN items i ON i.id = s.item_id AND i.tenant_id = ${tenantId} AND i.deleted_at IS NULL
+      JOIN warehouses w ON w.id = s.warehouse_id AND w.tenant_id = ${tenantId}
+      WHERE s.tenant_id = ${tenantId}
+        ${warehouseId ? sql`AND s.warehouse_id = ${Number(warehouseId)}` : sql``}
+        ${itemId ? sql`AND s.item_id = ${Number(itemId)}` : sql``}
+      GROUP BY i.code, i.name, w.name ORDER BY "totalValue" DESC
+    `) as unknown as CsvStockRow[]
+  ) as CsvStockRow[];
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", "attachment; filename=\"stock-valuation.pdf\"");
+  doc.pipe(res);
+  doc.fontSize(16).text("Stock Valuation Report", { align: "center" });
+  doc.moveDown();
+  doc.fontSize(9).text(`Generated: ${new Date().toISOString().split("T")[0]}`, { align: "right" });
+  doc.moveDown();
+  const cols = [80, 160, 110, 70, 80, 80];
+  const headers = ["Item Code", "Item Name", "Warehouse", "Qty On Hand", "Avg Cost", "Total Value"];
+  let x = doc.page.margins.left;
+  headers.forEach((h, i) => { doc.fontSize(8).font("Helvetica-Bold").text(h, x, doc.y, { width: cols[i], lineBreak: false }); x += cols[i]; });
+  doc.moveDown(0.5);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.3);
+  for (const r of rows) {
+    x = doc.page.margins.left;
+    const rowY = doc.y;
+    const vals = [r.itemCode, String(r.itemName).slice(0, 30), String(r.warehouseName).slice(0, 20), Number(r.qtyOnHand).toFixed(2), Number(r.averageCost).toFixed(2), Number(r.totalValue).toFixed(2)];
+    vals.forEach((v, i) => { doc.fontSize(8).font("Helvetica").text(v, x, rowY, { width: cols[i], lineBreak: false }); x += cols[i]; });
+    doc.moveDown(0.6);
+    if (doc.y > doc.page.height - 80) { doc.addPage(); }
+  }
+  doc.end();
+});
+
+/** Movement History CSV Export */
+router.get("/inventory/reports/movement-history/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate, warehouseId, itemId, movementType } = req.query as Record<string, string>;
+
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      itemCode: inventoryMovementsTable.itemCode,
+      itemName: inventoryMovementsTable.itemName,
+      movementType: inventoryMovementsTable.movementType,
+      quantity: inventoryMovementsTable.quantity,
+      unitCost: inventoryMovementsTable.unitCost,
+      refType: inventoryMovementsTable.refType,
+      refCode: inventoryMovementsTable.refCode,
+      createdAt: inventoryMovementsTable.createdAt,
+    }).from(inventoryMovementsTable)
+      .where(and(
+        eq(inventoryMovementsTable.tenantId, tenantId),
+        fromDate ? sql`${inventoryMovementsTable.createdAt} >= ${new Date(fromDate)}` : undefined,
+        toDate ? sql`${inventoryMovementsTable.createdAt} <= ${new Date(toDate)}` : undefined,
+        warehouseId ? eq(inventoryMovementsTable.warehouseId, Number(warehouseId)) : undefined,
+        itemId ? eq(inventoryMovementsTable.itemId, Number(itemId)) : undefined,
+        movementType ? eq(inventoryMovementsTable.movementType, movementType) : undefined,
+      ))
+      .orderBy(desc(inventoryMovementsTable.createdAt)).limit(5000)
+  );
+
+  const lines = ["Item Code,Item Name,Movement Type,Quantity,Unit Cost,Ref Type,Ref Code,Date"];
+  for (const r of rows) {
+    lines.push([r.itemCode ?? "", `"${r.itemName ?? ""}"`, r.movementType ?? "", Number(r.quantity).toFixed(4), r.unitCost ? Number(r.unitCost).toFixed(4) : "", r.refType ?? "", r.refCode ?? "", r.createdAt ? new Date(r.createdAt).toISOString().split("T")[0] : ""].join(","));
+  }
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=\"movement-history.csv\"");
+  res.send(lines.join("\n"));
+});
+
+/** Movement History PDF Export */
+router.get("/inventory/reports/movement-history/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate, warehouseId, itemId, movementType } = req.query as Record<string, string>;
+
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      itemCode: inventoryMovementsTable.itemCode,
+      itemName: inventoryMovementsTable.itemName,
+      movementType: inventoryMovementsTable.movementType,
+      quantity: inventoryMovementsTable.quantity,
+      unitCost: inventoryMovementsTable.unitCost,
+      refCode: inventoryMovementsTable.refCode,
+      createdAt: inventoryMovementsTable.createdAt,
+    }).from(inventoryMovementsTable)
+      .where(and(
+        eq(inventoryMovementsTable.tenantId, tenantId),
+        fromDate ? sql`${inventoryMovementsTable.createdAt} >= ${new Date(fromDate)}` : undefined,
+        toDate ? sql`${inventoryMovementsTable.createdAt} <= ${new Date(toDate)}` : undefined,
+        warehouseId ? eq(inventoryMovementsTable.warehouseId, Number(warehouseId)) : undefined,
+        itemId ? eq(inventoryMovementsTable.itemId, Number(itemId)) : undefined,
+        movementType ? eq(inventoryMovementsTable.movementType, movementType) : undefined,
+      ))
+      .orderBy(desc(inventoryMovementsTable.createdAt)).limit(1000)
+  );
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", "attachment; filename=\"movement-history.pdf\"");
+  doc.pipe(res);
+  doc.fontSize(16).text("Inventory Movement History", { align: "center" });
+  doc.moveDown(0.5);
+  doc.fontSize(9).text(`Generated: ${new Date().toISOString().split("T")[0]}`, { align: "right" });
+  doc.moveDown();
+  const cols = [70, 130, 90, 60, 70, 80, 90];
+  const headers = ["Item Code", "Item Name", "Type", "Qty", "Unit Cost", "Ref", "Date"];
+  let x = doc.page.margins.left;
+  headers.forEach((h, i) => { doc.fontSize(8).font("Helvetica-Bold").text(h, x, doc.y, { width: cols[i], lineBreak: false }); x += cols[i]; });
+  doc.moveDown(0.5);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.3);
+  for (const r of rows) {
+    x = doc.page.margins.left;
+    const rowY = doc.y;
+    const vals = [r.itemCode ?? "", String(r.itemName ?? "").slice(0, 22), r.movementType ?? "", Number(r.quantity).toFixed(2), r.unitCost ? Number(r.unitCost).toFixed(2) : "", r.refCode ?? "", r.createdAt ? new Date(r.createdAt).toISOString().split("T")[0] : ""];
+    vals.forEach((v, i) => { doc.fontSize(8).font("Helvetica").text(v, x, rowY, { width: cols[i], lineBreak: false }); x += cols[i]; });
+    doc.moveDown(0.6);
+    if (doc.y > doc.page.height - 80) { doc.addPage(); }
+  }
+  doc.end();
+});
+
+/** Slow-Moving Items CSV Export */
+router.get("/inventory/reports/slow-moving/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { days = "90", warehouseId } = req.query as Record<string, string>;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - Number(days));
+
+  type SlowRow = { itemCode: string; itemName: string; warehouseName: string; qtyOnHand: number; totalValue: number; daysSinceMovement: number };
+  const rows = await withTenantDb(tenantId, async (db) =>
+    db.execute(sql`
+      SELECT i.code AS "itemCode", i.name AS "itemName", w.name AS "warehouseName",
+             s.qty_on_hand::numeric AS "qtyOnHand",
+             (s.qty_on_hand::numeric * COALESCE(s.average_cost::numeric, 0)) AS "totalValue",
+             EXTRACT(DAY FROM NOW() - COALESCE(s.last_movement_at, s.created_at)) AS "daysSinceMovement"
+      FROM inventory_stock s
+      JOIN items i ON i.id = s.item_id AND i.tenant_id = ${tenantId} AND i.deleted_at IS NULL
+      JOIN warehouses w ON w.id = s.warehouse_id AND w.tenant_id = ${tenantId}
+      WHERE s.tenant_id = ${tenantId} AND s.qty_on_hand::numeric > 0
+        AND (s.last_movement_at IS NULL OR s.last_movement_at < ${cutoff})
+        ${warehouseId ? sql`AND s.warehouse_id = ${Number(warehouseId)}` : sql``}
+      ORDER BY "daysSinceMovement" DESC LIMIT 500
+    `) as unknown as SlowRow[]
+  ) as SlowRow[];
+
+  const lines = ["Item Code,Item Name,Warehouse,Qty On Hand,Total Value,Days Since Movement"];
+  for (const r of rows) {
+    lines.push([r.itemCode, `"${r.itemName}"`, `"${r.warehouseName}"`, Number(r.qtyOnHand).toFixed(2), Number(r.totalValue).toFixed(2), Number(r.daysSinceMovement).toFixed(0)].join(","));
+  }
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=\"slow-moving.csv\"");
+  res.send(lines.join("\n"));
+});
+
+/** Slow-Moving Items PDF Export */
+router.get("/inventory/reports/slow-moving/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { days = "90", warehouseId } = req.query as Record<string, string>;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - Number(days));
+
+  type SlowRow = { itemCode: string; itemName: string; warehouseName: string; qtyOnHand: number; totalValue: number; daysSinceMovement: number };
+  const rows = await withTenantDb(tenantId, async (db) =>
+    db.execute(sql`
+      SELECT i.code AS "itemCode", i.name AS "itemName", w.name AS "warehouseName",
+             s.qty_on_hand::numeric AS "qtyOnHand",
+             (s.qty_on_hand::numeric * COALESCE(s.average_cost::numeric, 0)) AS "totalValue",
+             EXTRACT(DAY FROM NOW() - COALESCE(s.last_movement_at, s.created_at)) AS "daysSinceMovement"
+      FROM inventory_stock s
+      JOIN items i ON i.id = s.item_id AND i.tenant_id = ${tenantId} AND i.deleted_at IS NULL
+      JOIN warehouses w ON w.id = s.warehouse_id AND w.tenant_id = ${tenantId}
+      WHERE s.tenant_id = ${tenantId} AND s.qty_on_hand::numeric > 0
+        AND (s.last_movement_at IS NULL OR s.last_movement_at < ${cutoff})
+        ${warehouseId ? sql`AND s.warehouse_id = ${Number(warehouseId)}` : sql``}
+      ORDER BY "daysSinceMovement" DESC LIMIT 500
+    `) as unknown as SlowRow[]
+  ) as SlowRow[];
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="slow-moving-${days}d.pdf"`);
+  doc.pipe(res);
+  doc.fontSize(16).text(`Slow-Moving Items Report (${days}+ Days)`, { align: "center" });
+  doc.moveDown(0.5);
+  doc.fontSize(9).text(`Cutoff: ${cutoff.toISOString().split("T")[0]}`, { align: "right" });
+  doc.moveDown();
+  const cols = [80, 160, 110, 80, 90, 80];
+  const headers = ["Item Code", "Item Name", "Warehouse", "Qty On Hand", "Total Value", "Days Idle"];
+  let x = doc.page.margins.left;
+  headers.forEach((h, i) => { doc.fontSize(8).font("Helvetica-Bold").text(h, x, doc.y, { width: cols[i], lineBreak: false }); x += cols[i]; });
+  doc.moveDown(0.5);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.3);
+  for (const r of rows) {
+    x = doc.page.margins.left;
+    const rowY = doc.y;
+    const vals = [r.itemCode, String(r.itemName).slice(0, 28), String(r.warehouseName).slice(0, 20), Number(r.qtyOnHand).toFixed(2), Number(r.totalValue).toFixed(2), Number(r.daysSinceMovement).toFixed(0)];
+    vals.forEach((v, i) => { doc.fontSize(8).font("Helvetica").text(v, x, rowY, { width: cols[i], lineBreak: false }); x += cols[i]; });
+    doc.moveDown(0.6);
+    if (doc.y > doc.page.height - 80) { doc.addPage(); }
+  }
+  doc.end();
+});
+
+/** Stocktake Variance CSV Export */
+router.get("/inventory/reports/stocktake-variance/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { stocktakeRunId, warehouseId } = req.query as Record<string, string>;
+
+  type VarRow = { runCode: string; itemCode: string; itemName: string; qtyExpected: number; qtyActual: number; variance: number; varianceValue: number };
+  const rows = await withTenantDb(tenantId, async (db) =>
+    db.execute(sql`
+      SELECT sr.code AS "runCode", sl.item_code AS "itemCode", sl.item_name AS "itemName",
+             sl.expected_qty::numeric AS "qtyExpected", sl.actual_qty::numeric AS "qtyActual",
+             (sl.actual_qty::numeric - sl.expected_qty::numeric) AS "variance",
+             ((sl.actual_qty::numeric - sl.expected_qty::numeric) * COALESCE(sl.unit_cost::numeric, 0)) AS "varianceValue"
+      FROM stocktake_runs sr
+      JOIN stocktake_lines sl ON sl.run_id = sr.id AND sl.tenant_id = ${tenantId}
+      WHERE sr.tenant_id = ${tenantId} AND sr.status = 'posted'
+        ${stocktakeRunId ? sql`AND sr.id = ${Number(stocktakeRunId)}` : sql``}
+        ${warehouseId ? sql`AND sr.warehouse_id = ${Number(warehouseId)}` : sql``}
+      ORDER BY ABS(sl.actual_qty::numeric - sl.expected_qty::numeric) DESC LIMIT 1000
+    `) as unknown as VarRow[]
+  ) as VarRow[];
+
+  const lines = ["Run Code,Item Code,Item Name,Expected Qty,Actual Qty,Variance,Variance Value"];
+  for (const r of rows) {
+    lines.push([r.runCode, r.itemCode, `"${r.itemName}"`, Number(r.qtyExpected).toFixed(2), Number(r.qtyActual).toFixed(2), Number(r.variance).toFixed(2), Number(r.varianceValue).toFixed(2)].join(","));
+  }
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=\"stocktake-variance.csv\"");
+  res.send(lines.join("\n"));
+});
+
+/** Stocktake Variance PDF Export */
+router.get("/inventory/reports/stocktake-variance/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { stocktakeRunId, warehouseId } = req.query as Record<string, string>;
+
+  type VarRow = { runCode: string; itemCode: string; itemName: string; qtyExpected: number; qtyActual: number; variance: number; varianceValue: number };
+  const rows = await withTenantDb(tenantId, async (db) =>
+    db.execute(sql`
+      SELECT sr.code AS "runCode", sl.item_code AS "itemCode", sl.item_name AS "itemName",
+             sl.expected_qty::numeric AS "qtyExpected", sl.actual_qty::numeric AS "qtyActual",
+             (sl.actual_qty::numeric - sl.expected_qty::numeric) AS "variance",
+             ((sl.actual_qty::numeric - sl.expected_qty::numeric) * COALESCE(sl.unit_cost::numeric, 0)) AS "varianceValue"
+      FROM stocktake_runs sr
+      JOIN stocktake_lines sl ON sl.run_id = sr.id AND sl.tenant_id = ${tenantId}
+      WHERE sr.tenant_id = ${tenantId} AND sr.status = 'posted'
+        ${stocktakeRunId ? sql`AND sr.id = ${Number(stocktakeRunId)}` : sql``}
+        ${warehouseId ? sql`AND sr.warehouse_id = ${Number(warehouseId)}` : sql``}
+      ORDER BY ABS(sl.actual_qty::numeric - sl.expected_qty::numeric) DESC LIMIT 1000
+    `) as unknown as VarRow[]
+  ) as VarRow[];
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", "attachment; filename=\"stocktake-variance.pdf\"");
+  doc.pipe(res);
+  doc.fontSize(16).text("Stocktake Variance Report", { align: "center" });
+  doc.moveDown(0.5);
+  doc.fontSize(9).text(`Generated: ${new Date().toISOString().split("T")[0]}`, { align: "right" });
+  doc.moveDown();
+  const cols = [70, 70, 150, 70, 70, 65, 75];
+  const headers = ["Run", "Item Code", "Item Name", "Expected", "Actual", "Variance", "Var Value"];
+  let x = doc.page.margins.left;
+  headers.forEach((h, i) => { doc.fontSize(8).font("Helvetica-Bold").text(h, x, doc.y, { width: cols[i], lineBreak: false }); x += cols[i]; });
+  doc.moveDown(0.5);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.3);
+  for (const r of rows) {
+    x = doc.page.margins.left;
+    const rowY = doc.y;
+    const vals = [r.runCode, r.itemCode, String(r.itemName).slice(0, 25), Number(r.qtyExpected).toFixed(2), Number(r.qtyActual).toFixed(2), Number(r.variance).toFixed(2), Number(r.varianceValue).toFixed(2)];
+    vals.forEach((v, i) => { doc.fontSize(8).font("Helvetica").text(v, x, rowY, { width: cols[i], lineBreak: false }); x += cols[i]; });
+    doc.moveDown(0.6);
+    if (doc.y > doc.page.height - 80) { doc.addPage(); }
+  }
+  doc.end();
 });
 
 export default router;
