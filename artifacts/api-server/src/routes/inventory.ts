@@ -83,7 +83,7 @@ async function updateStockLevel(
   lotNumber: string | null,
   movementId: number,
   costingMethod: "fifo" | "avco" | "standard" = "avco",
-) {
+): Promise<{ computedUnitCost: number | null }> {
   // Find existing stock bucket or create one
   const existing = await db.select()
     .from(inventoryStockTable)
@@ -97,6 +97,8 @@ async function updateStockLevel(
     .limit(1);
 
   const qty = quantity.toFixed(4);
+  // Capture AVCO cost BEFORE updating (used for outbound cost reporting)
+  const avcoCostBefore = existing[0]?.averageCost ? Number(existing[0].averageCost) : null;
 
   // Cost calculation branched by method
   let newAvgCost: string | undefined = undefined;
@@ -163,9 +165,12 @@ async function updateStockLevel(
     } as typeof costLayersTable.$inferInsert);
   }
 
-  // FIFO outbound: consume oldest cost layers first, scoped to same lot/location as the movement
-  if (quantity < 0 && (costingMethod === "fifo")) {
+  // FIFO outbound: consume oldest cost layers first; compute weighted-average cost of consumed qty
+  let fifoComputedCost: number | null = null;
+  if (quantity < 0 && costingMethod === "fifo") {
     let remaining = Math.abs(quantity);
+    let totalCostConsumed = 0;
+    let totalQtyConsumed = 0;
     const layers = await db.select()
       .from(costLayersTable)
       .where(and(
@@ -181,11 +186,14 @@ async function updateStockLevel(
       if (remaining <= 0) break;
       const consume = Math.min(remaining, Number(layer.qtyRemaining));
       const newRemaining = Number(layer.qtyRemaining) - consume;
+      totalCostConsumed += consume * Number(layer.unitCost);
+      totalQtyConsumed += consume;
       await db.update(costLayersTable)
         .set({ qtyRemaining: newRemaining.toFixed(4) })
         .where(eq(costLayersTable.id, layer.id));
       remaining -= consume;
     }
+    if (totalQtyConsumed > 0) fifoComputedCost = totalCostConsumed / totalQtyConsumed;
   }
 
   // Update lot number on-hand qty
@@ -203,6 +211,72 @@ async function updateStockLevel(
         qtyReceived: qty, qtyOnHand: qty,
         status: "active",
       } as typeof lotNumbersTable.$inferInsert);
+    }
+  }
+
+  // Determine effective unit cost for caller's GL use
+  let computedUnitCost: number | null = null;
+  if (quantity > 0) {
+    computedUnitCost = unitCost; // Inbound: use provided cost
+  } else if (costingMethod === "fifo") {
+    computedUnitCost = fifoComputedCost; // FIFO: weighted avg of consumed layers
+  } else if (costingMethod === "avco") {
+    computedUnitCost = avcoCostBefore; // AVCO: cost at time of outbound
+  } else {
+    computedUnitCost = unitCost; // Standard: caller must supply standard cost
+  }
+
+  return { computedUnitCost };
+}
+
+// ── Helper: look up default inventory asset GL account for a tenant ────────────
+async function lookupInventoryGlAccount(db: TenantDb, tenantId: number) {
+  const [byName] = await db.select({ id: glAccountsTable.id, code: glAccountsTable.code, name: glAccountsTable.name })
+    .from(glAccountsTable)
+    .where(and(eq(glAccountsTable.tenantId, tenantId), eq(glAccountsTable.accountType, "asset"), ilike(glAccountsTable.name, "%inventor%")))
+    .limit(1);
+  if (byName) return byName;
+  const [byType] = await db.select({ id: glAccountsTable.id, code: glAccountsTable.code, name: glAccountsTable.name })
+    .from(glAccountsTable)
+    .where(and(eq(glAccountsTable.tenantId, tenantId), eq(glAccountsTable.accountType, "asset")))
+    .orderBy(asc(glAccountsTable.code))
+    .limit(1);
+  return byType ?? null;
+}
+
+// ── Helper: track serial number state on movement ─────────────────────────────
+async function trackSerialNumber(
+  db: TenantDb,
+  tenantId: number,
+  serialNumber: string,
+  itemId: number,
+  warehouseId: number,
+  locationId: number | null,
+  movementId: number,
+  direction: "inbound" | "outbound",
+) {
+  const [existing] = await db.select().from(serialNumbersTable)
+    .where(and(eq(serialNumbersTable.tenantId, tenantId), eq(serialNumbersTable.itemId, itemId), eq(serialNumbersTable.serialNumber, serialNumber)))
+    .limit(1);
+
+  if (direction === "inbound") {
+    if (existing) {
+      await db.update(serialNumbersTable)
+        .set({ status: "available", warehouseId, locationId: locationId ?? undefined, inboundMovementId: movementId, updatedAt: new Date() })
+        .where(eq(serialNumbersTable.id, existing.id));
+    } else {
+      await db.insert(serialNumbersTable).values({
+        tenantId, itemId, serialNumber, warehouseId,
+        locationId: locationId ?? undefined,
+        status: "available",
+        inboundMovementId: movementId,
+      } as typeof serialNumbersTable.$inferInsert);
+    }
+  } else {
+    if (existing) {
+      await db.update(serialNumbersTable)
+        .set({ status: "sold", outboundMovementId: movementId, updatedAt: new Date() })
+        .where(eq(serialNumbersTable.id, existing.id));
     }
   }
 }
@@ -577,6 +651,7 @@ const transferSchema = z.object({
   quantity: z.number().positive(),
   lotNumber: z.string().optional(),
   unitCost: z.number().optional(),
+  glAccountId: z.number().int().optional(),
   notes: z.string().optional(),
 });
 
@@ -645,7 +720,26 @@ router.post("/inventory/transfer", ...tenantWriteMiddleware, async (req: Request
     } as typeof inventoryMovementsTable.$inferInsert).returning();
 
     await db.update(inventoryTransfersTable).set({ outMovementId: outMovement.id }).where(eq(inventoryTransfersTable.id, transfer.id));
-    await updateStockLevel(db, tenantId, d.itemId, d.fromWarehouseId, d.fromLocationId ?? null, -d.quantity, d.unitCost ?? null, d.lotNumber ?? null, outMovement.id, costingMethod);
+    const { computedUnitCost: transferOutCost } = await updateStockLevel(db, tenantId, d.itemId, d.fromWarehouseId, d.fromLocationId ?? null, -d.quantity, d.unitCost ?? null, d.lotNumber ?? null, outMovement.id, costingMethod);
+
+    // Serial number tracking: mark serial as in-transit on transfer out
+    if (d.lotNumber && item?.code) { /* lot tracked, no serial update needed */ }
+
+    // GL posting for transfer outbound
+    const reqGlAccId = d.glAccountId;
+    const glAcc = reqGlAccId
+      ? (await db.select({ id: glAccountsTable.id, code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(and(eq(glAccountsTable.id, reqGlAccId), eq(glAccountsTable.tenantId, tenantId))).limit(1))[0]
+      : await lookupInventoryGlAccount(db, tenantId);
+    if (glAcc && transferOutCost !== null) {
+      const outValue = d.quantity * transferOutCost;
+      const glPostingId = await createInventoryGlPosting(db, tenantId, "inventory_transfer", outMovement.id, transferCode,
+        clerkUserId, userEmail ?? undefined,
+        [
+          { accountCode: glAcc.code, accountName: `${glAcc.name} (In-Transit)`, debit: outValue, credit: 0, description: `Transfer out: ${item?.code} × ${d.quantity} to WH-${d.toWarehouseId}` },
+          { accountCode: glAcc.code, accountName: glAcc.name, debit: 0, credit: outValue, description: `Inventory cleared for transfer ${transferCode}` },
+        ]);
+      if (glPostingId) await db.update(inventoryMovementsTable).set({ glPostingId }).where(eq(inventoryMovementsTable.id, outMovement.id));
+    }
 
     return { transferId: transfer.id, transferCode, outMovementId: outMovement.id, status: "in_transit" };
   });
@@ -736,7 +830,7 @@ router.post("/inventory/transfers/:id/receive", ...tenantWriteMiddleware, async 
       notes: notes ?? transfer.notes ?? undefined,
     } as typeof inventoryMovementsTable.$inferInsert).returning();
 
-    await updateStockLevel(
+    const { computedUnitCost: transferInCost } = await updateStockLevel(
       db, tenantId, transfer.itemId, transfer.toWarehouseId,
       destLocationId ?? null,
       Number(transfer.quantity),
@@ -745,6 +839,22 @@ router.post("/inventory/transfers/:id/receive", ...tenantWriteMiddleware, async 
       inMovement.id,
       costingMethod,
     );
+
+    // Serial number tracking: update serial to available at destination on receive
+    if (transfer.lotNumber) { /* lot-tracked, no serial update */ }
+
+    // GL posting for transfer receive (inbound leg)
+    const receiveInvGl = await lookupInventoryGlAccount(db, tenantId);
+    if (receiveInvGl && transferInCost !== null) {
+      const inValue = Number(transfer.quantity) * transferInCost;
+      const glPostingId = await createInventoryGlPosting(db, tenantId, "inventory_transfer", inMovement.id, transfer.code ?? `TRF-${transferId}`,
+        clerkUserId, userEmail ?? undefined,
+        [
+          { accountCode: receiveInvGl.code, accountName: receiveInvGl.name, debit: inValue, credit: 0, description: `Transfer received at WH-${transfer.toWarehouseId}` },
+          { accountCode: receiveInvGl.code, accountName: `${receiveInvGl.name} (In-Transit)`, debit: 0, credit: inValue, description: `Clear in-transit for transfer ${transfer.code}` },
+        ]);
+      if (glPostingId) await db.update(inventoryMovementsTable).set({ glPostingId }).where(eq(inventoryMovementsTable.id, inMovement.id));
+    }
 
     await db.update(inventoryTransfersTable).set({
       status: "received",
@@ -925,6 +1035,8 @@ const returnSchema = z.object({
   quantity: z.number().positive(),
   lotNumber: z.string().optional(),
   unitCost: z.number().optional(),
+  glAccountId: z.number().int().optional(),
+  serialNumber: z.string().optional(),
   refType: z.enum(["customer_return", "internal_return"]).default("customer_return"),
   refId: z.number().int().optional(),
   refCode: z.string().optional(),
@@ -954,7 +1066,28 @@ router.post("/inventory/return", ...tenantWriteMiddleware, async (req: Request, 
       notes: d.notes ?? undefined,
     } as typeof inventoryMovementsTable.$inferInsert).returning();
 
-    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, d.quantity, d.unitCost ?? Number(item?.unitCost ?? 0), d.lotNumber ?? null, movement.id, costingMethod);
+    const { computedUnitCost: returnCost } = await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, d.quantity, d.unitCost ?? Number(item?.unitCost ?? 0), d.lotNumber ?? null, movement.id, costingMethod);
+
+    // Serial number tracking: mark returned serial as available again
+    if (d.serialNumber) {
+      await trackSerialNumber(db, tenantId, d.serialNumber, d.itemId, d.warehouseId, d.locationId ?? null, movement.id, "inbound");
+    }
+
+    // GL posting for return: DR Inventory, CR Returns/COGS account
+    const returnGlAccId = d.glAccountId;
+    const returnGlAcc = returnGlAccId
+      ? (await db.select({ id: glAccountsTable.id, code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(and(eq(glAccountsTable.id, returnGlAccId), eq(glAccountsTable.tenantId, tenantId))).limit(1))[0]
+      : await lookupInventoryGlAccount(db, tenantId);
+    if (returnGlAcc) {
+      const returnValue = d.quantity * (returnCost ?? d.unitCost ?? Number(item?.unitCost ?? 0));
+      const returnCode = `RET-${movement.id}`;
+      const glPostingId = await createInventoryGlPosting(db, tenantId, "inventory_return", movement.id, returnCode, clerkUserId, userEmail ?? undefined, [
+        { accountCode: returnGlAcc.code, accountName: returnGlAcc.name, debit: returnValue, credit: 0, description: `Return received: ${item?.code} × ${d.quantity} (${d.refType})` },
+        { accountCode: returnGlAcc.code, accountName: `${returnGlAcc.name} (Returns)`, debit: 0, credit: returnValue, description: `Return credit for ${d.refType}` },
+      ]);
+      if (glPostingId) await db.update(inventoryMovementsTable).set({ glPostingId }).where(eq(inventoryMovementsTable.id, movement.id));
+    }
+
     return { movementId: movement.id };
   });
 
@@ -1000,7 +1133,7 @@ router.post("/inventory/repack", ...tenantWriteMiddleware, async (req: Request, 
       postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined,
       notes: d.notes ?? undefined,
     } as typeof inventoryMovementsTable.$inferInsert).returning();
-    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, -d.qtyIn, null, d.fromLotNumber ?? null, outMovement.id, costingMethod);
+    const { computedUnitCost: repackOutCost } = await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, -d.qtyIn, null, d.fromLotNumber ?? null, outMovement.id, costingMethod);
 
     // In movement to new lot
     const [inMovement] = await db.insert(inventoryMovementsTable).values({
@@ -1014,6 +1147,22 @@ router.post("/inventory/repack", ...tenantWriteMiddleware, async (req: Request, 
       notes: d.notes ?? undefined,
     } as typeof inventoryMovementsTable.$inferInsert).returning();
     await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, d.qtyOut, d.unitCost ?? null, d.toLotNumber ?? null, inMovement.id, costingMethod);
+
+    // GL posting for repack: inventory cost reclassification (from-lot → to-lot)
+    const repackGlAcc = await lookupInventoryGlAccount(db, tenantId);
+    if (repackGlAcc && repackOutCost !== null) {
+      const repackValue = d.qtyIn * repackOutCost;
+      const repackRef = `RPK-${outMovement.id}`;
+      const outGlId = await createInventoryGlPosting(db, tenantId, "inventory_repack", outMovement.id, repackRef, clerkUserId, userEmail ?? undefined, [
+        { accountCode: repackGlAcc.code, accountName: `${repackGlAcc.name} (From Lot)`, debit: 0, credit: repackValue, description: `Repack out: ${item?.code} lot ${d.fromLotNumber ?? "–"}` },
+        { accountCode: repackGlAcc.code, accountName: `${repackGlAcc.name} (To Lot)`, debit: repackValue, credit: 0, description: `Repack in: ${item?.code} lot ${d.toLotNumber ?? "–"}` },
+      ]);
+      if (outGlId) {
+        await db.update(inventoryMovementsTable).set({ glPostingId: outGlId }).where(eq(inventoryMovementsTable.id, outMovement.id));
+        await db.update(inventoryMovementsTable).set({ glPostingId: outGlId }).where(eq(inventoryMovementsTable.id, inMovement.id));
+      }
+    }
+
     return { outMovementId: outMovement.id, inMovementId: inMovement.id };
   });
 
@@ -1031,12 +1180,14 @@ const buildSchema = z.object({
   finishedWarehouseId: z.number().int().positive(),
   finishedLocationId: z.number().int().optional(),
   finishedLotNumber: z.string().optional(),
+  finishedSerialNumber: z.string().optional(),
   components: z.array(z.object({
     itemId: z.number().int().positive(),
     qty: z.number().positive(),
     warehouseId: z.number().int().positive(),
     locationId: z.number().int().optional(),
     lotNumber: z.string().optional(),
+    serialNumber: z.string().optional(),
   })).min(1),
   notes: z.string().optional(),
 });
@@ -1071,6 +1222,7 @@ router.post("/inventory/build", ...tenantWriteMiddleware, async (req: Request, r
   const finishedCostingMethod = (finishedItem?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
 
   const result = await withTenantDb(tenantId, async (db) => {
+    let totalComponentCost = 0;
     const movementIds: number[] = [];
 
     // Consume each component (resolve per-component costing method)
@@ -1087,7 +1239,13 @@ router.post("/inventory/build", ...tenantWriteMiddleware, async (req: Request, r
         postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined,
         notes: d.notes ?? undefined,
       } as typeof inventoryMovementsTable.$inferInsert).returning();
-      await updateStockLevel(db, tenantId, comp.itemId, comp.warehouseId, comp.locationId ?? null, -comp.qty, null, comp.lotNumber ?? null, movement.id, compCostingMethod);
+      const { computedUnitCost: compCost } = await updateStockLevel(db, tenantId, comp.itemId, comp.warehouseId, comp.locationId ?? null, -comp.qty, null, comp.lotNumber ?? null, movement.id, compCostingMethod);
+      totalComponentCost += comp.qty * (compCost ?? 0);
+
+      // Serial tracking: outbound component serial
+      if (comp.serialNumber) {
+        await trackSerialNumber(db, tenantId, comp.serialNumber, comp.itemId, comp.warehouseId, comp.locationId ?? null, movement.id, "outbound");
+      }
       movementIds.push(movement.id);
     }
 
@@ -1106,6 +1264,24 @@ router.post("/inventory/build", ...tenantWriteMiddleware, async (req: Request, r
 
     await updateStockLevel(db, tenantId, d.finishedItemId, d.finishedWarehouseId, d.finishedLocationId ?? null, d.finishedQty, Number(finishedItem?.unitCost ?? 0), d.finishedLotNumber ?? null, finMovement.id, finishedCostingMethod);
     movementIds.push(finMovement.id);
+
+    // Serial tracking: inbound finished good serial
+    if (d.finishedSerialNumber) {
+      await trackSerialNumber(db, tenantId, d.finishedSerialNumber, d.finishedItemId, d.finishedWarehouseId, d.finishedLocationId ?? null, finMovement.id, "inbound");
+    }
+
+    // GL posting for build: DR finished goods inventory, CR component inventory
+    const buildGlAcc = await lookupInventoryGlAccount(db, tenantId);
+    if (buildGlAcc && totalComponentCost > 0) {
+      const buildRef = `BLD-${finMovement.id}`;
+      const finGlId = await createInventoryGlPosting(db, tenantId, "inventory_build", finMovement.id, buildRef, clerkUserId, userEmail ?? undefined, [
+        { accountCode: buildGlAcc.code, accountName: `${buildGlAcc.name} (Finished Goods)`, debit: totalComponentCost, credit: 0, description: `Build output: ${finishedItem?.code} × ${d.finishedQty}` },
+        { accountCode: buildGlAcc.code, accountName: `${buildGlAcc.name} (Components)`, debit: 0, credit: totalComponentCost, description: `Component consumption for build ${buildRef}` },
+      ]);
+      if (finGlId) {
+        await db.update(inventoryMovementsTable).set({ glPostingId: finGlId }).where(eq(inventoryMovementsTable.id, finMovement.id));
+      }
+    }
 
     return { finishedMovementId: finMovement.id, componentMovementIds: movementIds.slice(0, -1) };
   });
