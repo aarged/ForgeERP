@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetAdminKpi,
   useListAdminTenants,
+  useGetAdminTenant,
   useCreateAdminTenant,
   useUpdateAdminTenant,
   useDeleteAdminTenant,
@@ -12,6 +13,7 @@ import {
   getListAdminTenantsQueryKey,
   getGetAdminKpiQueryKey,
   getGetTenantInvoicesQueryKey,
+  getGetAdminTenantQueryKey,
 } from "@workspace/api-client-react";
 import type { AdminTenant } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -275,13 +277,28 @@ function TenantDetailSheet({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const tenantId = tenant?.id ?? 0;
+
+  // Fetch full tenant detail for live billing/subscription status from Stripe
+  const { data: tenantDetail, refetch: refetchDetail } = useGetAdminTenant(tenantId, {
+    query: {
+      queryKey: getGetAdminTenantQueryKey(tenantId),
+      enabled: open && tenantId > 0,
+    },
+  });
+
+  function invalidateAll() {
+    void queryClient.invalidateQueries({ queryKey: getListAdminTenantsQueryKey() });
+    void queryClient.invalidateQueries({ queryKey: getGetAdminKpiQueryKey() });
+    void queryClient.invalidateQueries({ queryKey: getGetAdminTenantQueryKey(tenantId) });
+    void refetchDetail();
+  }
+
   const syncStripe = useSyncTenantStripe({
     mutation: {
       onSuccess: () => {
         toast({ title: "Stripe customer created" });
-        void queryClient.invalidateQueries({
-          queryKey: getListAdminTenantsQueryKey(),
-        });
+        invalidateAll();
       },
       onError: () => {
         toast({
@@ -300,12 +317,7 @@ function TenantDetailSheet({
           title: data.created ? "Subscription created" : "Subscription updated",
           description: `Status: ${data.status}`,
         });
-        void queryClient.invalidateQueries({
-          queryKey: getListAdminTenantsQueryKey(),
-        });
-        void queryClient.invalidateQueries({
-          queryKey: getGetAdminKpiQueryKey(),
-        });
+        invalidateAll();
       },
       onError: () => {
         toast({
@@ -317,7 +329,6 @@ function TenantDetailSheet({
     },
   });
 
-  const tenantId = tenant?.id ?? 0;
   const { data: invoiceData, isLoading: invoicesLoading } =
     useGetTenantInvoices(tenantId, {
       query: {
@@ -328,6 +339,9 @@ function TenantDetailSheet({
 
   if (!tenant) return null;
 
+  // Use detail data for live billing fields; fall back to list data for basic fields
+  const displayTenant = tenantDetail ?? tenant;
+
   const rows: [string, string][] = [
     ["Slug", `/${tenant.slug}`],
     ["Status", tenant.status],
@@ -337,8 +351,11 @@ function TenantDetailSheet({
     ["Members", String(tenant.memberCount)],
     ["Storage", `${tenant.storageUsageMb} MB`],
     ["Stripe Customer", tenant.stripeCustomerId ?? "—"],
-    ["Stripe Subscription", tenant.stripeSubscriptionId ?? "—"],
-    ["Billing Status", tenant.subscriptionStatus ?? "—"],
+    ["Stripe Subscription", displayTenant.stripeSubscriptionId ?? "—"],
+    ["Billing Status", tenantDetail?.subscriptionStatus ?? "—"],
+    ["Period Ends", tenantDetail?.currentPeriodEnd
+      ? new Date(tenantDetail.currentPeriodEnd).toLocaleDateString()
+      : "—"],
     ["Created", new Date(tenant.createdAt).toLocaleDateString()],
   ];
 
