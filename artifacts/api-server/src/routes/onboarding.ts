@@ -641,18 +641,17 @@ router.post(
           invoice_settings: { default_payment_method: stripePaymentMethodId },
         });
 
-        // Create subscription
-        if (priceId) {
-          const sub = await stripe.subscriptions.create({
-            customer: stripeCustomerId,
-            items: [{ price: priceId }],
-            default_payment_method: stripePaymentMethodId,
-            expand: ["latest_invoice.payment_intent"],
-          });
-          stripeSubscriptionId = sub.id;
-        } else {
-          logger.warn({ planTierForStripe }, "No Stripe price ID configured for plan tier — subscription not created");
+        // Create subscription — fail hard if price ID is missing
+        if (!priceId) {
+          throw new Error(`No Stripe price ID configured for plan tier "${planTierForStripe}". Set STRIPE_PRICE_${planTierForStripe.toUpperCase()} env var.`);
         }
+        const sub = await stripe.subscriptions.create({
+          customer: stripeCustomerId,
+          items: [{ price: priceId }],
+          default_payment_method: stripePaymentMethodId,
+          expand: ["latest_invoice.payment_intent"],
+        });
+        stripeSubscriptionId = sub.id;
 
         // Persist Stripe IDs
         await adminDb.update(tenantsTable)

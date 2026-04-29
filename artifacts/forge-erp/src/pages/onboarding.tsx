@@ -1054,26 +1054,42 @@ function Step5({
 // ── Quick Start Tour ──────────────────────────────────────────────────────────
 
 const TOUR_STEPS = [
-  { icon: "📋", title: "Create your first Purchase Order", desc: "Go to Procurement → Purchase Orders and click New PO." },
-  { icon: "📦", title: "Receive goods into your warehouse", desc: "After a PO is approved, receive it under Warehouse → Receipts." },
-  { icon: "📊", title: "Check your inventory levels", desc: "Navigate to Inventory → Stock Levels for a live view." },
-  { icon: "🧾", title: "Issue a Sales Order", desc: "Go to Sales → Orders and create your first customer order." },
-  { icon: "💰", title: "Review your financials", desc: "Under Finance → GL you'll find all posted journal entries." },
+  { icon: "📋", title: "Create your first Purchase Order", desc: "Start the procurement process by raising a purchase order with one of your suppliers.", link: "/procurement", linkLabel: "Open Procurement" },
+  { icon: "📦", title: "Receive goods into your warehouse", desc: "After a PO is approved, receive the goods and update your stock on hand.", link: "/inventory", linkLabel: "Open Inventory" },
+  { icon: "📊", title: "Check your inventory levels", desc: "View live stock levels, reorder points, and warehouse locations across your sites.", link: "/inventory", linkLabel: "Open Inventory" },
+  { icon: "🧾", title: "Issue a Sales Order", desc: "Create a sales order for a customer and track fulfilment from pick to ship.", link: "/sales", linkLabel: "Open Sales" },
+  { icon: "💰", title: "Review your financials", desc: "Browse posted GL journal entries, run reports, and manage your chart of accounts.", link: "/finance", linkLabel: "Open Finance" },
 ];
 
 function QuickStartTour({ onClose }: { onClose: () => void }) {
+  const [, setLocation] = useLocation();
   const [idx, setIdx] = useState(0);
-  const step = TOUR_STEPS[idx];
+  const step = TOUR_STEPS[idx]!;
+
+  function goToModule() {
+    onClose();
+    setLocation(step.link);
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 relative">
         <div className="text-5xl text-center mb-4">{step.icon}</div>
-        <div className="text-center space-y-2 mb-6">
+        <div className="text-center space-y-2 mb-4">
           <p className="text-xs font-semibold text-orange-500 uppercase tracking-wide">Quick Start — Step {idx + 1} of {TOUR_STEPS.length}</p>
           <h3 className="text-xl font-bold text-slate-800">{step.title}</h3>
           <p className="text-sm text-slate-500">{step.desc}</p>
         </div>
-        <Progress value={((idx + 1) / TOUR_STEPS.length) * 100} className="mb-6 h-1.5" />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={goToModule}
+          className="w-full mb-5 gap-2 text-orange-600 border-orange-200 hover:bg-orange-50"
+        >
+          <ChevronRight className="w-3.5 h-3.5" />
+          {step.linkLabel}
+        </Button>
+        <Progress value={((idx + 1) / TOUR_STEPS.length) * 100} className="mb-5 h-1.5" />
         <div className="flex justify-between items-center">
           <Button variant="ghost" size="sm" onClick={onClose} className="text-slate-400 text-xs">
             Skip Tour
