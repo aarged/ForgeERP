@@ -1,0 +1,96 @@
+You are an expert full-stack development team building a complete, production-ready, modern multi-tenant SaaS ERP platform called Forge ERP. The system must be a clean-slate redesign that delivers all core functionality of traditional mid-market ERP systems for purchasing/procurement, sales order management, inventory/warehouse operations, and basic financial postings — but with a dramatically superior user experience, seamless module integration, real-time data flow, intuitive navigation, and mobile-first warehouse tools. Under no circumstances reference any existing ERP product, vendor, or documentation by name. Focus exclusively on building an original, differentiated system.
+1. High-Level Architecture & Multi-Tenancy (SaaS-First)
+
+Multi-tenant core: Global super-admin dashboard (separate from tenant logins) to create, manage, suspend, and delete tenants. Each tenant (business) is fully isolated with its own data schema (row-level security + separate schema per tenant recommended). Use PostgreSQL with Row Level Security (RLS) or schema-per-tenant for strong isolation.
+Tenant Onboarding Wizard (step-by-step, multi-screen React flow):
+Step 1: Business basics (legal name, trading name, ABN/ACN or equivalent tax ID, address, phone, email, fiscal year start, default currency, timezone, industry type for pre-configured templates).
+Step 2: Company structure (warehouses/locations, departments, default GL accounts).
+Step 3: Initial master data import templates (CSV upload for items, suppliers, customers) + sample data option.
+Step 4: Subscription selection & payment setup (Stripe or equivalent paywall integration).
+Step 5: Invite first admin user + quick-start tour.
+
+Subscription & Paywall: Tiered plans (Starter, Growth, Enterprise) with feature gating. Global admin can upgrade/downgrade tenants. Usage-based metering for storage/users if applicable. Automatic invoice generation and subscription management module.
+Tech Stack (modern, scalable): Next.js 15+ (App Router) + React Server Components + Tailwind + shadcn/ui + TanStack Query for frontend. NestJS or Next.js API routes for backend. PostgreSQL + Prisma (or Drizzle) ORM. Redis for caching/queues. BullMQ or similar for background jobs. Docker + Kubernetes-ready. Auth: Clerk or NextAuth with tenant scoping. Real-time: Supabase Realtime or Pusher. File storage: Cloudinary or S3 for photos/documents. Deployable to Vercel/AWS.
+Security: SOC2-ready (encryption at rest/transit, audit logs, RBAC with fine-grained permissions, tenant isolation enforced at DB level).
+
+2. Core UX/Design Principles (Fix All Legacy Pain Points)
+
+Modern, intuitive UI: Clean, responsive, mobile-friendly web app with dark/light mode. Consistent sidebar navigation with quick-search bar that searches across all modules (items, orders, suppliers, customers). Deep linking everywhere — click any PO number in a SO line to jump straight to it. Breadcrumb trails, contextual actions, and "Related Records" panels on every screen.
+Zero friction navigation: Keyboard shortcuts, command palette (Cmd+K), infinite scroll datagrids with advanced filtering/sorting/export (CSV/Excel/PDF). No multi-step "print then update" workflows — everything is real-time where possible.
+Unified dashboards: Role-based home screens with live KPIs (e.g., open POs, backorders, stock levels, cash flow). Configurable widgets.
+Workflow continuity: Status badges, visual progress bars, automated notifications (in-app + email), audit trail on every record.
+Accessibility & polish: WCAG compliant, beautiful forms with validation, inline editing, drag-and-drop where logical.
+
+3. Master Data Management
+
+Items (with variants, units of measure, pack sizes, lot/serial/batch tracking, attributes, alternative/cross-reference items, competitor pricing, multiple warehouses/locations per item).
+Suppliers & Customers (addresses, contacts, pricing tiers, credit limits, performance metrics).
+Warehouses & Locations (zones, aisles, bins).
+GL Chart of Accounts (basic setup with posting rules).
+
+4. Procurement / Purchase Orders Module (Full Lifecycle)
+
+Configurable approval workflows: Multi-level, rule-based (order value, item type, supplier, custom criteria). Groups/officers, parallel/serial approvals, escalation, reallocation, dashboard for pending approvals with approve/reject/return/comment/audit log.
+Create/edit PO: Header (supplier, warehouse, dates, currency, delivery address) + rich line editor (item lookup, quantities, prices, notes, special/memo/charge lines, links to sales orders). Real-time totals, tax, discounts.
+Print/email/fax PO (PDF generation with customizable templates).
+Receive goods (fast receive screen or per-line): Auto or manual lot/batch/serial capture, label printing, partial receipts, backorder creation.
+Update inventory + GL postings automatically (or in batch). Real-time stock visibility.
+Returns, credit notes, maintenance (edit supplier/item after creation with history preserved).
+Requisitions with authority tree (value limits, approval routing).
+Reports: Summary/detail PO reports, open orders, supplier performance.
+
+5. Sales Orders Module (Full Lifecycle)
+
+Full order entry: Header + line items (with alternative items suggestions, cross-references, kits, ATP check). Quotations → convert to order. Forward orders, scheduled delivery, consignment.
+Backorders: Automatic or manual handling, release workflows.
+Picking: Traditional print picking slip + dedicated mobile-first warehouse picking app (see section 8).
+Despatch: Partial or complete, update quantities, print delivery dockets/invoices.
+Invoicing & credits/RMA (return merchandise authorization) with full approval, stock return, credit note conversion.
+Update customer + GL automatically.
+Transfer orders, kit orders, service/repair orders.
+Reports: Sales analysis, backorder reports, customer statements.
+
+6. Inventory / Warehouse Operations Module
+
+All core movements: Receive (from PO or direct), adjust levels (with reason codes & GL), transfer between warehouses/locations, issue (to factory/WIP/work order/GL/project), returns (from anywhere), convert/upgrade, repack/split, build/merge.
+Real-time stock visibility across warehouses with location details.
+Stocktake support, cycle counts, FIFO/average/standard costing options.
+Batch/lot/serial traceability.
+Competitor price tracking, item attributes search.
+
+7. Financial Integration (Basic GL)
+
+Automatic postings from PO receipt, SO despatch/update, inventory movements.
+View GL impact previews.
+Basic trial balance, journal entries (future-proof for full accounting module).
+
+8. Mobile Warehouse Picking App (Key Differentiator)
+
+Native-feeling responsive web app (PWA installable on Android/iOS tablets/phones) for store/warehouse staff.
+Pickslip Queue Dashboard: List of ready-to-pick orders assigned to user or team.
+One-line-at-a-time guided picking: Tap to start an order → display one line only with item code, description, quantity required, exact bin/location, barcode/QR scan support.
+Confirmation: User scans item (or photo upload of picked item/pallet for audit) → system confirms quantity picked via photo + optional manual override.
+Not-picked: Swipe right → auto creates backorder or note with reason.
+Real-time sync: Progress updates instantly to web dashboard for supervisors.
+Offline support where possible, batch sync.
+Voice guidance or large fonts for hands-free use.
+
+9. Additional Differentiators & Polish
+
+AI-assisted features: Smart alternative item suggestions, approval risk scoring, demand forecasting hints, natural language search.
+Full audit logging, version history on records.
+Export/import everywhere + API-first (REST + GraphQL for future extensions).
+Role-based access control (purchaser, warehouse picker, approver, admin, etc.).
+Notifications & task inbox.
+Customizable reports/dashboards (basic embedded analytics).
+
+10. Implementation Guidelines for the Coding Agent(s)
+
+Build in iterative modules: Start with auth + multi-tenancy + onboarding → master data → Inventory → Procurement → Sales → Mobile picking → GL postings → reports.
+Prioritize seamless integration — every module must feel like one unified system.
+Use modern patterns: Server actions, optimistic updates, streaming where appropriate.
+Include comprehensive tests (unit + integration) and documentation.
+Make the system extensible (plugins/hooks for future modules like Manufacturing, CRM, etc.).
+Deliver clean, commented, production-grade code with clear folder structure.
+
+Generate the complete system (frontend, backend, database schema, mobile PWA, admin tools) following these specifications exactly. Begin with the multi-tenant foundation and onboarding wizard, then proceed module by module.
