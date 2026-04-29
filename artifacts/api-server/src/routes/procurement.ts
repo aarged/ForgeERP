@@ -1925,6 +1925,12 @@ router.post("/procurement/purchase-orders/:id/send", ...tenantWriteMiddleware, a
     return;
   }
 
+  // Gate status transition on confirmed dispatch — sendEmail returns false when SMTP is not configured
+  if (!emailSent) {
+    res.status(502).json({ error: "Email could not be dispatched (mail transport unavailable). PO status was not changed.", supplierEmail: resolvedEmail, emailSent: false });
+    return;
+  }
+
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(purchaseOrdersTable).set({ status: "sent", sentAt: new Date() })
       .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId))).returning());
