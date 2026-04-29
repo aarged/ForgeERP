@@ -137,6 +137,33 @@ router.get(
   },
 );
 
+// Item business-key lookup — MUST be before /:id to avoid Express capturing "lookup" as id
+router.get(
+  "/master-data/items/lookup",
+  ...tenantUserMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId } = req as TenantRequest;
+    const code = req.query.code ? String(req.query.code).trim() : "";
+    if (!code) { res.status(400).json({ error: "code query param required" }); return; }
+
+    const items = await withTenantDb(tenantId, (db) =>
+      db.select().from(itemsTable)
+        .where(and(eq(itemsTable.code, code), eq(itemsTable.tenantId, tenantId), isNull(itemsTable.deletedAt)))
+        .limit(1),
+    );
+    if (!items[0]) { res.status(404).json({ error: "Item not found" }); return; }
+
+    const id = items[0].id;
+    const [variants, attributes, locations, crossRefs] = await Promise.all([
+      withTenantDb(tenantId, (db) => db.select().from(itemVariantsTable).where(and(eq(itemVariantsTable.itemId, id), eq(itemVariantsTable.tenantId, tenantId))).orderBy(asc(itemVariantsTable.variantCode))),
+      withTenantDb(tenantId, (db) => db.select().from(itemAttributesTable).where(and(eq(itemAttributesTable.itemId, id), eq(itemAttributesTable.tenantId, tenantId)))),
+      withTenantDb(tenantId, (db) => db.select().from(itemLocationsTable).where(and(eq(itemLocationsTable.itemId, id), eq(itemLocationsTable.tenantId, tenantId)))),
+      withTenantDb(tenantId, (db) => db.select().from(itemCrossReferencesTable).where(and(eq(itemCrossReferencesTable.itemId, id), eq(itemCrossReferencesTable.tenantId, tenantId)))),
+    ]);
+    res.json({ ...items[0], variants, attributes, locations, crossRefs });
+  },
+);
+
 router.get(
   "/master-data/items/:id",
   ...tenantUserMiddleware,
@@ -400,33 +427,6 @@ router.put(
       db.select().from(itemCrossReferencesTable).where(and(eq(itemCrossReferencesTable.itemId, itemId), eq(itemCrossReferencesTable.tenantId, tenantId))),
     );
     res.json(refs);
-  },
-);
-
-// Item business-key lookup
-router.get(
-  "/master-data/items/lookup",
-  ...tenantUserMiddleware,
-  async (req: Request, res: Response): Promise<void> => {
-    const { tenantId } = req as TenantRequest;
-    const code = req.query.code ? String(req.query.code).trim() : "";
-    if (!code) { res.status(400).json({ error: "code query param required" }); return; }
-
-    const items = await withTenantDb(tenantId, (db) =>
-      db.select().from(itemsTable)
-        .where(and(eq(itemsTable.code, code), eq(itemsTable.tenantId, tenantId), isNull(itemsTable.deletedAt)))
-        .limit(1),
-    );
-    if (!items[0]) { res.status(404).json({ error: "Item not found" }); return; }
-
-    const id = items[0].id;
-    const [variants, attributes, locations, crossRefs] = await Promise.all([
-      withTenantDb(tenantId, (db) => db.select().from(itemVariantsTable).where(and(eq(itemVariantsTable.itemId, id), eq(itemVariantsTable.tenantId, tenantId))).orderBy(asc(itemVariantsTable.variantCode))),
-      withTenantDb(tenantId, (db) => db.select().from(itemAttributesTable).where(and(eq(itemAttributesTable.itemId, id), eq(itemAttributesTable.tenantId, tenantId)))),
-      withTenantDb(tenantId, (db) => db.select().from(itemLocationsTable).where(and(eq(itemLocationsTable.itemId, id), eq(itemLocationsTable.tenantId, tenantId)))),
-      withTenantDb(tenantId, (db) => db.select().from(itemCrossReferencesTable).where(and(eq(itemCrossReferencesTable.itemId, id), eq(itemCrossReferencesTable.tenantId, tenantId)))),
-    ]);
-    res.json({ ...items[0], variants, attributes, locations, crossRefs });
   },
 );
 
