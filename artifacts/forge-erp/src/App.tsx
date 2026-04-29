@@ -15,7 +15,7 @@ import Settings from "@/pages/settings";
 import Procurement from "@/pages/procurement";
 import Sales from "@/pages/sales";
 import Inventory from "@/pages/inventory";
-import Finance from "@/pages/finance";
+import Reports from "@/pages/reports";
 import SuperAdmin from "@/pages/super-admin";
 import NotFound from "@/pages/not-found";
 
@@ -192,7 +192,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/procurement"><ProtectedRoute component={Procurement} /></Route>
           <Route path="/sales"><ProtectedRoute component={Sales} /></Route>
           <Route path="/inventory"><ProtectedRoute component={Inventory} /></Route>
-          <Route path="/finance"><ProtectedRoute component={Finance} /></Route>
+          <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
           <Route path="/super-admin"><ProtectedRoute component={SuperAdmin} /></Route>
           <Route component={NotFound} />
         </Switch>

@@ -1,14 +1,9 @@
 import { useUser } from "@clerk/react";
 import { Link, useLocation } from "wouter";
 import {
-  Activity,
-  Archive,
   BarChart3,
-  Box,
-  Calculator,
   ChevronDown,
   Command,
-  CreditCard,
   LayoutDashboard,
   LogOut,
   Moon,
@@ -18,10 +13,8 @@ import {
   ShieldAlert,
   ShoppingCart,
   Sun,
-  Truck,
-  Users,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { useClerk } from "@clerk/react";
 import { useGetCurrentUser } from "@workspace/api-client-react";
@@ -66,10 +59,10 @@ function AppSidebar() {
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["all"] },
-    { name: "Procurement", href: "/procurement", icon: ShoppingCart, roles: ["super_admin", "tenant_admin", "purchaser"] },
-    { name: "Sales", href: "/sales", icon: Receipt, roles: ["super_admin", "tenant_admin", "sales"] },
+    { name: "Procurement", href: "/procurement", icon: ShoppingCart, roles: ["super_admin", "tenant_admin", "purchaser", "approver"] },
+    { name: "Sales", href: "/sales", icon: Receipt, roles: ["super_admin", "tenant_admin", "approver"] },
     { name: "Inventory", href: "/inventory", icon: PackageSearch, roles: ["super_admin", "tenant_admin", "warehouse"] },
-    { name: "Finance", href: "/finance", icon: Calculator, roles: ["super_admin", "tenant_admin", "accountant"] },
+    { name: "Reports", href: "/reports", icon: BarChart3, roles: ["super_admin", "tenant_admin", "accountant", "approver"] },
     { name: "Settings", href: "/settings", icon: Settings, roles: ["all"] },
   ];
 

@@ -1,29 +1,14 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, tenantsTable, tenantMembershipsTable } from "@workspace/db";
-import { requireAuth, type AuthenticatedRequest } from "../middlewares/requireAuth";
+import { tenantContext, type TenantRequest } from "../middlewares/tenantContext";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
 
-router.get("/tenants/current", requireAuth, async (req: Request, res: Response): Promise<void> => {
-  const clerkId = (req as AuthenticatedRequest).clerkUserId;
+router.get("/tenants/current", tenantContext, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
 
-  const membership = await db
-    .select({ tenantId: tenantMembershipsTable.tenantId })
-    .from(tenantMembershipsTable)
-    .where(and(
-      eq(tenantMembershipsTable.clerkId, clerkId),
-      eq(tenantMembershipsTable.isActive, "true"),
-    ))
-    .limit(1);
-
-  if (membership.length === 0 || !membership[0]!.tenantId) {
-    res.status(404).json({ error: "No tenant found for user" });
-    return;
-  }
-
-  const tenantId = membership[0]!.tenantId;
   const tenant = await db
     .select()
     .from(tenantsTable)
@@ -51,24 +36,9 @@ router.get("/tenants/current", requireAuth, async (req: Request, res: Response):
   });
 });
 
-router.get("/tenants/current/members", requireAuth, async (req: Request, res: Response): Promise<void> => {
-  const clerkId = (req as AuthenticatedRequest).clerkUserId;
+router.get("/tenants/current/members", tenantContext, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
 
-  const membership = await db
-    .select({ tenantId: tenantMembershipsTable.tenantId })
-    .from(tenantMembershipsTable)
-    .where(and(
-      eq(tenantMembershipsTable.clerkId, clerkId),
-      eq(tenantMembershipsTable.isActive, "true"),
-    ))
-    .limit(1);
-
-  if (membership.length === 0 || !membership[0]!.tenantId) {
-    res.status(404).json({ error: "No tenant found for user" });
-    return;
-  }
-
-  const tenantId = membership[0]!.tenantId;
   const members = await db
     .select()
     .from(tenantMembershipsTable)

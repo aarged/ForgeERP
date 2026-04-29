@@ -2,10 +2,17 @@ import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, tenantsTable, tenantMembershipsTable } from "@workspace/db";
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/requireAuth";
+import { tenantContext, type TenantRequest } from "../middlewares/tenantContext";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
 
+/**
+ * GET /auth/me
+ * Returns the current user's profile including tenant and role.
+ * Uses requireAuth (not tenantContext) so users without a tenant membership
+ * can still call this endpoint to check their onboarding status.
+ */
 router.get("/auth/me", requireAuth, async (req: Request, res: Response): Promise<void> => {
   const clerkId = (req as AuthenticatedRequest).clerkUserId;
 
@@ -55,8 +62,12 @@ router.get("/auth/me", requireAuth, async (req: Request, res: Response): Promise
   });
 });
 
-router.patch("/auth/me", requireAuth, async (req: Request, res: Response): Promise<void> => {
-  const clerkId = (req as AuthenticatedRequest).clerkUserId;
+/**
+ * PATCH /auth/me
+ * Update the current user's profile. Uses tenantContext for full tenant isolation.
+ */
+router.patch("/auth/me", tenantContext, async (req: Request, res: Response): Promise<void> => {
+  const { clerkUserId: clerkId, tenantId } = req as TenantRequest;
   const { firstName, lastName } = req.body as { firstName?: string; lastName?: string };
 
   await db
@@ -65,7 +76,10 @@ router.patch("/auth/me", requireAuth, async (req: Request, res: Response): Promi
       ...(firstName !== undefined && { firstName }),
       ...(lastName !== undefined && { lastName }),
     })
-    .where(eq(tenantMembershipsTable.clerkId, clerkId));
+    .where(and(
+      eq(tenantMembershipsTable.clerkId, clerkId),
+      eq(tenantMembershipsTable.tenantId, tenantId),
+    ));
 
   const membership = await db
     .select({
@@ -80,7 +94,10 @@ router.patch("/auth/me", requireAuth, async (req: Request, res: Response): Promi
     })
     .from(tenantMembershipsTable)
     .leftJoin(tenantsTable, eq(tenantMembershipsTable.tenantId, tenantsTable.id))
-    .where(eq(tenantMembershipsTable.clerkId, clerkId))
+    .where(and(
+      eq(tenantMembershipsTable.clerkId, clerkId),
+      eq(tenantMembershipsTable.tenantId, tenantId),
+    ))
     .limit(1);
 
   if (membership.length === 0) {
