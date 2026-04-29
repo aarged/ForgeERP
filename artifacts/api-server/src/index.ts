@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { applyRLSPolicies } from "@workspace/db/rls";
-import { isStripeConfigured, getStripeSync } from "./lib/stripe";
+import { canAttemptStripeInit, setStripeReady, getStripeSync } from "./lib/stripe";
 import { runMigrations } from "stripe-replit-sync";
 
 const rawPort = process.env["PORT"];
@@ -24,7 +24,7 @@ if (Number.isNaN(port) || port <= 0) {
  * even after a fresh deployment or DB reset.
  */
 async function initStripe(): Promise<void> {
-  if (!isStripeConfigured()) {
+  if (!canAttemptStripeInit()) {
     logger.info("Stripe integration not connected — billing features disabled");
     return;
   }
@@ -38,6 +38,7 @@ async function initStripe(): Promise<void> {
     stripeSync.syncBackfill().catch((err: unknown) => {
       logger.warn({ err }, "Stripe backfill failed (non-fatal)");
     });
+    setStripeReady(true);
     logger.info("Stripe initialized");
   } catch (err) {
     logger.warn({ err }, "Stripe initialization failed — billing features disabled");

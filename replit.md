@@ -46,6 +46,21 @@ A modern, multi-tenant SaaS ERP platform for mid-market businesses. Covers purch
 - `customers` — Customer master; enhanced (taxId, abn, legalName, billing+shipping address, creditLimit, paymentTerms, currency, pricingTier, notes)
 - `customer_contacts` — Contacts per customer (name, role, email, phone, isPrimary)
 - `gl_accounts` — GL Chart of Accounts (code, name, accountType: asset/liability/equity/revenue/expense, parentId for tree, taxCode, isPosting, glTemplate)
+- `approval_workflows` — Named approval workflow templates (name, entityType, isActive) per tenant
+- `approval_steps` — Steps within a workflow (stepOrder, approverRole, approverUserId, requireAll, autoApprove, maxAmount)
+- `approval_decisions` — Audit of each approver action (decision: approved/rejected/returned, comments, actedAt)
+- `purchase_requisitions` — Purchase requisition headers (code REQ-XXXXXX, title, priority, status lifecycle, requesterUserId, departmentId, warehouseId, authorityLimit)
+- `requisition_lines` — Line items on a requisition (itemCode, description, qty, unitPrice, taxPct, accountCode)
+- `purchase_orders` — PO headers (code PO-XXXXXX, status, supplierId, currency, expectedDate, fromRequisitionId)
+- `po_lines` — PO line items (itemCode, description, qty, unitPrice, taxPct, receivedQty, lineType: stock/expense/service/asset)
+- `po_receipts` — Goods receipt headers (code GR-XXXXXX, warehouseId, receivedBy)
+- `receipt_lines` — Receipt line items with lot/serial/batch capture (lotNumber, serialNumber, batchNumber, expiryDate)
+- `po_returns` — Return-to-supplier headers (returnReason)
+- `return_lines` — Return line items (returnedQty)
+- `inventory_stock` — Current stock on hand per item/warehouse (onHand, reserved, avgCost)
+- `inventory_movements` — Inventory transaction ledger (movementType, qty, unitCost, reference, lotNumber, serialNumber)
+- `gl_postings` — GL journal entry headers (postingDate, reference, sourceType: po_receipt/return, description)
+- `gl_posting_lines` — Journal entry lines (accountCode, debit, credit, description)
 
 ## Database Roles & RLS
 
@@ -106,7 +121,7 @@ Connection URLs:
 
 ## Stripe Integration
 
-Stripe is optional — all code is guarded by `isStripeConfigured()`. Set `STRIPE_SECRET_KEY` environment secret to enable. Webhooks require `STRIPE_WEBHOOK_SECRET`.
+Stripe is optional — all code is guarded by `isStripeConfigured()` which returns `true` only if Stripe actually initialised successfully at startup (credential retrieval succeeded). Use `canAttemptStripeInit()` to check if the Replit connectors env vars are present (for the startup attempt). Connect via the Replit Integrations tab. Webhooks require `STRIPE_WEBHOOK_SECRET`.
 
 ## Key Commands
 
@@ -123,7 +138,8 @@ Stripe is optional — all code is guarded by `isStripeConfigured()`. Set `STRIP
 - `/sign-up/*?` — Clerk sign-up page (custom branded)
 - `/dashboard` — Main app dashboard (protected)
 - `/settings` — User profile settings (protected)
-- `/procurement`, `/sales`, `/inventory`, `/finance` — Module placeholders (protected)
+- `/procurement` — Full Procurement & Purchase Orders module (9 tabs: Dashboard, Requisitions, Purchase Orders, Goods Receipts, Returns, Inventory, GL Postings, Workflows, Reports)
+- `/sales`, `/inventory`, `/finance` — Module placeholders (protected)
 - `/super-admin` — Super admin dashboard: KPI bar, tenant table w/ search/filter, create tenant dialog, tenant detail sheet with Stripe invoices, row actions (suspend/unsuspend/plan change/delete)
 - `/pending` — Shown when a signed-in user has no tenant; CTA to start onboarding
 - `/onboarding` — 5-step self-serve wizard (Company Details → Company Structure → Master Data Import → Plan & Payment → Team Setup). Features: progress persistence via session API, ABN/tax ID validation, CSV import with template download, sample data loading, Stripe Elements (graceful fallback), warehouse/department setup with GL template, up to 25 team invites, Quick Start Tour on completion. Redirects to `/dashboard` when the user already has a tenant.
@@ -140,7 +156,7 @@ Stripe is optional — all code is guarded by `isStripeConfigured()`. Set `STRIP
 - [x] Task 2: Super-Admin Dashboard & Tenant Management
 - [x] Task 3: Tenant Onboarding Wizard
 - [ ] Task 4: Master Data Management
-- [ ] Task 5: Procurement & Purchase Orders Module
+- [x] Task 5: Procurement & Purchase Orders Module
 - [ ] Task 6: Sales Orders Module
 - [ ] Task 7: Inventory & Warehouse Operations
 - [ ] Task 8: Mobile Warehouse Picking App (PWA)

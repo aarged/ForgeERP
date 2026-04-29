@@ -5,6 +5,7 @@ import tenantsRouter from "./tenants";
 import adminRouter from "./admin";
 import onboardingRouter from "./onboarding";
 import masterDataRouter from "./master-data";
+import procurementRouter from "./procurement";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(tenantsRouter);
 router.use(adminRouter);
 router.use(onboardingRouter);
 router.use(masterDataRouter);
+router.use(procurementRouter);
 
 export default router;

@@ -2171,6 +2171,916 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ── Procurement ────────────────────────────────────────────────────────────────
+
+  /procurement/approval-workflows:
+    get:
+      operationId: listApprovalWorkflows
+      summary: List approval workflows
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: List of approval workflows
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ApprovalWorkflow" }
+    post:
+      operationId: createApprovalWorkflow
+      summary: Create approval workflow
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateApprovalWorkflowBody" }
+      responses:
+        "201":
+          description: Created workflow
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalWorkflow" }
+
+  /procurement/approval-workflows/{id}:
+    patch:
+      operationId: updateApprovalWorkflow
+      summary: Update approval workflow
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateApprovalWorkflowBody" }
+      responses:
+        "200":
+          description: Updated workflow
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalWorkflow" }
+
+  /procurement/approval-workflows/{id}/steps:
+    get:
+      operationId: listApprovalSteps
+      summary: List approval steps for a workflow
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: List of steps
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ApprovalStep" }
+    post:
+      operationId: createApprovalStep
+      summary: Create approval step
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateApprovalStepBody" }
+      responses:
+        "201":
+          description: Created step
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalStep" }
+
+  /procurement/approval-workflows/{wfId}/steps/{stepId}:
+    delete:
+      operationId: deleteApprovalStep
+      summary: Delete approval step
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: wfId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: stepId
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
+
+  /procurement/requisitions:
+    get:
+      operationId: listRequisitions
+      summary: List purchase requisitions
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 25 }
+      responses:
+        "200":
+          description: Paginated requisitions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RequisitionList" }
+    post:
+      operationId: createRequisition
+      summary: Create purchase requisition
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateRequisitionBody" }
+      responses:
+        "201":
+          description: Created requisition
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseRequisition" }
+
+  /procurement/requisitions/{id}:
+    get:
+      operationId: getRequisition
+      summary: Get purchase requisition
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Requisition with lines
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseRequisitionDetail" }
+    patch:
+      operationId: updateRequisition
+      summary: Update purchase requisition
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateRequisitionBody" }
+      responses:
+        "200":
+          description: Updated requisition
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseRequisition" }
+    delete:
+      operationId: deleteRequisition
+      summary: Delete purchase requisition
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
+
+  /procurement/requisitions/{id}/lines:
+    put:
+      operationId: updateRequisitionLines
+      summary: Replace all lines on a requisition
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/RequisitionLineInput" }
+      responses:
+        "200":
+          description: Updated lines
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RequisitionLine" }
+
+  /procurement/requisitions/{id}/submit:
+    post:
+      operationId: submitRequisition
+      summary: Submit requisition for approval
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Updated requisition
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseRequisition" }
+
+  /procurement/requisitions/{id}/decision:
+    post:
+      operationId: decideRequisition
+      summary: Approve/reject/return a requisition
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApprovalDecisionBody" }
+      responses:
+        "200":
+          description: Updated requisition
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseRequisition" }
+
+  /procurement/requisitions/{id}/convert-to-po:
+    post:
+      operationId: convertRequisitionToPo
+      summary: Convert approved requisition to purchase order
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "201":
+          description: Created purchase order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseOrder" }
+
+  /procurement/purchase-orders:
+    get:
+      operationId: listPurchaseOrders
+      summary: List purchase orders
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: supplierId
+          schema: { type: integer }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 25 }
+      responses:
+        "200":
+          description: Paginated purchase orders
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseOrderList" }
+    post:
+      operationId: createPurchaseOrder
+      summary: Create purchase order
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePurchaseOrderBody" }
+      responses:
+        "201":
+          description: Created purchase order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseOrder" }
+
+  /procurement/purchase-orders/{id}:
+    get:
+      operationId: getPurchaseOrder
+      summary: Get purchase order with lines and receipts
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Purchase order detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseOrderDetail" }
+    patch:
+      operationId: updatePurchaseOrder
+      summary: Update purchase order
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePurchaseOrderBody" }
+      responses:
+        "200":
+          description: Updated PO
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseOrder" }
+    delete:
+      operationId: deletePurchaseOrder
+      summary: Delete purchase order
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
+
+  /procurement/purchase-orders/{id}/lines:
+    put:
+      operationId: updatePoLines
+      summary: Replace all lines on a purchase order
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/PoLineInput" }
+      responses:
+        "200":
+          description: Updated lines
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PoLine" }
+
+  /procurement/purchase-orders/{id}/submit:
+    post:
+      operationId: submitPurchaseOrder
+      summary: Submit PO for approval
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Updated PO
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseOrder" }
+
+  /procurement/purchase-orders/{id}/decision:
+    post:
+      operationId: decidePurchaseOrder
+      summary: Approve/reject/return a PO
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApprovalDecisionBody" }
+      responses:
+        "200":
+          description: Updated PO
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseOrder" }
+
+  /procurement/purchase-orders/{id}/send:
+    post:
+      operationId: sendPurchaseOrder
+      summary: Mark PO as sent to supplier
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Updated PO
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseOrder" }
+
+  /procurement/receipts:
+    get:
+      operationId: listReceipts
+      summary: List goods receipts
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: poId
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 25 }
+      responses:
+        "200":
+          description: Paginated receipts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReceiptList" }
+    post:
+      operationId: createReceipt
+      summary: Create goods receipt
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReceiptBody" }
+      responses:
+        "201":
+          description: Created receipt
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PoReceipt" }
+
+  /procurement/receipts/{id}:
+    get:
+      operationId: getReceipt
+      summary: Get goods receipt with lines
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Receipt detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PoReceiptDetail" }
+
+  /procurement/receipts/{id}/confirm:
+    post:
+      operationId: confirmReceipt
+      summary: Confirm receipt, post inventory and GL
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Confirmed receipt
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PoReceipt" }
+
+  /procurement/returns:
+    get:
+      operationId: listReturns
+      summary: List returns to vendor
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: poId
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 25 }
+      responses:
+        "200":
+          description: Paginated returns
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReturnList" }
+    post:
+      operationId: createReturn
+      summary: Create return to vendor
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReturnBody" }
+      responses:
+        "201":
+          description: Created return
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PoReturn" }
+
+  /procurement/returns/{id}:
+    get:
+      operationId: getReturn
+      summary: Get return to vendor with lines
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Return detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PoReturnDetail" }
+
+  /procurement/returns/{id}/confirm:
+    post:
+      operationId: confirmReturn
+      summary: Confirm return to vendor, reverse inventory
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Confirmed return
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PoReturn" }
+
+  /procurement/gl-postings:
+    get:
+      operationId: listGlPostings
+      summary: List GL postings
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: entityType
+          schema: { type: string }
+        - in: query
+          name: entityId
+          schema: { type: integer }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 25 }
+      responses:
+        "200":
+          description: Paginated GL postings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GlPostingList" }
+
+  /procurement/inventory-stock:
+    get:
+      operationId: listInventoryStock
+      summary: Query inventory stock levels
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: itemId
+          schema: { type: integer }
+        - in: query
+          name: warehouseId
+          schema: { type: integer }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Stock levels
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InventoryStockList" }
+
+  /procurement/reports/open-pos:
+    get:
+      operationId: reportOpenPos
+      summary: Report — open purchase orders
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Open POs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PurchaseOrder" }
+
+  /procurement/reports/pending-approvals:
+    get:
+      operationId: reportPendingApprovals
+      summary: Report — pending approvals for current user
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Pending approvals
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PendingApprovalsReport" }
+
+  /procurement/reports/supplier-performance:
+    get:
+      operationId: reportSupplierPerformance
+      summary: Report — supplier performance
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Supplier performance data
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SupplierPerformanceRow" }
+
+  /procurement/reports/po-summary:
+    get:
+      operationId: reportPoSummary
+      summary: Report — PO summary by status
+      tags: [Procurement]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: PO summary rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PoSummaryRow" }
+
 components:
   securitySchemes:
     clerkAuth:
@@ -3712,3 +4622,549 @@ components:
         fromQty: { type: number }
         toQty: { type: number }
         factor: { type: number }
+
+
+    ApprovalWorkflow:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        entityType: { type: string }
+        isActive: { type: boolean }
+        triggerRules: { type: object }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateApprovalWorkflowBody:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        entityType: { type: string, enum: [purchase_requisition, purchase_order] }
+        isActive: { type: boolean }
+        triggerRules: { type: object }
+
+    ApprovalStep:
+      type: object
+      properties:
+        id: { type: integer }
+        workflowId: { type: integer }
+        stepNumber: { type: integer }
+        stepName: { type: string }
+        approverType: { type: string }
+        approverRoles: { type: array, items: { type: string } }
+        approverUserIds: { type: array, items: { type: string } }
+        approvalMode: { type: string }
+        valueLimit: { type: string, nullable: true }
+        escalationDays: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    CreateApprovalStepBody:
+      type: object
+      required: [stepNumber, stepName]
+      properties:
+        stepNumber: { type: integer }
+        stepName: { type: string }
+        approverType: { type: string, enum: [role, user] }
+        approverRoles: { type: array, items: { type: string } }
+        approverUserIds: { type: array, items: { type: string } }
+        approvalMode: { type: string, enum: [any, all] }
+        valueLimit: { type: number }
+        escalationDays: { type: integer }
+
+    ApprovalDecisionBody:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [approved, rejected, returned] }
+        comment: { type: string }
+        stepNumber: { type: integer }
+
+    PurchaseRequisition:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        code: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string }
+        priority: { type: string }
+        requestedByClerkId: { type: string, nullable: true }
+        requestedByEmail: { type: string, nullable: true }
+        preferredSupplierId: { type: integer, nullable: true }
+        deliverToWarehouseId: { type: integer, nullable: true }
+        currencyCode: { type: string }
+        totalEstimated: { type: string, nullable: true }
+        requiredByDate: { type: string, nullable: true }
+        approvalWorkflowId: { type: integer, nullable: true }
+        currentApprovalStep: { type: integer, nullable: true }
+        convertedPoId: { type: integer, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    RequisitionLine:
+      type: object
+      properties:
+        id: { type: integer }
+        requisitionId: { type: integer }
+        lineNumber: { type: integer }
+        itemId: { type: integer, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        quantity: { type: string }
+        unitOfMeasure: { type: string, nullable: true }
+        estimatedUnitPrice: { type: string, nullable: true }
+        estimatedTotal: { type: string, nullable: true }
+        glAccountId: { type: integer, nullable: true }
+        notes: { type: string, nullable: true }
+
+    RequisitionLineInput:
+      type: object
+      required: [lineNumber, quantity]
+      properties:
+        lineNumber: { type: integer }
+        itemId: { type: integer }
+        itemCode: { type: string }
+        itemName: { type: string }
+        description: { type: string }
+        quantity: { type: number }
+        unitOfMeasure: { type: string }
+        estimatedUnitPrice: { type: number }
+        glAccountId: { type: integer }
+        notes: { type: string }
+
+    PurchaseRequisitionDetail:
+      allOf:
+        - { $ref: "#/components/schemas/PurchaseRequisition" }
+        - type: object
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/RequisitionLine" }
+            approvalDecisions:
+              type: array
+              items: { $ref: "#/components/schemas/ApprovalDecision" }
+
+    RequisitionList:
+      type: object
+      properties:
+        requisitions:
+          type: array
+          items: { $ref: "#/components/schemas/PurchaseRequisition" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    CreateRequisitionBody:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        preferredSupplierId: { type: integer }
+        deliverToWarehouseId: { type: integer }
+        currencyCode: { type: string }
+        priority: { type: string, enum: [low, normal, urgent] }
+        requiredByDate: { type: string, format: date }
+        notes: { type: string }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/RequisitionLineInput" }
+
+    UpdateRequisitionBody:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        preferredSupplierId: { type: integer, nullable: true }
+        deliverToWarehouseId: { type: integer, nullable: true }
+        currencyCode: { type: string }
+        priority: { type: string, enum: [low, normal, urgent] }
+        requiredByDate: { type: string, nullable: true }
+        notes: { type: string }
+
+    PurchaseOrder:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        code: { type: string }
+        supplierId: { type: integer, nullable: true }
+        supplierName: { type: string, nullable: true }
+        supplierRef: { type: string, nullable: true }
+        requisitionId: { type: integer, nullable: true }
+        deliverToWarehouseId: { type: integer, nullable: true }
+        currencyCode: { type: string }
+        exchangeRate: { type: string }
+        paymentTerms: { type: string, nullable: true }
+        status: { type: string }
+        subtotal: { type: string }
+        taxAmount: { type: string }
+        total: { type: string }
+        deliveryDate: { type: string, nullable: true }
+        sentAt: { type: string, format: date-time, nullable: true }
+        notes: { type: string, nullable: true }
+        internalNotes: { type: string, nullable: true }
+        approvalWorkflowId: { type: integer, nullable: true }
+        currentApprovalStep: { type: integer, nullable: true }
+        createdByClerkId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    PoLine:
+      type: object
+      properties:
+        id: { type: integer }
+        poId: { type: integer }
+        lineNumber: { type: integer }
+        lineType: { type: string }
+        itemId: { type: integer, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        quantity: { type: string }
+        receivedQty: { type: string }
+        unitOfMeasure: { type: string, nullable: true }
+        unitPrice: { type: string }
+        discountPct: { type: string }
+        taxPct: { type: string }
+        lineTotal: { type: string }
+        glAccountId: { type: integer, nullable: true }
+
+    PoLineInput:
+      type: object
+      required: [lineNumber]
+      properties:
+        lineNumber: { type: integer }
+        lineType: { type: string, enum: [stock, service, charge, comment] }
+        itemId: { type: integer }
+        itemCode: { type: string }
+        itemName: { type: string }
+        description: { type: string }
+        quantity: { type: number }
+        unitOfMeasure: { type: string }
+        unitPrice: { type: number }
+        discountPct: { type: number }
+        taxPct: { type: number }
+        glAccountId: { type: integer }
+        requisitionLineId: { type: integer }
+        notes: { type: string }
+
+    PurchaseOrderDetail:
+      allOf:
+        - { $ref: "#/components/schemas/PurchaseOrder" }
+        - type: object
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/PoLine" }
+            receipts:
+              type: array
+              items: { $ref: "#/components/schemas/PoReceipt" }
+            approvalDecisions:
+              type: array
+              items: { $ref: "#/components/schemas/ApprovalDecision" }
+
+    PurchaseOrderList:
+      type: object
+      properties:
+        purchaseOrders:
+          type: array
+          items: { $ref: "#/components/schemas/PurchaseOrder" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    CreatePurchaseOrderBody:
+      type: object
+      properties:
+        supplierId: { type: integer }
+        supplierRef: { type: string }
+        deliverToWarehouseId: { type: integer }
+        deliveryDate: { type: string, format: date }
+        currencyCode: { type: string }
+        exchangeRate: { type: number }
+        paymentTerms: { type: string }
+        notes: { type: string }
+        internalNotes: { type: string }
+        requisitionId: { type: integer }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/PoLineInput" }
+
+    UpdatePurchaseOrderBody:
+      type: object
+      properties:
+        supplierId: { type: integer, nullable: true }
+        supplierRef: { type: string }
+        deliverToWarehouseId: { type: integer, nullable: true }
+        deliveryDate: { type: string, nullable: true }
+        currencyCode: { type: string }
+        paymentTerms: { type: string }
+        notes: { type: string }
+        internalNotes: { type: string }
+        status: { type: string }
+
+    PoReceipt:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        code: { type: string }
+        poId: { type: integer }
+        warehouseId: { type: integer, nullable: true }
+        locationId: { type: integer, nullable: true }
+        supplierDeliveryRef: { type: string, nullable: true }
+        status: { type: string }
+        receivedAt: { type: string, format: date-time, nullable: true }
+        receivedByClerkId: { type: string, nullable: true }
+        glPostingId: { type: integer, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ReceiptLine:
+      type: object
+      properties:
+        id: { type: integer }
+        receiptId: { type: integer }
+        poLineId: { type: integer }
+        itemId: { type: integer, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        orderedQty: { type: string }
+        receivedQty: { type: string }
+        unitCost: { type: string, nullable: true }
+        locationId: { type: integer, nullable: true }
+        lotNumber: { type: string, nullable: true }
+        batchNumber: { type: string, nullable: true }
+        serialNumber: { type: string, nullable: true }
+        expiryDate: { type: string, nullable: true }
+
+    ReceiptLineInput:
+      type: object
+      required: [poLineId, orderedQty, receivedQty]
+      properties:
+        poLineId: { type: integer }
+        itemId: { type: integer }
+        itemCode: { type: string }
+        itemName: { type: string }
+        orderedQty: { type: number }
+        receivedQty: { type: number }
+        unitCost: { type: number }
+        locationId: { type: integer }
+        lotNumber: { type: string }
+        batchNumber: { type: string }
+        serialNumber: { type: string }
+        expiryDate: { type: string, format: date }
+        notes: { type: string }
+
+    PoReceiptDetail:
+      allOf:
+        - { $ref: "#/components/schemas/PoReceipt" }
+        - type: object
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/ReceiptLine" }
+
+    ReceiptList:
+      type: object
+      properties:
+        receipts:
+          type: array
+          items: { $ref: "#/components/schemas/PoReceipt" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    CreateReceiptBody:
+      type: object
+      required: [poId]
+      properties:
+        poId: { type: integer }
+        warehouseId: { type: integer }
+        locationId: { type: integer }
+        supplierDeliveryRef: { type: string }
+        notes: { type: string }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/ReceiptLineInput" }
+
+    PoReturn:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        code: { type: string }
+        poId: { type: integer }
+        receiptId: { type: integer, nullable: true }
+        supplierId: { type: integer, nullable: true }
+        warehouseId: { type: integer, nullable: true }
+        returnType: { type: string }
+        reason: { type: string, nullable: true }
+        status: { type: string }
+        total: { type: string }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    PoReturnLine:
+      type: object
+      properties:
+        id: { type: integer }
+        returnId: { type: integer }
+        poLineId: { type: integer, nullable: true }
+        itemId: { type: integer, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        quantity: { type: string }
+        unitCost: { type: string, nullable: true }
+        lotNumber: { type: string, nullable: true }
+        serialNumber: { type: string, nullable: true }
+        batchNumber: { type: string, nullable: true }
+        reason: { type: string, nullable: true }
+
+    PoReturnDetail:
+      allOf:
+        - { $ref: "#/components/schemas/PoReturn" }
+        - type: object
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/PoReturnLine" }
+
+    ReturnList:
+      type: object
+      properties:
+        returns:
+          type: array
+          items: { $ref: "#/components/schemas/PoReturn" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    CreateReturnBody:
+      type: object
+      required: [poId]
+      properties:
+        poId: { type: integer }
+        receiptId: { type: integer }
+        supplierId: { type: integer }
+        warehouseId: { type: integer }
+        returnType: { type: string, enum: [credit, replace] }
+        reason: { type: string }
+        notes: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              poLineId: { type: integer }
+              itemId: { type: integer }
+              itemCode: { type: string }
+              itemName: { type: string }
+              quantity: { type: number }
+              unitCost: { type: number }
+              lotNumber: { type: string }
+              serialNumber: { type: string }
+              batchNumber: { type: string }
+              reason: { type: string }
+              notes: { type: string }
+
+    GlPosting:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        code: { type: string }
+        entityType: { type: string }
+        entityId: { type: integer }
+        status: { type: string }
+        postedByClerkId: { type: string, nullable: true }
+        postedByEmail: { type: string, nullable: true }
+        postedAt: { type: string, format: date-time, nullable: true }
+        lines: { type: object }
+        totalDebit: { type: string }
+        totalCredit: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    GlPostingList:
+      type: object
+      properties:
+        postings:
+          type: array
+          items: { $ref: "#/components/schemas/GlPosting" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    InventoryStockRow:
+      type: object
+      properties:
+        id: { type: integer }
+        itemId: { type: integer }
+        warehouseId: { type: integer }
+        locationId: { type: integer, nullable: true }
+        lotNumber: { type: string, nullable: true }
+        batchNumber: { type: string, nullable: true }
+        serialNumber: { type: string, nullable: true }
+        expiryDate: { type: string, nullable: true }
+        qtyOnHand: { type: string }
+        qtyReserved: { type: string }
+        averageCost: { type: string, nullable: true }
+        lastMovementAt: { type: string, format: date-time, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        warehouseName: { type: string, nullable: true }
+
+    InventoryStockList:
+      type: object
+      properties:
+        stock:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryStockRow" }
+        hasMore: { type: boolean }
+        page: { type: integer }
+
+    ApprovalDecision:
+      type: object
+      properties:
+        id: { type: integer }
+        workflowId: { type: integer, nullable: true }
+        stepNumber: { type: integer }
+        entityType: { type: string }
+        entityId: { type: integer }
+        approverClerkId: { type: string, nullable: true }
+        approverEmail: { type: string, nullable: true }
+        decision: { type: string }
+        comment: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    PendingApprovalsReport:
+      type: object
+      properties:
+        pendingRequisitions:
+          type: array
+          items: { $ref: "#/components/schemas/PurchaseRequisition" }
+        pendingPurchaseOrders:
+          type: array
+          items: { $ref: "#/components/schemas/PurchaseOrder" }
+        totalPending: { type: integer }
+
+    SupplierPerformanceRow:
+      type: object
+      properties:
+        supplierId: { type: integer, nullable: true }
+        supplierName: { type: string, nullable: true }
+        totalOrders: { type: integer }
+        totalValue: { type: number }
+        avgOrderValue: { type: number }
+
+    PoSummaryRow:
+      type: object
+      properties:
+        status: { type: string }
+        count: { type: integer }
+        total: { type: number }

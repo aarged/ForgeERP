@@ -1350,6 +1350,534 @@ export interface UomConversionResult {
   factor?: number;
 }
 
+export type ApprovalWorkflowTriggerRules = { [key: string]: unknown };
+
+export interface ApprovalWorkflow {
+  id?: number;
+  tenantId?: number;
+  name?: string;
+  description?: string | null;
+  entityType?: string;
+  isActive?: boolean;
+  triggerRules?: ApprovalWorkflowTriggerRules;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type CreateApprovalWorkflowBodyEntityType =
+  (typeof CreateApprovalWorkflowBodyEntityType)[keyof typeof CreateApprovalWorkflowBodyEntityType];
+
+export const CreateApprovalWorkflowBodyEntityType = {
+  purchase_requisition: "purchase_requisition",
+  purchase_order: "purchase_order",
+} as const;
+
+export type CreateApprovalWorkflowBodyTriggerRules = { [key: string]: unknown };
+
+export interface CreateApprovalWorkflowBody {
+  name: string;
+  description?: string;
+  entityType?: CreateApprovalWorkflowBodyEntityType;
+  isActive?: boolean;
+  triggerRules?: CreateApprovalWorkflowBodyTriggerRules;
+}
+
+export interface ApprovalStep {
+  id?: number;
+  workflowId?: number;
+  stepNumber?: number;
+  stepName?: string;
+  approverType?: string;
+  approverRoles?: string[];
+  approverUserIds?: string[];
+  approvalMode?: string;
+  valueLimit?: string | null;
+  escalationDays?: number;
+  createdAt?: string;
+}
+
+export type CreateApprovalStepBodyApproverType =
+  (typeof CreateApprovalStepBodyApproverType)[keyof typeof CreateApprovalStepBodyApproverType];
+
+export const CreateApprovalStepBodyApproverType = {
+  role: "role",
+  user: "user",
+} as const;
+
+export type CreateApprovalStepBodyApprovalMode =
+  (typeof CreateApprovalStepBodyApprovalMode)[keyof typeof CreateApprovalStepBodyApprovalMode];
+
+export const CreateApprovalStepBodyApprovalMode = {
+  any: "any",
+  all: "all",
+} as const;
+
+export interface CreateApprovalStepBody {
+  stepNumber: number;
+  stepName: string;
+  approverType?: CreateApprovalStepBodyApproverType;
+  approverRoles?: string[];
+  approverUserIds?: string[];
+  approvalMode?: CreateApprovalStepBodyApprovalMode;
+  valueLimit?: number;
+  escalationDays?: number;
+}
+
+export type ApprovalDecisionBodyDecision =
+  (typeof ApprovalDecisionBodyDecision)[keyof typeof ApprovalDecisionBodyDecision];
+
+export const ApprovalDecisionBodyDecision = {
+  approved: "approved",
+  rejected: "rejected",
+  returned: "returned",
+} as const;
+
+export interface ApprovalDecisionBody {
+  decision: ApprovalDecisionBodyDecision;
+  comment?: string;
+  stepNumber?: number;
+}
+
+export interface PurchaseRequisition {
+  id?: number;
+  tenantId?: number;
+  code?: string;
+  title?: string;
+  description?: string | null;
+  status?: string;
+  priority?: string;
+  requestedByClerkId?: string | null;
+  requestedByEmail?: string | null;
+  preferredSupplierId?: number | null;
+  deliverToWarehouseId?: number | null;
+  currencyCode?: string;
+  totalEstimated?: string | null;
+  requiredByDate?: string | null;
+  approvalWorkflowId?: number | null;
+  currentApprovalStep?: number | null;
+  convertedPoId?: number | null;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RequisitionLine {
+  id?: number;
+  requisitionId?: number;
+  lineNumber?: number;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  description?: string | null;
+  quantity?: string;
+  unitOfMeasure?: string | null;
+  estimatedUnitPrice?: string | null;
+  estimatedTotal?: string | null;
+  glAccountId?: number | null;
+  notes?: string | null;
+}
+
+export interface RequisitionLineInput {
+  lineNumber: number;
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  description?: string;
+  quantity: number;
+  unitOfMeasure?: string;
+  estimatedUnitPrice?: number;
+  glAccountId?: number;
+  notes?: string;
+}
+
+export interface ApprovalDecision {
+  id?: number;
+  workflowId?: number | null;
+  stepNumber?: number;
+  entityType?: string;
+  entityId?: number;
+  approverClerkId?: string | null;
+  approverEmail?: string | null;
+  decision?: string;
+  comment?: string | null;
+  createdAt?: string;
+}
+
+export type PurchaseRequisitionDetail = PurchaseRequisition & {
+  lines?: RequisitionLine[];
+  approvalDecisions?: ApprovalDecision[];
+};
+
+export interface RequisitionList {
+  requisitions?: PurchaseRequisition[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export type CreateRequisitionBodyPriority =
+  (typeof CreateRequisitionBodyPriority)[keyof typeof CreateRequisitionBodyPriority];
+
+export const CreateRequisitionBodyPriority = {
+  low: "low",
+  normal: "normal",
+  urgent: "urgent",
+} as const;
+
+export interface CreateRequisitionBody {
+  title: string;
+  description?: string;
+  preferredSupplierId?: number;
+  deliverToWarehouseId?: number;
+  currencyCode?: string;
+  priority?: CreateRequisitionBodyPriority;
+  requiredByDate?: string;
+  notes?: string;
+  lines?: RequisitionLineInput[];
+}
+
+export type UpdateRequisitionBodyPriority =
+  (typeof UpdateRequisitionBodyPriority)[keyof typeof UpdateRequisitionBodyPriority];
+
+export const UpdateRequisitionBodyPriority = {
+  low: "low",
+  normal: "normal",
+  urgent: "urgent",
+} as const;
+
+export interface UpdateRequisitionBody {
+  title?: string;
+  description?: string;
+  preferredSupplierId?: number | null;
+  deliverToWarehouseId?: number | null;
+  currencyCode?: string;
+  priority?: UpdateRequisitionBodyPriority;
+  requiredByDate?: string | null;
+  notes?: string;
+}
+
+export interface PurchaseOrder {
+  id?: number;
+  tenantId?: number;
+  code?: string;
+  supplierId?: number | null;
+  supplierName?: string | null;
+  supplierRef?: string | null;
+  requisitionId?: number | null;
+  deliverToWarehouseId?: number | null;
+  currencyCode?: string;
+  exchangeRate?: string;
+  paymentTerms?: string | null;
+  status?: string;
+  subtotal?: string;
+  taxAmount?: string;
+  total?: string;
+  deliveryDate?: string | null;
+  sentAt?: string | null;
+  notes?: string | null;
+  internalNotes?: string | null;
+  approvalWorkflowId?: number | null;
+  currentApprovalStep?: number | null;
+  createdByClerkId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PoLine {
+  id?: number;
+  poId?: number;
+  lineNumber?: number;
+  lineType?: string;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  description?: string | null;
+  quantity?: string;
+  receivedQty?: string;
+  unitOfMeasure?: string | null;
+  unitPrice?: string;
+  discountPct?: string;
+  taxPct?: string;
+  lineTotal?: string;
+  glAccountId?: number | null;
+}
+
+export type PoLineInputLineType =
+  (typeof PoLineInputLineType)[keyof typeof PoLineInputLineType];
+
+export const PoLineInputLineType = {
+  stock: "stock",
+  service: "service",
+  charge: "charge",
+  comment: "comment",
+} as const;
+
+export interface PoLineInput {
+  lineNumber: number;
+  lineType?: PoLineInputLineType;
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  description?: string;
+  quantity?: number;
+  unitOfMeasure?: string;
+  unitPrice?: number;
+  discountPct?: number;
+  taxPct?: number;
+  glAccountId?: number;
+  requisitionLineId?: number;
+  notes?: string;
+}
+
+export interface PoReceipt {
+  id?: number;
+  tenantId?: number;
+  code?: string;
+  poId?: number;
+  warehouseId?: number | null;
+  locationId?: number | null;
+  supplierDeliveryRef?: string | null;
+  status?: string;
+  receivedAt?: string | null;
+  receivedByClerkId?: string | null;
+  glPostingId?: number | null;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type PurchaseOrderDetail = PurchaseOrder & {
+  lines?: PoLine[];
+  receipts?: PoReceipt[];
+  approvalDecisions?: ApprovalDecision[];
+};
+
+export interface PurchaseOrderList {
+  purchaseOrders?: PurchaseOrder[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export interface CreatePurchaseOrderBody {
+  supplierId?: number;
+  supplierRef?: string;
+  deliverToWarehouseId?: number;
+  deliveryDate?: string;
+  currencyCode?: string;
+  exchangeRate?: number;
+  paymentTerms?: string;
+  notes?: string;
+  internalNotes?: string;
+  requisitionId?: number;
+  lines?: PoLineInput[];
+}
+
+export interface UpdatePurchaseOrderBody {
+  supplierId?: number | null;
+  supplierRef?: string;
+  deliverToWarehouseId?: number | null;
+  deliveryDate?: string | null;
+  currencyCode?: string;
+  paymentTerms?: string;
+  notes?: string;
+  internalNotes?: string;
+  status?: string;
+}
+
+export interface ReceiptLine {
+  id?: number;
+  receiptId?: number;
+  poLineId?: number;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  orderedQty?: string;
+  receivedQty?: string;
+  unitCost?: string | null;
+  locationId?: number | null;
+  lotNumber?: string | null;
+  batchNumber?: string | null;
+  serialNumber?: string | null;
+  expiryDate?: string | null;
+}
+
+export interface ReceiptLineInput {
+  poLineId: number;
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  orderedQty: number;
+  receivedQty: number;
+  unitCost?: number;
+  locationId?: number;
+  lotNumber?: string;
+  batchNumber?: string;
+  serialNumber?: string;
+  expiryDate?: string;
+  notes?: string;
+}
+
+export type PoReceiptDetail = PoReceipt & {
+  lines?: ReceiptLine[];
+};
+
+export interface ReceiptList {
+  receipts?: PoReceipt[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export interface CreateReceiptBody {
+  poId: number;
+  warehouseId?: number;
+  locationId?: number;
+  supplierDeliveryRef?: string;
+  notes?: string;
+  lines?: ReceiptLineInput[];
+}
+
+export interface PoReturn {
+  id?: number;
+  tenantId?: number;
+  code?: string;
+  poId?: number;
+  receiptId?: number | null;
+  supplierId?: number | null;
+  warehouseId?: number | null;
+  returnType?: string;
+  reason?: string | null;
+  status?: string;
+  total?: string;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PoReturnLine {
+  id?: number;
+  returnId?: number;
+  poLineId?: number | null;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  quantity?: string;
+  unitCost?: string | null;
+  lotNumber?: string | null;
+  serialNumber?: string | null;
+  batchNumber?: string | null;
+  reason?: string | null;
+}
+
+export type PoReturnDetail = PoReturn & {
+  lines?: PoReturnLine[];
+};
+
+export interface ReturnList {
+  returns?: PoReturn[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export type CreateReturnBodyReturnType =
+  (typeof CreateReturnBodyReturnType)[keyof typeof CreateReturnBodyReturnType];
+
+export const CreateReturnBodyReturnType = {
+  credit: "credit",
+  replace: "replace",
+} as const;
+
+export type CreateReturnBodyLinesItem = {
+  poLineId?: number;
+  itemId?: number;
+  itemCode?: string;
+  itemName?: string;
+  quantity?: number;
+  unitCost?: number;
+  lotNumber?: string;
+  serialNumber?: string;
+  batchNumber?: string;
+  reason?: string;
+  notes?: string;
+};
+
+export interface CreateReturnBody {
+  poId: number;
+  receiptId?: number;
+  supplierId?: number;
+  warehouseId?: number;
+  returnType?: CreateReturnBodyReturnType;
+  reason?: string;
+  notes?: string;
+  lines?: CreateReturnBodyLinesItem[];
+}
+
+export type GlPostingLines = { [key: string]: unknown };
+
+export interface GlPosting {
+  id?: number;
+  tenantId?: number;
+  code?: string;
+  entityType?: string;
+  entityId?: number;
+  status?: string;
+  postedByClerkId?: string | null;
+  postedByEmail?: string | null;
+  postedAt?: string | null;
+  lines?: GlPostingLines;
+  totalDebit?: string;
+  totalCredit?: string;
+  createdAt?: string;
+}
+
+export interface GlPostingList {
+  postings?: GlPosting[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export interface InventoryStockRow {
+  id?: number;
+  itemId?: number;
+  warehouseId?: number;
+  locationId?: number | null;
+  lotNumber?: string | null;
+  batchNumber?: string | null;
+  serialNumber?: string | null;
+  expiryDate?: string | null;
+  qtyOnHand?: string;
+  qtyReserved?: string;
+  averageCost?: string | null;
+  lastMovementAt?: string | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  warehouseName?: string | null;
+}
+
+export interface InventoryStockList {
+  stock?: InventoryStockRow[];
+  hasMore?: boolean;
+  page?: number;
+}
+
+export interface PendingApprovalsReport {
+  pendingRequisitions?: PurchaseRequisition[];
+  pendingPurchaseOrders?: PurchaseOrder[];
+  totalPending?: number;
+}
+
+export interface SupplierPerformanceRow {
+  supplierId?: number | null;
+  supplierName?: string | null;
+  totalOrders?: number;
+  totalValue?: number;
+  avgOrderValue?: number;
+}
+
+export interface PoSummaryRow {
+  status?: string;
+  count?: number;
+  total?: number;
+}
+
 export type UploadOnboardingCsvBodyCsvType =
   (typeof UploadOnboardingCsvBodyCsvType)[keyof typeof UploadOnboardingCsvBodyCsvType];
 
@@ -1506,3 +2034,51 @@ export const GetMasterDataAuditTrailEntityType = {
   customer_contact: "customer_contact",
   warehouse_location: "warehouse_location",
 } as const;
+
+export type ListRequisitionsParams = {
+  status?: string;
+  q?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListPurchaseOrdersParams = {
+  status?: string;
+  supplierId?: number;
+  q?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListReceiptsParams = {
+  poId?: number;
+  status?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListReturnsParams = {
+  poId?: number;
+  status?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListGlPostingsParams = {
+  entityType?: string;
+  entityId?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type ListInventoryStockParams = {
+  itemId?: number;
+  warehouseId?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type ReportPoSummaryParams = {
+  from?: string;
+  to?: string;
+};

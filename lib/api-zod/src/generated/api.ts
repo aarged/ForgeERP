@@ -2497,3 +2497,1437 @@ export const GetMasterDataAuditTrailResponse = zod.object({
     )
     .optional(),
 });
+
+/**
+ * @summary List approval workflows
+ */
+export const ListApprovalWorkflowsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListApprovalWorkflowsResponseItem = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  name: zod.string().optional(),
+  description: zod.string().nullish(),
+  entityType: zod.string().optional(),
+  isActive: zod.boolean().optional(),
+  triggerRules: zod.object({}).passthrough().optional(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+export const ListApprovalWorkflowsResponse = zod.array(
+  ListApprovalWorkflowsResponseItem,
+);
+
+/**
+ * @summary Create approval workflow
+ */
+export const CreateApprovalWorkflowHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateApprovalWorkflowBody = zod.object({
+  name: zod.string(),
+  description: zod.string().optional(),
+  entityType: zod.enum(["purchase_requisition", "purchase_order"]).optional(),
+  isActive: zod.boolean().optional(),
+  triggerRules: zod.object({}).passthrough().optional(),
+});
+
+/**
+ * @summary Update approval workflow
+ */
+export const UpdateApprovalWorkflowParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateApprovalWorkflowHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateApprovalWorkflowBody = zod.object({
+  name: zod.string(),
+  description: zod.string().optional(),
+  entityType: zod.enum(["purchase_requisition", "purchase_order"]).optional(),
+  isActive: zod.boolean().optional(),
+  triggerRules: zod.object({}).passthrough().optional(),
+});
+
+export const UpdateApprovalWorkflowResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  name: zod.string().optional(),
+  description: zod.string().nullish(),
+  entityType: zod.string().optional(),
+  isActive: zod.boolean().optional(),
+  triggerRules: zod.object({}).passthrough().optional(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary List approval steps for a workflow
+ */
+export const ListApprovalStepsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListApprovalStepsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListApprovalStepsResponseItem = zod.object({
+  id: zod.number().optional(),
+  workflowId: zod.number().optional(),
+  stepNumber: zod.number().optional(),
+  stepName: zod.string().optional(),
+  approverType: zod.string().optional(),
+  approverRoles: zod.array(zod.string()).optional(),
+  approverUserIds: zod.array(zod.string()).optional(),
+  approvalMode: zod.string().optional(),
+  valueLimit: zod.string().nullish(),
+  escalationDays: zod.number().optional(),
+  createdAt: zod.coerce.date().optional(),
+});
+export const ListApprovalStepsResponse = zod.array(
+  ListApprovalStepsResponseItem,
+);
+
+/**
+ * @summary Create approval step
+ */
+export const CreateApprovalStepParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateApprovalStepHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateApprovalStepBody = zod.object({
+  stepNumber: zod.number(),
+  stepName: zod.string(),
+  approverType: zod.enum(["role", "user"]).optional(),
+  approverRoles: zod.array(zod.string()).optional(),
+  approverUserIds: zod.array(zod.string()).optional(),
+  approvalMode: zod.enum(["any", "all"]).optional(),
+  valueLimit: zod.number().optional(),
+  escalationDays: zod.number().optional(),
+});
+
+/**
+ * @summary Delete approval step
+ */
+export const DeleteApprovalStepParams = zod.object({
+  wfId: zod.coerce.number(),
+  stepId: zod.coerce.number(),
+});
+
+export const DeleteApprovalStepHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary List purchase requisitions
+ */
+export const listRequisitionsQueryPageDefault = 1;
+export const listRequisitionsQueryLimitDefault = 25;
+
+export const ListRequisitionsQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+  q: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listRequisitionsQueryPageDefault),
+  limit: zod.coerce.number().default(listRequisitionsQueryLimitDefault),
+});
+
+export const ListRequisitionsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListRequisitionsResponse = zod.object({
+  requisitions: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        code: zod.string().optional(),
+        title: zod.string().optional(),
+        description: zod.string().nullish(),
+        status: zod.string().optional(),
+        priority: zod.string().optional(),
+        requestedByClerkId: zod.string().nullish(),
+        requestedByEmail: zod.string().nullish(),
+        preferredSupplierId: zod.number().nullish(),
+        deliverToWarehouseId: zod.number().nullish(),
+        currencyCode: zod.string().optional(),
+        totalEstimated: zod.string().nullish(),
+        requiredByDate: zod.string().nullish(),
+        approvalWorkflowId: zod.number().nullish(),
+        currentApprovalStep: zod.number().nullish(),
+        convertedPoId: zod.number().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.coerce.date().optional(),
+        updatedAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create purchase requisition
+ */
+export const CreateRequisitionHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateRequisitionBody = zod.object({
+  title: zod.string(),
+  description: zod.string().optional(),
+  preferredSupplierId: zod.number().optional(),
+  deliverToWarehouseId: zod.number().optional(),
+  currencyCode: zod.string().optional(),
+  priority: zod.enum(["low", "normal", "urgent"]).optional(),
+  requiredByDate: zod.coerce.date().optional(),
+  notes: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        lineNumber: zod.number(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        description: zod.string().optional(),
+        quantity: zod.number(),
+        unitOfMeasure: zod.string().optional(),
+        estimatedUnitPrice: zod.number().optional(),
+        glAccountId: zod.number().optional(),
+        notes: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Get purchase requisition
+ */
+export const GetRequisitionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetRequisitionHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetRequisitionResponse = zod
+  .object({
+    id: zod.number().optional(),
+    tenantId: zod.number().optional(),
+    code: zod.string().optional(),
+    title: zod.string().optional(),
+    description: zod.string().nullish(),
+    status: zod.string().optional(),
+    priority: zod.string().optional(),
+    requestedByClerkId: zod.string().nullish(),
+    requestedByEmail: zod.string().nullish(),
+    preferredSupplierId: zod.number().nullish(),
+    deliverToWarehouseId: zod.number().nullish(),
+    currencyCode: zod.string().optional(),
+    totalEstimated: zod.string().nullish(),
+    requiredByDate: zod.string().nullish(),
+    approvalWorkflowId: zod.number().nullish(),
+    currentApprovalStep: zod.number().nullish(),
+    convertedPoId: zod.number().nullish(),
+    notes: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+    updatedAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            requisitionId: zod.number().optional(),
+            lineNumber: zod.number().optional(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            description: zod.string().nullish(),
+            quantity: zod.string().optional(),
+            unitOfMeasure: zod.string().nullish(),
+            estimatedUnitPrice: zod.string().nullish(),
+            estimatedTotal: zod.string().nullish(),
+            glAccountId: zod.number().nullish(),
+            notes: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+      approvalDecisions: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            workflowId: zod.number().nullish(),
+            stepNumber: zod.number().optional(),
+            entityType: zod.string().optional(),
+            entityId: zod.number().optional(),
+            approverClerkId: zod.string().nullish(),
+            approverEmail: zod.string().nullish(),
+            decision: zod.string().optional(),
+            comment: zod.string().nullish(),
+            createdAt: zod.coerce.date().optional(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Update purchase requisition
+ */
+export const UpdateRequisitionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateRequisitionHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateRequisitionBody = zod.object({
+  title: zod.string().optional(),
+  description: zod.string().optional(),
+  preferredSupplierId: zod.number().nullish(),
+  deliverToWarehouseId: zod.number().nullish(),
+  currencyCode: zod.string().optional(),
+  priority: zod.enum(["low", "normal", "urgent"]).optional(),
+  requiredByDate: zod.string().nullish(),
+  notes: zod.string().optional(),
+});
+
+export const UpdateRequisitionResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  title: zod.string().optional(),
+  description: zod.string().nullish(),
+  status: zod.string().optional(),
+  priority: zod.string().optional(),
+  requestedByClerkId: zod.string().nullish(),
+  requestedByEmail: zod.string().nullish(),
+  preferredSupplierId: zod.number().nullish(),
+  deliverToWarehouseId: zod.number().nullish(),
+  currencyCode: zod.string().optional(),
+  totalEstimated: zod.string().nullish(),
+  requiredByDate: zod.string().nullish(),
+  approvalWorkflowId: zod.number().nullish(),
+  currentApprovalStep: zod.number().nullish(),
+  convertedPoId: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Delete purchase requisition
+ */
+export const DeleteRequisitionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteRequisitionHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Replace all lines on a requisition
+ */
+export const UpdateRequisitionLinesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateRequisitionLinesHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateRequisitionLinesBodyItem = zod.object({
+  lineNumber: zod.number(),
+  itemId: zod.number().optional(),
+  itemCode: zod.string().optional(),
+  itemName: zod.string().optional(),
+  description: zod.string().optional(),
+  quantity: zod.number(),
+  unitOfMeasure: zod.string().optional(),
+  estimatedUnitPrice: zod.number().optional(),
+  glAccountId: zod.number().optional(),
+  notes: zod.string().optional(),
+});
+export const UpdateRequisitionLinesBody = zod.array(
+  UpdateRequisitionLinesBodyItem,
+);
+
+export const UpdateRequisitionLinesResponseItem = zod.object({
+  id: zod.number().optional(),
+  requisitionId: zod.number().optional(),
+  lineNumber: zod.number().optional(),
+  itemId: zod.number().nullish(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  description: zod.string().nullish(),
+  quantity: zod.string().optional(),
+  unitOfMeasure: zod.string().nullish(),
+  estimatedUnitPrice: zod.string().nullish(),
+  estimatedTotal: zod.string().nullish(),
+  glAccountId: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+export const UpdateRequisitionLinesResponse = zod.array(
+  UpdateRequisitionLinesResponseItem,
+);
+
+/**
+ * @summary Submit requisition for approval
+ */
+export const SubmitRequisitionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SubmitRequisitionHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const SubmitRequisitionResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  title: zod.string().optional(),
+  description: zod.string().nullish(),
+  status: zod.string().optional(),
+  priority: zod.string().optional(),
+  requestedByClerkId: zod.string().nullish(),
+  requestedByEmail: zod.string().nullish(),
+  preferredSupplierId: zod.number().nullish(),
+  deliverToWarehouseId: zod.number().nullish(),
+  currencyCode: zod.string().optional(),
+  totalEstimated: zod.string().nullish(),
+  requiredByDate: zod.string().nullish(),
+  approvalWorkflowId: zod.number().nullish(),
+  currentApprovalStep: zod.number().nullish(),
+  convertedPoId: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Approve/reject/return a requisition
+ */
+export const DecideRequisitionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DecideRequisitionHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const DecideRequisitionBody = zod.object({
+  decision: zod.enum(["approved", "rejected", "returned"]),
+  comment: zod.string().optional(),
+  stepNumber: zod.number().optional(),
+});
+
+export const DecideRequisitionResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  title: zod.string().optional(),
+  description: zod.string().nullish(),
+  status: zod.string().optional(),
+  priority: zod.string().optional(),
+  requestedByClerkId: zod.string().nullish(),
+  requestedByEmail: zod.string().nullish(),
+  preferredSupplierId: zod.number().nullish(),
+  deliverToWarehouseId: zod.number().nullish(),
+  currencyCode: zod.string().optional(),
+  totalEstimated: zod.string().nullish(),
+  requiredByDate: zod.string().nullish(),
+  approvalWorkflowId: zod.number().nullish(),
+  currentApprovalStep: zod.number().nullish(),
+  convertedPoId: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Convert approved requisition to purchase order
+ */
+export const ConvertRequisitionToPoParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ConvertRequisitionToPoHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary List purchase orders
+ */
+export const listPurchaseOrdersQueryPageDefault = 1;
+export const listPurchaseOrdersQueryLimitDefault = 25;
+
+export const ListPurchaseOrdersQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+  supplierId: zod.coerce.number().optional(),
+  q: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listPurchaseOrdersQueryPageDefault),
+  limit: zod.coerce.number().default(listPurchaseOrdersQueryLimitDefault),
+});
+
+export const ListPurchaseOrdersHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListPurchaseOrdersResponse = zod.object({
+  purchaseOrders: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        code: zod.string().optional(),
+        supplierId: zod.number().nullish(),
+        supplierName: zod.string().nullish(),
+        supplierRef: zod.string().nullish(),
+        requisitionId: zod.number().nullish(),
+        deliverToWarehouseId: zod.number().nullish(),
+        currencyCode: zod.string().optional(),
+        exchangeRate: zod.string().optional(),
+        paymentTerms: zod.string().nullish(),
+        status: zod.string().optional(),
+        subtotal: zod.string().optional(),
+        taxAmount: zod.string().optional(),
+        total: zod.string().optional(),
+        deliveryDate: zod.string().nullish(),
+        sentAt: zod.coerce.date().nullish(),
+        notes: zod.string().nullish(),
+        internalNotes: zod.string().nullish(),
+        approvalWorkflowId: zod.number().nullish(),
+        currentApprovalStep: zod.number().nullish(),
+        createdByClerkId: zod.string().nullish(),
+        createdAt: zod.coerce.date().optional(),
+        updatedAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create purchase order
+ */
+export const CreatePurchaseOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreatePurchaseOrderBody = zod.object({
+  supplierId: zod.number().optional(),
+  supplierRef: zod.string().optional(),
+  deliverToWarehouseId: zod.number().optional(),
+  deliveryDate: zod.coerce.date().optional(),
+  currencyCode: zod.string().optional(),
+  exchangeRate: zod.number().optional(),
+  paymentTerms: zod.string().optional(),
+  notes: zod.string().optional(),
+  internalNotes: zod.string().optional(),
+  requisitionId: zod.number().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        lineNumber: zod.number(),
+        lineType: zod
+          .enum(["stock", "service", "charge", "comment"])
+          .optional(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        description: zod.string().optional(),
+        quantity: zod.number().optional(),
+        unitOfMeasure: zod.string().optional(),
+        unitPrice: zod.number().optional(),
+        discountPct: zod.number().optional(),
+        taxPct: zod.number().optional(),
+        glAccountId: zod.number().optional(),
+        requisitionLineId: zod.number().optional(),
+        notes: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Get purchase order with lines and receipts
+ */
+export const GetPurchaseOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetPurchaseOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetPurchaseOrderResponse = zod
+  .object({
+    id: zod.number().optional(),
+    tenantId: zod.number().optional(),
+    code: zod.string().optional(),
+    supplierId: zod.number().nullish(),
+    supplierName: zod.string().nullish(),
+    supplierRef: zod.string().nullish(),
+    requisitionId: zod.number().nullish(),
+    deliverToWarehouseId: zod.number().nullish(),
+    currencyCode: zod.string().optional(),
+    exchangeRate: zod.string().optional(),
+    paymentTerms: zod.string().nullish(),
+    status: zod.string().optional(),
+    subtotal: zod.string().optional(),
+    taxAmount: zod.string().optional(),
+    total: zod.string().optional(),
+    deliveryDate: zod.string().nullish(),
+    sentAt: zod.coerce.date().nullish(),
+    notes: zod.string().nullish(),
+    internalNotes: zod.string().nullish(),
+    approvalWorkflowId: zod.number().nullish(),
+    currentApprovalStep: zod.number().nullish(),
+    createdByClerkId: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+    updatedAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            poId: zod.number().optional(),
+            lineNumber: zod.number().optional(),
+            lineType: zod.string().optional(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            description: zod.string().nullish(),
+            quantity: zod.string().optional(),
+            receivedQty: zod.string().optional(),
+            unitOfMeasure: zod.string().nullish(),
+            unitPrice: zod.string().optional(),
+            discountPct: zod.string().optional(),
+            taxPct: zod.string().optional(),
+            lineTotal: zod.string().optional(),
+            glAccountId: zod.number().nullish(),
+          }),
+        )
+        .optional(),
+      receipts: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            tenantId: zod.number().optional(),
+            code: zod.string().optional(),
+            poId: zod.number().optional(),
+            warehouseId: zod.number().nullish(),
+            locationId: zod.number().nullish(),
+            supplierDeliveryRef: zod.string().nullish(),
+            status: zod.string().optional(),
+            receivedAt: zod.coerce.date().nullish(),
+            receivedByClerkId: zod.string().nullish(),
+            glPostingId: zod.number().nullish(),
+            notes: zod.string().nullish(),
+            createdAt: zod.coerce.date().optional(),
+            updatedAt: zod.coerce.date().optional(),
+          }),
+        )
+        .optional(),
+      approvalDecisions: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            workflowId: zod.number().nullish(),
+            stepNumber: zod.number().optional(),
+            entityType: zod.string().optional(),
+            entityId: zod.number().optional(),
+            approverClerkId: zod.string().nullish(),
+            approverEmail: zod.string().nullish(),
+            decision: zod.string().optional(),
+            comment: zod.string().nullish(),
+            createdAt: zod.coerce.date().optional(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Update purchase order
+ */
+export const UpdatePurchaseOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdatePurchaseOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdatePurchaseOrderBody = zod.object({
+  supplierId: zod.number().nullish(),
+  supplierRef: zod.string().optional(),
+  deliverToWarehouseId: zod.number().nullish(),
+  deliveryDate: zod.string().nullish(),
+  currencyCode: zod.string().optional(),
+  paymentTerms: zod.string().optional(),
+  notes: zod.string().optional(),
+  internalNotes: zod.string().optional(),
+  status: zod.string().optional(),
+});
+
+export const UpdatePurchaseOrderResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  supplierId: zod.number().nullish(),
+  supplierName: zod.string().nullish(),
+  supplierRef: zod.string().nullish(),
+  requisitionId: zod.number().nullish(),
+  deliverToWarehouseId: zod.number().nullish(),
+  currencyCode: zod.string().optional(),
+  exchangeRate: zod.string().optional(),
+  paymentTerms: zod.string().nullish(),
+  status: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  deliveryDate: zod.string().nullish(),
+  sentAt: zod.coerce.date().nullish(),
+  notes: zod.string().nullish(),
+  internalNotes: zod.string().nullish(),
+  approvalWorkflowId: zod.number().nullish(),
+  currentApprovalStep: zod.number().nullish(),
+  createdByClerkId: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Delete purchase order
+ */
+export const DeletePurchaseOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeletePurchaseOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Replace all lines on a purchase order
+ */
+export const UpdatePoLinesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdatePoLinesHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdatePoLinesBodyItem = zod.object({
+  lineNumber: zod.number(),
+  lineType: zod.enum(["stock", "service", "charge", "comment"]).optional(),
+  itemId: zod.number().optional(),
+  itemCode: zod.string().optional(),
+  itemName: zod.string().optional(),
+  description: zod.string().optional(),
+  quantity: zod.number().optional(),
+  unitOfMeasure: zod.string().optional(),
+  unitPrice: zod.number().optional(),
+  discountPct: zod.number().optional(),
+  taxPct: zod.number().optional(),
+  glAccountId: zod.number().optional(),
+  requisitionLineId: zod.number().optional(),
+  notes: zod.string().optional(),
+});
+export const UpdatePoLinesBody = zod.array(UpdatePoLinesBodyItem);
+
+export const UpdatePoLinesResponseItem = zod.object({
+  id: zod.number().optional(),
+  poId: zod.number().optional(),
+  lineNumber: zod.number().optional(),
+  lineType: zod.string().optional(),
+  itemId: zod.number().nullish(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  description: zod.string().nullish(),
+  quantity: zod.string().optional(),
+  receivedQty: zod.string().optional(),
+  unitOfMeasure: zod.string().nullish(),
+  unitPrice: zod.string().optional(),
+  discountPct: zod.string().optional(),
+  taxPct: zod.string().optional(),
+  lineTotal: zod.string().optional(),
+  glAccountId: zod.number().nullish(),
+});
+export const UpdatePoLinesResponse = zod.array(UpdatePoLinesResponseItem);
+
+/**
+ * @summary Submit PO for approval
+ */
+export const SubmitPurchaseOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SubmitPurchaseOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const SubmitPurchaseOrderResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  supplierId: zod.number().nullish(),
+  supplierName: zod.string().nullish(),
+  supplierRef: zod.string().nullish(),
+  requisitionId: zod.number().nullish(),
+  deliverToWarehouseId: zod.number().nullish(),
+  currencyCode: zod.string().optional(),
+  exchangeRate: zod.string().optional(),
+  paymentTerms: zod.string().nullish(),
+  status: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  deliveryDate: zod.string().nullish(),
+  sentAt: zod.coerce.date().nullish(),
+  notes: zod.string().nullish(),
+  internalNotes: zod.string().nullish(),
+  approvalWorkflowId: zod.number().nullish(),
+  currentApprovalStep: zod.number().nullish(),
+  createdByClerkId: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Approve/reject/return a PO
+ */
+export const DecidePurchaseOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DecidePurchaseOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const DecidePurchaseOrderBody = zod.object({
+  decision: zod.enum(["approved", "rejected", "returned"]),
+  comment: zod.string().optional(),
+  stepNumber: zod.number().optional(),
+});
+
+export const DecidePurchaseOrderResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  supplierId: zod.number().nullish(),
+  supplierName: zod.string().nullish(),
+  supplierRef: zod.string().nullish(),
+  requisitionId: zod.number().nullish(),
+  deliverToWarehouseId: zod.number().nullish(),
+  currencyCode: zod.string().optional(),
+  exchangeRate: zod.string().optional(),
+  paymentTerms: zod.string().nullish(),
+  status: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  deliveryDate: zod.string().nullish(),
+  sentAt: zod.coerce.date().nullish(),
+  notes: zod.string().nullish(),
+  internalNotes: zod.string().nullish(),
+  approvalWorkflowId: zod.number().nullish(),
+  currentApprovalStep: zod.number().nullish(),
+  createdByClerkId: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Mark PO as sent to supplier
+ */
+export const SendPurchaseOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SendPurchaseOrderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const SendPurchaseOrderResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  supplierId: zod.number().nullish(),
+  supplierName: zod.string().nullish(),
+  supplierRef: zod.string().nullish(),
+  requisitionId: zod.number().nullish(),
+  deliverToWarehouseId: zod.number().nullish(),
+  currencyCode: zod.string().optional(),
+  exchangeRate: zod.string().optional(),
+  paymentTerms: zod.string().nullish(),
+  status: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  deliveryDate: zod.string().nullish(),
+  sentAt: zod.coerce.date().nullish(),
+  notes: zod.string().nullish(),
+  internalNotes: zod.string().nullish(),
+  approvalWorkflowId: zod.number().nullish(),
+  currentApprovalStep: zod.number().nullish(),
+  createdByClerkId: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary List goods receipts
+ */
+export const listReceiptsQueryPageDefault = 1;
+export const listReceiptsQueryLimitDefault = 25;
+
+export const ListReceiptsQueryParams = zod.object({
+  poId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listReceiptsQueryPageDefault),
+  limit: zod.coerce.number().default(listReceiptsQueryLimitDefault),
+});
+
+export const ListReceiptsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListReceiptsResponse = zod.object({
+  receipts: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        code: zod.string().optional(),
+        poId: zod.number().optional(),
+        warehouseId: zod.number().nullish(),
+        locationId: zod.number().nullish(),
+        supplierDeliveryRef: zod.string().nullish(),
+        status: zod.string().optional(),
+        receivedAt: zod.coerce.date().nullish(),
+        receivedByClerkId: zod.string().nullish(),
+        glPostingId: zod.number().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.coerce.date().optional(),
+        updatedAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create goods receipt
+ */
+export const CreateReceiptHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateReceiptBody = zod.object({
+  poId: zod.number(),
+  warehouseId: zod.number().optional(),
+  locationId: zod.number().optional(),
+  supplierDeliveryRef: zod.string().optional(),
+  notes: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        poLineId: zod.number(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        orderedQty: zod.number(),
+        receivedQty: zod.number(),
+        unitCost: zod.number().optional(),
+        locationId: zod.number().optional(),
+        lotNumber: zod.string().optional(),
+        batchNumber: zod.string().optional(),
+        serialNumber: zod.string().optional(),
+        expiryDate: zod.coerce.date().optional(),
+        notes: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Get goods receipt with lines
+ */
+export const GetReceiptParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetReceiptHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetReceiptResponse = zod
+  .object({
+    id: zod.number().optional(),
+    tenantId: zod.number().optional(),
+    code: zod.string().optional(),
+    poId: zod.number().optional(),
+    warehouseId: zod.number().nullish(),
+    locationId: zod.number().nullish(),
+    supplierDeliveryRef: zod.string().nullish(),
+    status: zod.string().optional(),
+    receivedAt: zod.coerce.date().nullish(),
+    receivedByClerkId: zod.string().nullish(),
+    glPostingId: zod.number().nullish(),
+    notes: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+    updatedAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            receiptId: zod.number().optional(),
+            poLineId: zod.number().optional(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            orderedQty: zod.string().optional(),
+            receivedQty: zod.string().optional(),
+            unitCost: zod.string().nullish(),
+            locationId: zod.number().nullish(),
+            lotNumber: zod.string().nullish(),
+            batchNumber: zod.string().nullish(),
+            serialNumber: zod.string().nullish(),
+            expiryDate: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Confirm receipt, post inventory and GL
+ */
+export const ConfirmReceiptParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ConfirmReceiptHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ConfirmReceiptResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  poId: zod.number().optional(),
+  warehouseId: zod.number().nullish(),
+  locationId: zod.number().nullish(),
+  supplierDeliveryRef: zod.string().nullish(),
+  status: zod.string().optional(),
+  receivedAt: zod.coerce.date().nullish(),
+  receivedByClerkId: zod.string().nullish(),
+  glPostingId: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary List returns to vendor
+ */
+export const listReturnsQueryPageDefault = 1;
+export const listReturnsQueryLimitDefault = 25;
+
+export const ListReturnsQueryParams = zod.object({
+  poId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  page: zod.coerce.number().default(listReturnsQueryPageDefault),
+  limit: zod.coerce.number().default(listReturnsQueryLimitDefault),
+});
+
+export const ListReturnsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListReturnsResponse = zod.object({
+  returns: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        code: zod.string().optional(),
+        poId: zod.number().optional(),
+        receiptId: zod.number().nullish(),
+        supplierId: zod.number().nullish(),
+        warehouseId: zod.number().nullish(),
+        returnType: zod.string().optional(),
+        reason: zod.string().nullish(),
+        status: zod.string().optional(),
+        total: zod.string().optional(),
+        notes: zod.string().nullish(),
+        createdAt: zod.coerce.date().optional(),
+        updatedAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create return to vendor
+ */
+export const CreateReturnHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateReturnBody = zod.object({
+  poId: zod.number(),
+  receiptId: zod.number().optional(),
+  supplierId: zod.number().optional(),
+  warehouseId: zod.number().optional(),
+  returnType: zod.enum(["credit", "replace"]).optional(),
+  reason: zod.string().optional(),
+  notes: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        poLineId: zod.number().optional(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().optional(),
+        itemName: zod.string().optional(),
+        quantity: zod.number().optional(),
+        unitCost: zod.number().optional(),
+        lotNumber: zod.string().optional(),
+        serialNumber: zod.string().optional(),
+        batchNumber: zod.string().optional(),
+        reason: zod.string().optional(),
+        notes: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Get return to vendor with lines
+ */
+export const GetReturnParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetReturnHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetReturnResponse = zod
+  .object({
+    id: zod.number().optional(),
+    tenantId: zod.number().optional(),
+    code: zod.string().optional(),
+    poId: zod.number().optional(),
+    receiptId: zod.number().nullish(),
+    supplierId: zod.number().nullish(),
+    warehouseId: zod.number().nullish(),
+    returnType: zod.string().optional(),
+    reason: zod.string().nullish(),
+    status: zod.string().optional(),
+    total: zod.string().optional(),
+    notes: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+    updatedAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            returnId: zod.number().optional(),
+            poLineId: zod.number().nullish(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            quantity: zod.string().optional(),
+            unitCost: zod.string().nullish(),
+            lotNumber: zod.string().nullish(),
+            serialNumber: zod.string().nullish(),
+            batchNumber: zod.string().nullish(),
+            reason: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Confirm return to vendor, reverse inventory
+ */
+export const ConfirmReturnParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ConfirmReturnHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ConfirmReturnResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  poId: zod.number().optional(),
+  receiptId: zod.number().nullish(),
+  supplierId: zod.number().nullish(),
+  warehouseId: zod.number().nullish(),
+  returnType: zod.string().optional(),
+  reason: zod.string().nullish(),
+  status: zod.string().optional(),
+  total: zod.string().optional(),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary List GL postings
+ */
+export const listGlPostingsQueryPageDefault = 1;
+export const listGlPostingsQueryLimitDefault = 25;
+
+export const ListGlPostingsQueryParams = zod.object({
+  entityType: zod.coerce.string().optional(),
+  entityId: zod.coerce.number().optional(),
+  page: zod.coerce.number().default(listGlPostingsQueryPageDefault),
+  limit: zod.coerce.number().default(listGlPostingsQueryLimitDefault),
+});
+
+export const ListGlPostingsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListGlPostingsResponse = zod.object({
+  postings: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        code: zod.string().optional(),
+        entityType: zod.string().optional(),
+        entityId: zod.number().optional(),
+        status: zod.string().optional(),
+        postedByClerkId: zod.string().nullish(),
+        postedByEmail: zod.string().nullish(),
+        postedAt: zod.coerce.date().nullish(),
+        lines: zod.object({}).passthrough().optional(),
+        totalDebit: zod.string().optional(),
+        totalCredit: zod.string().optional(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Query inventory stock levels
+ */
+export const listInventoryStockQueryPageDefault = 1;
+export const listInventoryStockQueryLimitDefault = 50;
+
+export const ListInventoryStockQueryParams = zod.object({
+  itemId: zod.coerce.number().optional(),
+  warehouseId: zod.coerce.number().optional(),
+  page: zod.coerce.number().default(listInventoryStockQueryPageDefault),
+  limit: zod.coerce.number().default(listInventoryStockQueryLimitDefault),
+});
+
+export const ListInventoryStockHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListInventoryStockResponse = zod.object({
+  stock: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        itemId: zod.number().optional(),
+        warehouseId: zod.number().optional(),
+        locationId: zod.number().nullish(),
+        lotNumber: zod.string().nullish(),
+        batchNumber: zod.string().nullish(),
+        serialNumber: zod.string().nullish(),
+        expiryDate: zod.string().nullish(),
+        qtyOnHand: zod.string().optional(),
+        qtyReserved: zod.string().optional(),
+        averageCost: zod.string().nullish(),
+        lastMovementAt: zod.coerce.date().nullish(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        warehouseName: zod.string().nullish(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Report — open purchase orders
+ */
+export const ReportOpenPosHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportOpenPosResponseItem = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  supplierId: zod.number().nullish(),
+  supplierName: zod.string().nullish(),
+  supplierRef: zod.string().nullish(),
+  requisitionId: zod.number().nullish(),
+  deliverToWarehouseId: zod.number().nullish(),
+  currencyCode: zod.string().optional(),
+  exchangeRate: zod.string().optional(),
+  paymentTerms: zod.string().nullish(),
+  status: zod.string().optional(),
+  subtotal: zod.string().optional(),
+  taxAmount: zod.string().optional(),
+  total: zod.string().optional(),
+  deliveryDate: zod.string().nullish(),
+  sentAt: zod.coerce.date().nullish(),
+  notes: zod.string().nullish(),
+  internalNotes: zod.string().nullish(),
+  approvalWorkflowId: zod.number().nullish(),
+  currentApprovalStep: zod.number().nullish(),
+  createdByClerkId: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+export const ReportOpenPosResponse = zod.array(ReportOpenPosResponseItem);
+
+/**
+ * @summary Report — pending approvals for current user
+ */
+export const ReportPendingApprovalsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportPendingApprovalsResponse = zod.object({
+  pendingRequisitions: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        code: zod.string().optional(),
+        title: zod.string().optional(),
+        description: zod.string().nullish(),
+        status: zod.string().optional(),
+        priority: zod.string().optional(),
+        requestedByClerkId: zod.string().nullish(),
+        requestedByEmail: zod.string().nullish(),
+        preferredSupplierId: zod.number().nullish(),
+        deliverToWarehouseId: zod.number().nullish(),
+        currencyCode: zod.string().optional(),
+        totalEstimated: zod.string().nullish(),
+        requiredByDate: zod.string().nullish(),
+        approvalWorkflowId: zod.number().nullish(),
+        currentApprovalStep: zod.number().nullish(),
+        convertedPoId: zod.number().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.coerce.date().optional(),
+        updatedAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  pendingPurchaseOrders: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        code: zod.string().optional(),
+        supplierId: zod.number().nullish(),
+        supplierName: zod.string().nullish(),
+        supplierRef: zod.string().nullish(),
+        requisitionId: zod.number().nullish(),
+        deliverToWarehouseId: zod.number().nullish(),
+        currencyCode: zod.string().optional(),
+        exchangeRate: zod.string().optional(),
+        paymentTerms: zod.string().nullish(),
+        status: zod.string().optional(),
+        subtotal: zod.string().optional(),
+        taxAmount: zod.string().optional(),
+        total: zod.string().optional(),
+        deliveryDate: zod.string().nullish(),
+        sentAt: zod.coerce.date().nullish(),
+        notes: zod.string().nullish(),
+        internalNotes: zod.string().nullish(),
+        approvalWorkflowId: zod.number().nullish(),
+        currentApprovalStep: zod.number().nullish(),
+        createdByClerkId: zod.string().nullish(),
+        createdAt: zod.coerce.date().optional(),
+        updatedAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  totalPending: zod.number().optional(),
+});
+
+/**
+ * @summary Report — supplier performance
+ */
+export const ReportSupplierPerformanceHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportSupplierPerformanceResponseItem = zod.object({
+  supplierId: zod.number().nullish(),
+  supplierName: zod.string().nullish(),
+  totalOrders: zod.number().optional(),
+  totalValue: zod.number().optional(),
+  avgOrderValue: zod.number().optional(),
+});
+export const ReportSupplierPerformanceResponse = zod.array(
+  ReportSupplierPerformanceResponseItem,
+);
+
+/**
+ * @summary Report — PO summary by status
+ */
+export const ReportPoSummaryQueryParams = zod.object({
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+});
+
+export const ReportPoSummaryHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportPoSummaryResponseItem = zod.object({
+  status: zod.string().optional(),
+  count: zod.number().optional(),
+  total: zod.number().optional(),
+});
+export const ReportPoSummaryResponse = zod.array(ReportPoSummaryResponseItem);

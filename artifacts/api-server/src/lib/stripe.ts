@@ -71,7 +71,22 @@ export async function getStripeSync(): Promise<StripeSync> {
   });
 }
 
+let _stripeReady = false;
+
+export function setStripeReady(ready: boolean): void {
+  _stripeReady = ready;
+}
+
+/** True only when Stripe actually initialised successfully at startup. */
 export function isStripeConfigured(): boolean {
+  return _stripeReady;
+}
+
+/**
+ * True when the Replit connectors infrastructure is present so an attempt to
+ * retrieve credentials is worth making. Does NOT mean credentials are valid.
+ */
+export function canAttemptStripeInit(): boolean {
   return !!(
     process.env.REPLIT_CONNECTORS_HOSTNAME &&
     (process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL)

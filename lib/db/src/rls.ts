@@ -55,6 +55,23 @@ export async function applyRLSPolicies(): Promise<void> {
   try {
     await client.query("BEGIN");
 
+    // Sync forge_app password if the env var is present (idempotent).
+    const forgeAppPw = process.env.FORGE_APP_DB_PASSWORD;
+    if (forgeAppPw) {
+      const escapedPw = forgeAppPw.replace(/'/g, "''");
+      await client.query(`ALTER ROLE forge_app WITH PASSWORD '${escapedPw}'`);
+    }
+
+    // Grant forge_app full DML on every user table and all sequences.
+    // Running GRANT on every startup is idempotent and ensures newly-created
+    // tables (e.g. after schema migrations) are always accessible.
+    await client.query(`
+      GRANT SELECT, INSERT, UPDATE, DELETE
+        ON ALL TABLES IN SCHEMA public TO forge_app;
+      GRANT USAGE, SELECT
+        ON ALL SEQUENCES IN SCHEMA public TO forge_app;
+    `);
+
     const tenantScopedTables = [
       "tenants",
       "tenant_memberships",
