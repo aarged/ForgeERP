@@ -1,4 +1,4 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, gte } from "drizzle-orm";
 import {
   db,
   purchaseRequisitionsTable,
@@ -24,8 +24,27 @@ async function createEscalationNotification(
   entityType: string,
   entityId: number,
   entityCode: string,
+  escalationDays: number,
 ): Promise<void> {
   try {
+    // Dedupe: skip if we already sent an escalation notification for this entity
+    // within the escalation window (prevents hourly spam).
+    const windowStart = new Date(Date.now() - escalationDays * 24 * 60 * 60 * 1000);
+    const [existing] = await withTenantDb(tenantId, (db) =>
+      db.select({ id: notificationsTable.id })
+        .from(notificationsTable)
+        .where(and(
+          eq(notificationsTable.tenantId, tenantId),
+          eq(notificationsTable.type, "escalation"),
+          eq(notificationsTable.entityType, entityType),
+          eq(notificationsTable.entityId, entityId),
+          eq(notificationsTable.recipientClerkId, recipientClerkId),
+          gte(notificationsTable.createdAt, windowStart),
+        ))
+        .limit(1),
+    );
+    if (existing) return; // already notified within the window
+
     await withTenantDb(tenantId, (db) =>
       db.insert(notificationsTable).values({
         tenantId,
@@ -95,6 +114,7 @@ async function processRequisitionEscalations(tenantId: number): Promise<void> {
         "purchase_requisition",
         req.id,
         code,
+        escalationDays,
       );
     }
   }
@@ -151,6 +171,7 @@ async function processPurchaseOrderEscalations(tenantId: number): Promise<void> 
         "purchase_order",
         po.id,
         code,
+        escalationDays,
       );
     }
   }

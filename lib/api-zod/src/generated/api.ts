@@ -3418,7 +3418,10 @@ export const GeneratePurchaseOrderPdfBody = zod.object({
 export const GeneratePurchaseOrderPdfResponse = zod.object({
   pdfBase64: zod.string().optional().describe("Base64-encoded PDF content"),
   filename: zod.string().optional(),
-  dispatched: zod.boolean().optional(),
+  emailSent: zod
+    .boolean()
+    .optional()
+    .describe("Whether the PDF was emailed to the dispatch address"),
   dispatchEmail: zod.string().nullish(),
 });
 

@@ -2781,7 +2781,7 @@ paths:
                 properties:
                   pdfBase64: { type: string, description: Base64-encoded PDF content }
                   filename: { type: string }
-                  dispatched: { type: boolean }
+                  emailSent: { type: boolean, description: Whether the PDF was emailed to the dispatch address }
                   dispatchEmail: { type: string, nullable: true }
 
   /procurement/receipts:

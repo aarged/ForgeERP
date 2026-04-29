@@ -2255,9 +2255,19 @@ router.post("/procurement/returns/:id/confirm", ...tenantWriteMiddleware, async 
       } as typeof inventoryMovementsTable.$inferInsert),
     );
 
+    // Match stock on all traceability dimensions (lot/batch/serial).
+    // Return lines do not carry a location field — match on warehouse + null-location rows.
     const [stock] = await withTenantDb(tenantId, (db) =>
       db.select().from(inventoryStockTable)
-        .where(and(eq(inventoryStockTable.itemId, line.itemId!), eq(inventoryStockTable.warehouseId, warehouseId), eq(inventoryStockTable.tenantId, tenantId)))
+        .where(and(
+          eq(inventoryStockTable.tenantId, tenantId),
+          eq(inventoryStockTable.itemId, line.itemId!),
+          eq(inventoryStockTable.warehouseId, warehouseId),
+          isNull(inventoryStockTable.locationId),
+          line.lotNumber ? eq(inventoryStockTable.lotNumber, line.lotNumber) : isNull(inventoryStockTable.lotNumber),
+          line.batchNumber ? eq(inventoryStockTable.batchNumber, line.batchNumber) : isNull(inventoryStockTable.batchNumber),
+          line.serialNumber ? eq(inventoryStockTable.serialNumber, line.serialNumber) : isNull(inventoryStockTable.serialNumber),
+        ))
         .limit(1));
     if (stock) {
       await withTenantDb(tenantId, (db) =>

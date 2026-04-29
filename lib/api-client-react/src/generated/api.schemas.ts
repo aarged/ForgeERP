@@ -2074,7 +2074,8 @@ export type GeneratePurchaseOrderPdf200 = {
   /** Base64-encoded PDF content */
   pdfBase64?: string;
   filename?: string;
-  dispatched?: boolean;
+  /** Whether the PDF was emailed to the dispatch address */
+  emailSent?: boolean;
   dispatchEmail?: string | null;
 };
 
