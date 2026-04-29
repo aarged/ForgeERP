@@ -1029,6 +1029,32 @@ router.post("/sales/despatches/:id/confirm", ...tenantWriteMiddleware, async (re
         serialNumber: line.serialNumber ?? undefined, batchNumber: line.batchNumber ?? undefined, postedByClerkId: clerkUserId,
       } as typeof inventoryMovementsTable.$inferInsert);
 
+      // Consume the matching SO allocation so releaseAllocations only frees the unconsumed remainder.
+      // This prevents over-release when an SO is partially despatched then cancelled.
+      const [matchingAlloc] = await db.select().from(soAllocationsTable)
+        .where(and(
+          eq(soAllocationsTable.soId, despatch.soId),
+          eq(soAllocationsTable.soLineId, line.soLineId),
+          eq(soAllocationsTable.itemId, resolvedItemId),
+          eq(soAllocationsTable.warehouseId, warehouseId),
+          eq(soAllocationsTable.tenantId, tenantId),
+          eq(soAllocationsTable.isReleased, false),
+        )).limit(1);
+      if (matchingAlloc) {
+        const remainingAlloc = Math.max(0, Number(matchingAlloc.allocatedQty) - qty);
+        if (remainingAlloc <= 0.0001) {
+          // Fully consumed — mark released so releaseAllocations skips it
+          await db.update(soAllocationsTable)
+            .set({ allocatedQty: "0", isReleased: true, releasedAt: new Date() })
+            .where(and(eq(soAllocationsTable.id, matchingAlloc.id), eq(soAllocationsTable.tenantId, tenantId)));
+        } else {
+          // Partially consumed — reduce outstanding allocated qty to the remainder
+          await db.update(soAllocationsTable)
+            .set({ allocatedQty: remainingAlloc.toFixed(4) })
+            .where(and(eq(soAllocationsTable.id, matchingAlloc.id), eq(soAllocationsTable.tenantId, tenantId)));
+        }
+      }
+
       // Update SO line despatched_qty
       await db.update(soLinesTable).set({ despatched_qty: sql`${soLinesTable.despatched_qty} + ${qty.toFixed(4)}` })
         .where(and(eq(soLinesTable.id, line.soLineId), eq(soLinesTable.tenantId, tenantId)));
