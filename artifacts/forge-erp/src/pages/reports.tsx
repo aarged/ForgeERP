@@ -21,29 +21,47 @@ import { Download } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 
-function fmt(n: any, isCurrency = false) {
+// ── Formatters ─────────────────────────────────────────────────────────────────
+
+function fmt(n: number | string | null | undefined, isCurrency = false): string {
   if (n == null) return "—";
   const num = Number(n);
   if (isCurrency) {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(num);
   }
-  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+  return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
 }
 
-function fmtDate(s: string) {
+function fmtDate(s: string | null | undefined): string {
   if (!s) return "—";
   return new Date(s).toLocaleDateString();
 }
 
+// ── Row DTOs ──────────────────────────────────────────────────────────────────
+
+interface StockValuationRow { itemCode: string; itemName: string; warehouseName: string | null; qtyOnHand: number | string; averageCost: number | string; totalValue: number | string; }
+interface MovementHistoryRow { createdAt: string; movementType: string; itemCode: string; itemName: string; warehouseName: string | null; quantity: number | string; refCode: string | null; }
+interface SlowMovingRow { itemCode: string; itemName: string; warehouseName: string | null; qtyOnHand: number | string; totalValue: number | string; lastMovementAt: string; daysSinceMovement: number; }
+interface StocktakeVarianceRow { itemCode: string; itemName: string; qtyExpected: number | string; qtyActual: number | string; variance: number | string; varianceValue: number | string; }
+interface WarehouseItem { id: number; name: string; }
+
+interface PoSummaryRow { status: string; count: number; total: number | string; }
+interface SupplierRow { supplierId: number | null; supplierName: string | null; totalOrders: number; totalValue: number | string; avgOrderValue: number | string; }
+interface SalesPeriodRow { period: string; totalRevenue: string | number; invoiceCount: number; orderCount: number; }
+interface SalesItemRow { itemId: number | null; itemCode: string | null; itemName: string | null; totalQty: string | number; totalRevenue: string | number; invoiceCount: number; }
+
+// ── Inventory Tabs ────────────────────────────────────────────────────────────
+
 function StockValuationTab() {
   const [warehouseId, setWarehouseId] = useState("all");
-  const { data: warehouses } = useListWarehouses({ limit: 100 });
-  
+  const { data: warehouseData } = useListWarehouses({ limit: 100 });
+  const warehouses = (warehouseData?.warehouses as unknown as WarehouseItem[] | undefined) ?? [];
+
   const { data, isLoading } = useGetInventoryReportsStockValuation({
     warehouseId: warehouseId !== "all" ? Number(warehouseId) : undefined
   });
 
-  const rows = data?.rows || [];
+  const rows = (data?.rows as unknown as StockValuationRow[] | undefined) ?? [];
 
   return (
     <div className="space-y-4">
@@ -52,7 +70,7 @@ function StockValuationTab() {
           <SelectTrigger className="w-[250px]"><SelectValue placeholder="All Warehouses" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Warehouses</SelectItem>
-            {(warehouses?.warehouses || []).map((w: any) => (
+            {warehouses.map((w) => (
               <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
             ))}
           </SelectContent>
@@ -79,11 +97,11 @@ function StockValuationTab() {
               <TableRow><TableCell colSpan={6} className="text-center py-8">No stock found</TableCell></TableRow>
             ) : (
               <>
-                {rows.map((r: any, i: number) => (
+                {rows.map((r, i) => (
                   <TableRow key={i}>
                     <TableCell className="font-mono">{r.itemCode}</TableCell>
                     <TableCell className="font-medium">{r.itemName}</TableCell>
-                    <TableCell>{r.warehouseName || "—"}</TableCell>
+                    <TableCell>{r.warehouseName ?? "—"}</TableCell>
                     <TableCell className="text-right font-mono">{fmt(r.qtyOnHand)}</TableCell>
                     <TableCell className="text-right font-mono">{fmt(r.averageCost, true)}</TableCell>
                     <TableCell className="text-right font-mono font-medium">{fmt(r.totalValue, true)}</TableCell>
@@ -114,7 +132,7 @@ function MovementHistoryTab() {
     limit: 100
   });
 
-  const rows = data?.data || [];
+  const rows = (data?.data as unknown as MovementHistoryRow[] | undefined) ?? [];
 
   return (
     <div className="space-y-4">
@@ -151,7 +169,7 @@ function MovementHistoryTab() {
             ) : !rows.length ? (
               <TableRow><TableCell colSpan={6} className="text-center py-8">No movements found</TableCell></TableRow>
             ) : (
-              rows.map((r: any, i: number) => (
+              rows.map((r, i) => (
                 <TableRow key={i}>
                   <TableCell>{fmtDate(r.createdAt)}</TableCell>
                   <TableCell className="capitalize">{r.movementType}</TableCell>
@@ -159,11 +177,11 @@ function MovementHistoryTab() {
                     <div className="font-mono">{r.itemCode}</div>
                     <div className="text-sm text-muted-foreground">{r.itemName}</div>
                   </TableCell>
-                  <TableCell>{r.warehouseName || "—"}</TableCell>
-                  <TableCell className={`text-right font-mono font-medium ${Number(r.quantity) < 0 ? 'text-destructive' : 'text-emerald-600'}`}>
-                    {Number(r.quantity) > 0 ? '+' : ''}{fmt(r.quantity)}
+                  <TableCell>{r.warehouseName ?? "—"}</TableCell>
+                  <TableCell className={`text-right font-mono font-medium ${Number(r.quantity) < 0 ? "text-destructive" : "text-emerald-600"}`}>
+                    {Number(r.quantity) > 0 ? "+" : ""}{fmt(r.quantity)}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{r.refCode || "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.refCode ?? "—"}</TableCell>
                 </TableRow>
               ))
             )}
@@ -177,14 +195,15 @@ function MovementHistoryTab() {
 function SlowMovingTab() {
   const [days, setDays] = useState([90]);
   const [warehouseId, setWarehouseId] = useState("all");
-  const { data: warehouses } = useListWarehouses({ limit: 100 });
-  
+  const { data: warehouseData } = useListWarehouses({ limit: 100 });
+  const warehouses = (warehouseData?.warehouses as unknown as WarehouseItem[] | undefined) ?? [];
+
   const { data, isLoading } = useGetInventoryReportsSlowMoving({
     days: days[0],
     warehouseId: warehouseId !== "all" ? Number(warehouseId) : undefined
   });
 
-  const rows = data?.rows || [];
+  const rows = (data?.rows as unknown as SlowMovingRow[] | undefined) ?? [];
 
   return (
     <div className="space-y-4">
@@ -193,12 +212,12 @@ function SlowMovingTab() {
           <SelectTrigger className="w-[250px]"><SelectValue placeholder="All Warehouses" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Warehouses</SelectItem>
-            {(warehouses?.warehouses || []).map((w: any) => (
+            {warehouses.map((w) => (
               <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        
+
         <div className="flex-1 max-w-md space-y-2">
           <div className="flex justify-between">
             <Label>Inactivity Period</Label>
@@ -226,13 +245,13 @@ function SlowMovingTab() {
             ) : !rows.length ? (
               <TableRow><TableCell colSpan={6} className="text-center py-8">No slow moving stock found</TableCell></TableRow>
             ) : (
-              rows.map((r: any, i: number) => (
+              rows.map((r, i) => (
                 <TableRow key={i}>
                   <TableCell>
                     <div className="font-mono font-medium">{r.itemCode}</div>
                     <div className="text-sm text-muted-foreground">{r.itemName}</div>
                   </TableCell>
-                  <TableCell>{r.warehouseName || "—"}</TableCell>
+                  <TableCell>{r.warehouseName ?? "—"}</TableCell>
                   <TableCell className="text-right font-mono">{fmt(r.qtyOnHand)}</TableCell>
                   <TableCell className="text-right font-mono">{fmt(r.totalValue, true)}</TableCell>
                   <TableCell>{fmtDate(r.lastMovementAt)}</TableCell>
@@ -253,18 +272,18 @@ function SlowMovingTab() {
 
 function StocktakeVarianceTab() {
   const [stocktakeRunId, setStocktakeRunId] = useState("");
-  
+
   const svParams = { stocktakeRunId: stocktakeRunId ? Number(stocktakeRunId) : undefined };
   const { data, isLoading } = useGetInventoryReportsStocktakeVariance(svParams, { query: { enabled: !!stocktakeRunId, queryKey: getGetInventoryReportsStocktakeVarianceQueryKey(svParams) }});
 
-  const rows = data?.rows || [];
+  const rows = (data?.rows as unknown as StocktakeVarianceRow[] | undefined) ?? [];
 
   return (
     <div className="space-y-4">
       <div className="flex gap-4 items-center">
-        <Input 
-          placeholder="Stocktake Run ID..." 
-          value={stocktakeRunId} 
+        <Input
+          placeholder="Stocktake Run ID..."
+          value={stocktakeRunId}
           onChange={(e) => setStocktakeRunId(e.target.value)}
           className="w-[200px]"
         />
@@ -294,7 +313,7 @@ function StocktakeVarianceTab() {
                 <TableRow><TableCell colSpan={5} className="text-center py-8">No variances found for this run</TableCell></TableRow>
               ) : (
                 <>
-                  {rows.map((r: any, i: number) => (
+                  {rows.map((r, i) => (
                     <TableRow key={i}>
                       <TableCell>
                         <div className="font-mono font-medium">{r.itemCode}</div>
@@ -302,18 +321,18 @@ function StocktakeVarianceTab() {
                       </TableCell>
                       <TableCell className="text-right font-mono">{fmt(r.qtyExpected)}</TableCell>
                       <TableCell className="text-right font-mono">{fmt(r.qtyActual)}</TableCell>
-                      <TableCell className={`text-right font-mono font-medium ${r.variance < 0 ? 'text-destructive' : 'text-emerald-600'}`}>
-                        {r.variance > 0 ? '+' : ''}{fmt(r.variance)}
+                      <TableCell className={`text-right font-mono font-medium ${Number(r.variance) < 0 ? "text-destructive" : "text-emerald-600"}`}>
+                        {Number(r.variance) > 0 ? "+" : ""}{fmt(r.variance)}
                       </TableCell>
-                      <TableCell className={`text-right font-mono font-medium ${r.varianceValue < 0 ? 'text-destructive' : 'text-emerald-600'}`}>
-                        {r.varianceValue > 0 ? '+' : ''}{fmt(r.varianceValue, true)}
+                      <TableCell className={`text-right font-mono font-medium ${Number(r.varianceValue) < 0 ? "text-destructive" : "text-emerald-600"}`}>
+                        {Number(r.varianceValue) > 0 ? "+" : ""}{fmt(r.varianceValue, true)}
                       </TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="bg-muted/50 font-bold">
                     <TableCell colSpan={4} className="text-right">Total Net Variance</TableCell>
-                    <TableCell className={`text-right font-mono text-lg ${Number(data?.totalVarianceValue) < 0 ? 'text-destructive' : 'text-emerald-600'}`}>
-                      {Number(data?.totalVarianceValue) > 0 ? '+' : ''}{fmt(data?.totalVarianceValue, true)}
+                    <TableCell className={`text-right font-mono text-lg ${Number(data?.totalVarianceValue) < 0 ? "text-destructive" : "text-emerald-600"}`}>
+                      {Number(data?.totalVarianceValue) > 0 ? "+" : ""}{fmt(data?.totalVarianceValue, true)}
                     </TableCell>
                   </TableRow>
                 </>
@@ -326,10 +345,7 @@ function StocktakeVarianceTab() {
   );
 }
 
-interface PoSummaryRow { status: string; count: number; total: number; }
-interface SupplierRow { supplierId: number | null; supplierName: string | null; totalOrders: number; totalValue: number; avgOrderValue: number; }
-interface SalesPeriodRow { period: string; totalRevenue: string; invoiceCount: number; orderCount: number; }
-interface SalesItemRow { itemId: number | null; itemCode: string | null; itemName: string | null; totalQty: string; totalRevenue: string; invoiceCount: number; }
+// ── Procurement Tabs ───────────────────────────────────────────────────────────
 
 function ProcurementPoSummaryTab() {
   const [fromDate, setFromDate] = useState("");
@@ -337,7 +353,7 @@ function ProcurementPoSummaryTab() {
   const { data, isLoading } = useReportPoSummary(
     { from: fromDate || undefined, to: toDate || undefined }
   );
-  const rows: PoSummaryRow[] = (data as PoSummaryRow[] | undefined) ?? [];
+  const rows = (data as unknown as PoSummaryRow[] | undefined) ?? [];
   const grandTotal = rows.reduce((s, r) => s + Number(r.total ?? 0), 0);
   return (
     <div className="space-y-4">
@@ -385,7 +401,7 @@ function ProcurementPoSummaryTab() {
 
 function SupplierSpendTab() {
   const { data, isLoading } = useReportSupplierPerformance();
-  const rows: SupplierRow[] = (data as SupplierRow[] | undefined) ?? [];
+  const rows = (data as unknown as SupplierRow[] | undefined) ?? [];
   return (
     <div className="rounded-md border">
       <Table>
@@ -416,13 +432,15 @@ function SupplierSpendTab() {
   );
 }
 
+// ── Sales Tabs ────────────────────────────────────────────────────────────────
+
 function SalesByPeriodTab() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const { data, isLoading } = useReportSalesByPeriod(
     { fromDate: fromDate || undefined, toDate: toDate || undefined }
   );
-  const rows: SalesPeriodRow[] = (data as SalesPeriodRow[] | undefined) ?? [];
+  const rows = (data as unknown as SalesPeriodRow[] | undefined) ?? [];
   const grandRevenue = rows.reduce((s, r) => s + Number(r.totalRevenue ?? 0), 0);
   return (
     <div className="space-y-4">
@@ -454,7 +472,7 @@ function SalesByPeriodTab() {
                     <TableCell className="font-mono font-medium">{r.period}</TableCell>
                     <TableCell className="text-right font-mono">{r.invoiceCount}</TableCell>
                     <TableCell className="text-right font-mono">{r.orderCount}</TableCell>
-                    <TableCell className="text-right font-mono font-medium">{fmt(Number(r.totalRevenue), true)}</TableCell>
+                    <TableCell className="text-right font-mono font-medium">{fmt(r.totalRevenue, true)}</TableCell>
                   </TableRow>
                 ))}
                 <TableRow className="bg-muted/50 font-bold">
@@ -476,7 +494,7 @@ function SalesByItemTab() {
   const { data, isLoading } = useReportSalesByItem(
     { fromDate: fromDate || undefined, toDate: toDate || undefined }
   );
-  const rows: SalesItemRow[] = (data as SalesItemRow[] | undefined) ?? [];
+  const rows = (data as unknown as SalesItemRow[] | undefined) ?? [];
   return (
     <div className="space-y-4">
       <div className="flex gap-2 items-center">
@@ -506,9 +524,9 @@ function SalesByItemTab() {
                   <div className="font-mono font-medium">{r.itemCode ?? "—"}</div>
                   <div className="text-sm text-muted-foreground">{r.itemName ?? "—"}</div>
                 </TableCell>
-                <TableCell className="text-right font-mono">{fmt(Number(r.totalQty))}</TableCell>
+                <TableCell className="text-right font-mono">{fmt(r.totalQty)}</TableCell>
                 <TableCell className="text-right font-mono">{r.invoiceCount}</TableCell>
-                <TableCell className="text-right font-mono font-medium">{fmt(Number(r.totalRevenue), true)}</TableCell>
+                <TableCell className="text-right font-mono font-medium">{fmt(r.totalRevenue, true)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -517,6 +535,8 @@ function SalesByItemTab() {
     </div>
   );
 }
+
+// ── Reports Page ───────────────────────────────────────────────────────────────
 
 export default function Reports() {
   return (
@@ -532,46 +552,39 @@ export default function Reports() {
           <TabsTrigger value="procurement">Procurement</TabsTrigger>
           <TabsTrigger value="sales">Sales</TabsTrigger>
         </TabsList>
-        
-        <TabsContent value="inventory" className="space-y-6">
-          <Tabs defaultValue="valuation" className="w-full">
-            <div className="border-b mb-4 pb-2">
-              <TabsList className="bg-transparent h-8 p-0">
-                <TabsTrigger value="valuation" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">Stock Valuation</TabsTrigger>
-                <TabsTrigger value="movement" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">Movement History</TabsTrigger>
-                <TabsTrigger value="slow-moving" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">Slow Moving Items</TabsTrigger>
-                <TabsTrigger value="variance" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">Stocktake Variance</TabsTrigger>
-              </TabsList>
-            </div>
-            
-            <TabsContent value="valuation"><StockValuationTab /></TabsContent>
-            <TabsContent value="movement"><MovementHistoryTab /></TabsContent>
+
+        <TabsContent value="inventory">
+          <Tabs defaultValue="stock-valuation">
+            <TabsList className="mb-4">
+              <TabsTrigger value="stock-valuation">Stock Valuation</TabsTrigger>
+              <TabsTrigger value="movements">Movement History</TabsTrigger>
+              <TabsTrigger value="slow-moving">Slow Moving</TabsTrigger>
+              <TabsTrigger value="stocktake">Stocktake Variance</TabsTrigger>
+            </TabsList>
+            <TabsContent value="stock-valuation"><StockValuationTab /></TabsContent>
+            <TabsContent value="movements"><MovementHistoryTab /></TabsContent>
             <TabsContent value="slow-moving"><SlowMovingTab /></TabsContent>
-            <TabsContent value="variance"><StocktakeVarianceTab /></TabsContent>
+            <TabsContent value="stocktake"><StocktakeVarianceTab /></TabsContent>
           </Tabs>
         </TabsContent>
-        
+
         <TabsContent value="procurement">
-          <Tabs defaultValue="po-summary" className="w-full">
-            <div className="border-b mb-4 pb-2">
-              <TabsList className="bg-transparent h-8 p-0">
-                <TabsTrigger value="po-summary" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">PO Summary</TabsTrigger>
-                <TabsTrigger value="supplier-performance" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">Supplier Spend</TabsTrigger>
-              </TabsList>
-            </div>
+          <Tabs defaultValue="po-summary">
+            <TabsList className="mb-4">
+              <TabsTrigger value="po-summary">PO Summary</TabsTrigger>
+              <TabsTrigger value="supplier-spend">Supplier Spend</TabsTrigger>
+            </TabsList>
             <TabsContent value="po-summary"><ProcurementPoSummaryTab /></TabsContent>
-            <TabsContent value="supplier-performance"><SupplierSpendTab /></TabsContent>
+            <TabsContent value="supplier-spend"><SupplierSpendTab /></TabsContent>
           </Tabs>
         </TabsContent>
 
         <TabsContent value="sales">
-          <Tabs defaultValue="by-period" className="w-full">
-            <div className="border-b mb-4 pb-2">
-              <TabsList className="bg-transparent h-8 p-0">
-                <TabsTrigger value="by-period" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">Revenue by Period</TabsTrigger>
-                <TabsTrigger value="by-item" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none rounded-none bg-transparent">Top Products</TabsTrigger>
-              </TabsList>
-            </div>
+          <Tabs defaultValue="by-period">
+            <TabsList className="mb-4">
+              <TabsTrigger value="by-period">Revenue by Period</TabsTrigger>
+              <TabsTrigger value="by-item">Top Products</TabsTrigger>
+            </TabsList>
             <TabsContent value="by-period"><SalesByPeriodTab /></TabsContent>
             <TabsContent value="by-item"><SalesByItemTab /></TabsContent>
           </Tabs>

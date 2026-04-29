@@ -10,7 +10,8 @@ import {
   getGetFinanceTrialBalanceQueryKey,
   useGetFinanceAccountMovements,
   getGetFinanceAccountMovementsQueryKey,
-  useListGlAccounts
+  useListGlAccounts,
+  type GlPosting
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -43,30 +44,41 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Search, Eye, Download, Undo2, ChevronDown, ChevronRight, FileText } from "lucide-react";
 
-function fmt(n: any, isCurrency = true) {
+// ── Local DTOs ────────────────────────────────────────────────────────────────
+
+interface JournalLine { accountCode: string; accountName: string; debit: number; credit: number; description?: string; }
+interface FormValues { memo: string; postingDate: string; lines: JournalLine[]; }
+interface TrialBalanceAccount { accountId: number; accountCode: string; accountName: string; accountType: string | null; openingBalance: number; periodDebit: number; periodCredit: number; closingBalance: number; }
+interface AccountMovement { postingId: number; postingCode: string; entityType: string; postedAt: string | null; createdAt: string; debit: number; credit: number; description: string; balance: number; }
+
+type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+const STATUS_VARIANT: Record<string, BadgeVariant> = {
+  posted: "default",
+  draft: "secondary",
+  reversed: "destructive",
+};
+
+// ── Formatters ────────────────────────────────────────────────────────────────
+
+function fmt(n: number | string | null | undefined, isCurrency = true): string {
   if (n == null) return "—";
   const num = Number(n);
   if (num === 0) return isCurrency ? "$0.00" : "0";
-  return new Intl.NumberFormat('en-US', { 
-    style: isCurrency ? 'currency' : 'decimal', 
-    currency: 'USD',
+  return new Intl.NumberFormat("en-US", {
+    style: isCurrency ? "currency" : "decimal",
+    currency: "USD",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(num);
 }
 
-function fmtDate(s: string) {
+function fmtDate(s: string | null | undefined): string {
   if (!s) return "—";
   return new Date(s).toLocaleDateString();
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: any = {
-    posted: "default",
-    draft: "secondary",
-    reversed: "destructive",
-  };
-  return <Badge variant={map[status] || "outline"}>{status}</Badge>;
+function StatusBadge({ status }: { status: string | undefined }) {
+  return <Badge variant={STATUS_VARIANT[status ?? ""] ?? "outline"}>{status}</Badge>;
 }
 
 function JournalTab() {
@@ -91,7 +103,7 @@ function JournalTab() {
   const postMut = usePostFinanceJournals();
   const reverseMut = usePostFinanceJournalsIdReverse();
 
-  const form = useForm({
+  const form = useForm<FormValues>({
     defaultValues: {
       memo: "",
       postingDate: new Date().toISOString().split("T")[0],
@@ -108,7 +120,7 @@ function JournalTab() {
   const totalCredit = form.watch("lines").reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
-  async function onSubmit(vals: any) {
+  async function onSubmit(vals: FormValues) {
     if (!isBalanced) {
       toast({ title: "Journal not balanced", description: "Total debit must equal total credit", variant: "destructive" });
       return;
@@ -117,7 +129,7 @@ function JournalTab() {
       const result = await postMut.mutateAsync({ data: { 
         memo: vals.memo, 
         postingDate: vals.postingDate,
-        lines: vals.lines.filter((l: any) => l.accountCode) 
+        lines: vals.lines.filter((l) => l.accountCode) 
       }});
       const r = result as { requiresApproval?: boolean; approvalThreshold?: number };
       if (r?.requiresApproval) {
@@ -128,8 +140,9 @@ function JournalTab() {
       setShowCreate(false);
       form.reset();
       qc.invalidateQueries({ queryKey: getGetFinanceJournalsQueryKey({}) });
-    } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "An unexpected error occurred";
+      toast({ title: "Error", description: msg, variant: "destructive" });
     }
   }
 
@@ -139,13 +152,14 @@ function JournalTab() {
       await reverseMut.mutateAsync({ id, data: { memo: "Manual reversal" } });
       toast({ title: "Journal reversed" });
       qc.invalidateQueries({ queryKey: getGetFinanceJournalsQueryKey({}) });
-    } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "An unexpected error occurred";
+      toast({ title: "Error", description: msg, variant: "destructive" });
     }
   }
 
-  const rows = data?.data || [];
-  const filtered = rows.filter(r => !search || r.code?.toLowerCase().includes(search.toLowerCase()) || (r as any).notes?.toLowerCase().includes(search.toLowerCase()));
+  const rows: GlPosting[] = data?.data ?? [];
+  const filtered = rows.filter(r => !search || r.code?.toLowerCase().includes(search.toLowerCase()) || r.notes?.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="space-y-4">
@@ -167,7 +181,16 @@ function JournalTab() {
           <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
           <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
-        <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4 mr-2" />Manual Entry</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => {
+            const params = new URLSearchParams();
+            if (status !== "all") params.set("status", status);
+            if (fromDate) params.set("fromDate", fromDate);
+            if (toDate) params.set("toDate", toDate);
+            window.open(`/api/finance/journals/export/csv?${params.toString()}`, "_blank");
+          }}><Download className="h-4 w-4 mr-2" />Export CSV</Button>
+          <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4 mr-2" />Manual Entry</Button>
+        </div>
       </div>
 
       <div className="rounded-md border">
@@ -189,23 +212,23 @@ function JournalTab() {
               <TableRow><TableCell colSpan={8} className="text-center py-8">Loading journals...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
               <TableRow><TableCell colSpan={8} className="text-center py-8">No journals found</TableCell></TableRow>
-            ) : filtered.map((r: any) => (
+            ) : filtered.map((r) => (
               <React.Fragment key={r.id}>
                 <TableRow className={expandedId === r.id ? "bg-muted/50" : ""}>
                   <TableCell>
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}>
+                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setExpandedId(expandedId === r.id ? null : (r.id ?? null))}>
                       {expandedId === r.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                     </Button>
                   </TableCell>
                   <TableCell className="font-mono font-medium">{r.code}</TableCell>
                   <TableCell>{fmtDate(r.postedAt || r.createdAt)}</TableCell>
-                  <TableCell>{(r as any).notes}</TableCell>
+                  <TableCell>{r.notes}</TableCell>
                   <TableCell className="capitalize text-muted-foreground">{r.entityType?.replace("_", " ") || "Manual"}</TableCell>
                   <TableCell className="text-right font-medium">{fmt(r.totalDebit)}</TableCell>
                   <TableCell><StatusBadge status={r.status} /></TableCell>
                   <TableCell className="text-right">
                     {r.status === "posted" && (
-                      <Button variant="ghost" size="sm" title="Reverse" onClick={() => onReverse(r.id)}>
+                      <Button variant="ghost" size="sm" title="Reverse" onClick={() => r.id && onReverse(r.id)}>
                         <Undo2 className="h-4 w-4 text-destructive" />
                       </Button>
                     )}
@@ -225,7 +248,7 @@ function JournalTab() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {(r.lines || []).map((l: any, i: number) => (
+                            {((r.lines as unknown as JournalLine[]) || []).map((l, i) => (
                               <TableRow key={i}>
                                 <TableCell className="font-medium text-xs">
                                   {l.accountCode} <span className="text-muted-foreground font-normal">{l.accountName}</span>
@@ -389,7 +412,7 @@ function TrialBalanceTab() {
               <TableRow><TableCell colSpan={7} className="text-center py-8">No activity found</TableCell></TableRow>
             ) : (
               <>
-                {data.accounts.map((a: any) => (
+                {(data.accounts as unknown as TrialBalanceAccount[]).map((a) => (
                   <TableRow key={a.accountId}>
                     <TableCell className="font-mono">{a.accountCode}</TableCell>
                     <TableCell className="font-medium">{a.accountName}</TableCell>
@@ -471,7 +494,7 @@ function AccountLedgerTab() {
               ) : !data?.data?.length ? (
                 <TableRow><TableCell colSpan={7} className="text-center py-8">No movements found</TableCell></TableRow>
               ) : (
-                data.data.map((m: any, i: number) => (
+                (data.data as unknown as AccountMovement[]).map((m, i) => (
                   <TableRow key={i}>
                     <TableCell>{fmtDate(m.postedAt || m.createdAt)}</TableCell>
                     <TableCell className="font-mono">{m.postingCode}</TableCell>

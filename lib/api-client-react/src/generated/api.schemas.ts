@@ -1829,6 +1829,7 @@ export interface GlPosting {
   postedByClerkId?: string | null;
   postedByEmail?: string | null;
   postedAt?: string | null;
+  notes?: string | null;
   lines?: GlPostingLines;
   totalDebit?: string;
   totalCredit?: string;

@@ -7863,6 +7863,7 @@ components:
         postedByClerkId: { type: string, nullable: true }
         postedByEmail: { type: string, nullable: true }
         postedAt: { type: string, format: date-time, nullable: true }
+        notes: { type: string, nullable: true }
         lines: { type: object }
         totalDebit: { type: string }
         totalCredit: { type: string }

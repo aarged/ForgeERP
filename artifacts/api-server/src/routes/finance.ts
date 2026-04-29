@@ -88,6 +88,56 @@ router.get("/finance/journals", ...tenantUserMiddleware, async (req: Request, re
 });
 
 /**
+ * GET /finance/journals/export/csv
+ * Export GL journal entries as CSV.
+ */
+router.get("/finance/journals/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const {
+    fromDate, toDate, entityType, status, accountCode,
+  } = req.query as Record<string, string>;
+
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      id: glPostingsTable.id,
+      code: glPostingsTable.code,
+      entityType: glPostingsTable.entityType,
+      entityId: glPostingsTable.entityId,
+      status: glPostingsTable.status,
+      totalDebit: glPostingsTable.totalDebit,
+      totalCredit: glPostingsTable.totalCredit,
+      postedAt: glPostingsTable.postedAt,
+      postedByEmail: glPostingsTable.postedByEmail,
+      notes: glPostingsTable.notes,
+      createdAt: glPostingsTable.createdAt,
+    }).from(glPostingsTable).where(
+      and(
+        eq(glPostingsTable.tenantId, tenantId),
+        fromDate ? gte(glPostingsTable.createdAt, new Date(fromDate)) : undefined,
+        toDate ? lte(glPostingsTable.createdAt, new Date(toDate)) : undefined,
+        entityType ? eq(glPostingsTable.entityType, entityType) : undefined,
+        status ? eq(glPostingsTable.status, status) : undefined,
+        accountCode ? sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${glPostingsTable.lines}) AS ln WHERE ln->>'accountCode' = ${accountCode})` : undefined,
+      )
+    ).orderBy(desc(glPostingsTable.createdAt)).limit(5000)
+  );
+
+  const header = ["ID", "Code", "Type", "Entity ID", "Status", "Total Debit", "Total Credit", "Posted At", "Posted By", "Notes", "Created At"];
+  const escape = (v: unknown) => {
+    const s = v == null ? "" : String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [
+    header.join(","),
+    ...rows.map(r => [r.id, r.code, r.entityType, r.entityId, r.status, r.totalDebit, r.totalCredit, r.postedAt?.toISOString() ?? "", r.postedByEmail ?? "", r.notes ?? "", r.createdAt?.toISOString() ?? ""].map(escape).join(","))
+  ];
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="gl-journals.csv"`);
+  res.send(lines.join("\r\n"));
+});
+
+/**
  * GET /finance/gl-journal/:id
  * Get a single GL posting with full line detail.
  */
@@ -135,7 +185,7 @@ router.post("/finance/journals", ...tenantWriteMiddleware, async (req: Request, 
   }
 
   // Journals above the approval threshold require manager/admin approval before posting
-  const APPROVAL_THRESHOLD = 10_000;
+  const APPROVAL_THRESHOLD = Number(process.env["MANUAL_JOURNAL_APPROVAL_THRESHOLD"] ?? 10_000);
   const requiresApproval = totalDebit > APPROVAL_THRESHOLD && !["admin", "super_admin"].includes(userRole);
   const postingDate = d.postingDate ? new Date(d.postingDate) : new Date();
   const result = await withTenantDb(tenantId, async (db) => {
@@ -199,7 +249,8 @@ router.post("/finance/journals/:id/reverse", ...tenantWriteMiddleware, async (re
     } as typeof glPostingsTable.$inferInsert).returning();
 
     const code = `REV-${String(reversal.id).padStart(6, "0")}`;
-    await db.update(glPostingsTable).set({ code, entityId: reversal.id }).where(eq(glPostingsTable.id, reversal.id));
+    // Only update code; entityId keeps pointing at original.id (the posting being reversed)
+    await db.update(glPostingsTable).set({ code }).where(eq(glPostingsTable.id, reversal.id));
     await db.update(glPostingsTable).set({ status: "reversed", reversedByPostingId: reversal.id }).where(eq(glPostingsTable.id, original.id));
     return { reversalId: reversal.id, reversalCode: code, originalId: original.id };
   });
