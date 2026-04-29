@@ -38,12 +38,27 @@ import type {
   CreateCreditNoteBody,
   CreateCustomerBody,
   CreateCustomerInvoiceBody,
+  CreateCycleCount201,
+  CreateCycleCountBody,
   CreateDespatchBody,
   CreateGlAccountBody,
+  CreateInventoryAdjustment201,
+  CreateInventoryAdjustmentBody,
+  CreateInventoryBuild201,
+  CreateInventoryBuildBody,
+  CreateInventoryIssue201,
+  CreateInventoryIssueBody,
+  CreateInventoryRepack201,
+  CreateInventoryRepackBody,
+  CreateInventoryReturn201,
+  CreateInventoryReturnBody,
+  CreateInventoryTransfer201,
+  CreateInventoryTransferBody,
   CreateItemBody,
   CreateItemLocationBody,
   CreateItemUnitBody,
   CreateItemVariantBody,
+  CreateLandedCostBody,
   CreatePickSlipBody,
   CreatePurchaseOrderBody,
   CreateQuotationBody,
@@ -52,6 +67,8 @@ import type {
   CreateReturnBody,
   CreateRmaBody,
   CreateSalesOrderBody,
+  CreateStocktakeRun201,
+  CreateStocktakeRunBody,
   CreateSubscriptionBody,
   CreateSupplierBody,
   CreateTenantBody,
@@ -66,6 +83,7 @@ import type {
   CustomerInvoiceListResponse,
   CustomerListResponse,
   CustomerSalesSummary,
+  CycleCountTask,
   Despatch,
   DespatchDetail,
   DespatchListResponse,
@@ -75,6 +93,8 @@ import type {
   GetAdminAuditLogsParams,
   GetAtp200,
   GetAtpParams,
+  GetItemAvailability200,
+  GetItemAvailabilityParams,
   GetMasterDataAuditTrailParams,
   GetReceiptGlPreview200,
   GetSalesAlternatives200,
@@ -85,6 +105,7 @@ import type {
   GlTemplateImportResult,
   HealthStatus,
   ImportItemsBody,
+  InventoryAdjustment,
   InventoryStockList,
   InvoiceList,
   ItemAttribute,
@@ -94,17 +115,32 @@ import type {
   ItemListResponse,
   ItemUnit,
   ItemVariant,
+  LandedCostAllocation,
   ListBackorders200,
   ListBackordersParams,
+  ListCostLayers200,
+  ListCostLayersParams,
   ListCreditNotesParams,
   ListCustomerInvoicesParams,
   ListCustomersParams,
+  ListCycleCounts200,
+  ListCycleCountsParams,
   ListDespatchesParams,
   ListGlAccountsParams,
   ListGlPostingsParams,
+  ListInventoryAdjustments200,
+  ListInventoryAdjustmentsParams,
+  ListInventoryMovements200,
+  ListInventoryMovementsParams,
+  ListInventoryStockDashboard200,
+  ListInventoryStockDashboardParams,
   ListInventoryStockParams,
   ListItemUnits200,
   ListItemsParams,
+  ListLandedCosts200,
+  ListLandedCostsParams,
+  ListLotNumbers200,
+  ListLotNumbersParams,
   ListNotifications200,
   ListNotificationsParams,
   ListPickSlipsParams,
@@ -115,6 +151,8 @@ import type {
   ListReturnsParams,
   ListRmaOrdersParams,
   ListSalesOrdersParams,
+  ListStocktakeRuns200,
+  ListStocktakeRunsParams,
   ListSuppliersParams,
   ListWarehousesParams,
   LookupCustomerParams,
@@ -148,6 +186,7 @@ import type {
   PoReturn,
   PoReturnDetail,
   PoSummaryRow,
+  PostStocktakeRun200,
   PurchaseOrder,
   PurchaseOrderDetail,
   PurchaseOrderList,
@@ -193,13 +232,19 @@ import type {
   SetupPaymentResult,
   SoLine,
   SoLineInput,
+  StocktakeLine,
+  StocktakeRun,
   StripeSyncResult,
   SubscriptionResult,
   SupplierListResponse,
   SupplierPerformanceRow,
   Tenant,
   TenantMember,
+  TraceLotNumber200,
+  TraceLotNumberParams,
   UomConversionResult,
+  UpdateCycleCountBody,
+  UpdateCycleCountLineBody,
   UpdateItemVariantBody,
   UpdateMemberBody,
   UpdatePurchaseOrderBody,
@@ -208,6 +253,7 @@ import type {
   UpdateRequisitionBody,
   UpdateReturnBody,
   UpdateSalesOrderBody,
+  UpdateStocktakeLineBody,
   UpdateTenantBody,
   UpdateUserBody,
   UploadOnboardingCsvBody,
@@ -16717,3 +16763,2423 @@ export const useMarkNotificationRead = <
 > => {
   return useMutation(getMarkNotificationReadMutationOptions(options));
 };
+
+/**
+ * @summary Multi-warehouse stock dashboard
+ */
+export const getListInventoryStockDashboardUrl = (
+  params?: ListInventoryStockDashboardParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/stock?${stringifiedParams}`
+    : `/api/inventory/stock`;
+};
+
+export const listInventoryStockDashboard = async (
+  params?: ListInventoryStockDashboardParams,
+  options?: RequestInit,
+): Promise<ListInventoryStockDashboard200> => {
+  return customFetch<ListInventoryStockDashboard200>(
+    getListInventoryStockDashboardUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListInventoryStockDashboardQueryKey = (
+  params?: ListInventoryStockDashboardParams,
+) => {
+  return [`/api/inventory/stock`, ...(params ? [params] : [])] as const;
+};
+
+export const getListInventoryStockDashboardQueryOptions = <
+  TData = Awaited<ReturnType<typeof listInventoryStockDashboard>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInventoryStockDashboardParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryStockDashboard>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListInventoryStockDashboardQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listInventoryStockDashboard>>
+  > = ({ signal }) =>
+    listInventoryStockDashboard(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listInventoryStockDashboard>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListInventoryStockDashboardQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listInventoryStockDashboard>>
+>;
+export type ListInventoryStockDashboardQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Multi-warehouse stock dashboard
+ */
+
+export function useListInventoryStockDashboard<
+  TData = Awaited<ReturnType<typeof listInventoryStockDashboard>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInventoryStockDashboardParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryStockDashboard>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListInventoryStockDashboardQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Item availability across all warehouses
+ */
+export const getGetItemAvailabilityUrl = (
+  itemId: number,
+  params?: GetItemAvailabilityParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/stock/${itemId}?${stringifiedParams}`
+    : `/api/inventory/stock/${itemId}`;
+};
+
+export const getItemAvailability = async (
+  itemId: number,
+  params?: GetItemAvailabilityParams,
+  options?: RequestInit,
+): Promise<GetItemAvailability200> => {
+  return customFetch<GetItemAvailability200>(
+    getGetItemAvailabilityUrl(itemId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetItemAvailabilityQueryKey = (
+  itemId: number,
+  params?: GetItemAvailabilityParams,
+) => {
+  return [
+    `/api/inventory/stock/${itemId}`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetItemAvailabilityQueryOptions = <
+  TData = Awaited<ReturnType<typeof getItemAvailability>>,
+  TError = ErrorType<unknown>,
+>(
+  itemId: number,
+  params?: GetItemAvailabilityParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getItemAvailability>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetItemAvailabilityQueryKey(itemId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getItemAvailability>>
+  > = ({ signal }) =>
+    getItemAvailability(itemId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!itemId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getItemAvailability>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetItemAvailabilityQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getItemAvailability>>
+>;
+export type GetItemAvailabilityQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Item availability across all warehouses
+ */
+
+export function useGetItemAvailability<
+  TData = Awaited<ReturnType<typeof getItemAvailability>>,
+  TError = ErrorType<unknown>,
+>(
+  itemId: number,
+  params?: GetItemAvailabilityParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getItemAvailability>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetItemAvailabilityQueryOptions(
+    itemId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Searchable movement log
+ */
+export const getListInventoryMovementsUrl = (
+  params?: ListInventoryMovementsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/movements?${stringifiedParams}`
+    : `/api/inventory/movements`;
+};
+
+export const listInventoryMovements = async (
+  params?: ListInventoryMovementsParams,
+  options?: RequestInit,
+): Promise<ListInventoryMovements200> => {
+  return customFetch<ListInventoryMovements200>(
+    getListInventoryMovementsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListInventoryMovementsQueryKey = (
+  params?: ListInventoryMovementsParams,
+) => {
+  return [`/api/inventory/movements`, ...(params ? [params] : [])] as const;
+};
+
+export const getListInventoryMovementsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listInventoryMovements>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInventoryMovementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryMovements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListInventoryMovementsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listInventoryMovements>>
+  > = ({ signal }) =>
+    listInventoryMovements(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listInventoryMovements>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListInventoryMovementsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listInventoryMovements>>
+>;
+export type ListInventoryMovementsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Searchable movement log
+ */
+
+export function useListInventoryMovements<
+  TData = Awaited<ReturnType<typeof listInventoryMovements>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInventoryMovementsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryMovements>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListInventoryMovementsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a manual stock adjustment (increase or decrease)
+ */
+export const getCreateInventoryAdjustmentUrl = () => {
+  return `/api/inventory/adjust`;
+};
+
+export const createInventoryAdjustment = async (
+  createInventoryAdjustmentBody: CreateInventoryAdjustmentBody,
+  options?: RequestInit,
+): Promise<CreateInventoryAdjustment201> => {
+  return customFetch<CreateInventoryAdjustment201>(
+    getCreateInventoryAdjustmentUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(createInventoryAdjustmentBody),
+    },
+  );
+};
+
+export const getCreateInventoryAdjustmentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryAdjustment>>,
+    TError,
+    { data: BodyType<CreateInventoryAdjustmentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createInventoryAdjustment>>,
+  TError,
+  { data: BodyType<CreateInventoryAdjustmentBody> },
+  TContext
+> => {
+  const mutationKey = ["createInventoryAdjustment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createInventoryAdjustment>>,
+    { data: BodyType<CreateInventoryAdjustmentBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createInventoryAdjustment(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateInventoryAdjustmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createInventoryAdjustment>>
+>;
+export type CreateInventoryAdjustmentMutationBody =
+  BodyType<CreateInventoryAdjustmentBody>;
+export type CreateInventoryAdjustmentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a manual stock adjustment (increase or decrease)
+ */
+export const useCreateInventoryAdjustment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryAdjustment>>,
+    TError,
+    { data: BodyType<CreateInventoryAdjustmentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createInventoryAdjustment>>,
+  TError,
+  { data: BodyType<CreateInventoryAdjustmentBody> },
+  TContext
+> => {
+  return useMutation(getCreateInventoryAdjustmentMutationOptions(options));
+};
+
+/**
+ * @summary List adjustment documents
+ */
+export const getListInventoryAdjustmentsUrl = (
+  params?: ListInventoryAdjustmentsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/adjustments?${stringifiedParams}`
+    : `/api/inventory/adjustments`;
+};
+
+export const listInventoryAdjustments = async (
+  params?: ListInventoryAdjustmentsParams,
+  options?: RequestInit,
+): Promise<ListInventoryAdjustments200> => {
+  return customFetch<ListInventoryAdjustments200>(
+    getListInventoryAdjustmentsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListInventoryAdjustmentsQueryKey = (
+  params?: ListInventoryAdjustmentsParams,
+) => {
+  return [`/api/inventory/adjustments`, ...(params ? [params] : [])] as const;
+};
+
+export const getListInventoryAdjustmentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listInventoryAdjustments>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInventoryAdjustmentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryAdjustments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListInventoryAdjustmentsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listInventoryAdjustments>>
+  > = ({ signal }) =>
+    listInventoryAdjustments(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listInventoryAdjustments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListInventoryAdjustmentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listInventoryAdjustments>>
+>;
+export type ListInventoryAdjustmentsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List adjustment documents
+ */
+
+export function useListInventoryAdjustments<
+  TData = Awaited<ReturnType<typeof listInventoryAdjustments>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInventoryAdjustmentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryAdjustments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListInventoryAdjustmentsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get adjustment with lines
+ */
+export const getGetInventoryAdjustmentUrl = (id: number) => {
+  return `/api/inventory/adjustments/${id}`;
+};
+
+export const getInventoryAdjustment = async (
+  id: number,
+  options?: RequestInit,
+): Promise<InventoryAdjustment> => {
+  return customFetch<InventoryAdjustment>(getGetInventoryAdjustmentUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetInventoryAdjustmentQueryKey = (id: number) => {
+  return [`/api/inventory/adjustments/${id}`] as const;
+};
+
+export const getGetInventoryAdjustmentQueryOptions = <
+  TData = Awaited<ReturnType<typeof getInventoryAdjustment>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryAdjustment>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetInventoryAdjustmentQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getInventoryAdjustment>>
+  > = ({ signal }) => getInventoryAdjustment(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getInventoryAdjustment>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetInventoryAdjustmentQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getInventoryAdjustment>>
+>;
+export type GetInventoryAdjustmentQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get adjustment with lines
+ */
+
+export function useGetInventoryAdjustment<
+  TData = Awaited<ReturnType<typeof getInventoryAdjustment>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getInventoryAdjustment>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetInventoryAdjustmentQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Transfer stock between warehouses or locations
+ */
+export const getCreateInventoryTransferUrl = () => {
+  return `/api/inventory/transfer`;
+};
+
+export const createInventoryTransfer = async (
+  createInventoryTransferBody: CreateInventoryTransferBody,
+  options?: RequestInit,
+): Promise<CreateInventoryTransfer201> => {
+  return customFetch<CreateInventoryTransfer201>(
+    getCreateInventoryTransferUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(createInventoryTransferBody),
+    },
+  );
+};
+
+export const getCreateInventoryTransferMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryTransfer>>,
+    TError,
+    { data: BodyType<CreateInventoryTransferBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createInventoryTransfer>>,
+  TError,
+  { data: BodyType<CreateInventoryTransferBody> },
+  TContext
+> => {
+  const mutationKey = ["createInventoryTransfer"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createInventoryTransfer>>,
+    { data: BodyType<CreateInventoryTransferBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createInventoryTransfer(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateInventoryTransferMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createInventoryTransfer>>
+>;
+export type CreateInventoryTransferMutationBody =
+  BodyType<CreateInventoryTransferBody>;
+export type CreateInventoryTransferMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Transfer stock between warehouses or locations
+ */
+export const useCreateInventoryTransfer = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryTransfer>>,
+    TError,
+    { data: BodyType<CreateInventoryTransferBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createInventoryTransfer>>,
+  TError,
+  { data: BodyType<CreateInventoryTransferBody> },
+  TContext
+> => {
+  return useMutation(getCreateInventoryTransferMutationOptions(options));
+};
+
+/**
+ * @summary Issue stock to a GL account or project
+ */
+export const getCreateInventoryIssueUrl = () => {
+  return `/api/inventory/issue`;
+};
+
+export const createInventoryIssue = async (
+  createInventoryIssueBody: CreateInventoryIssueBody,
+  options?: RequestInit,
+): Promise<CreateInventoryIssue201> => {
+  return customFetch<CreateInventoryIssue201>(getCreateInventoryIssueUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createInventoryIssueBody),
+  });
+};
+
+export const getCreateInventoryIssueMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryIssue>>,
+    TError,
+    { data: BodyType<CreateInventoryIssueBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createInventoryIssue>>,
+  TError,
+  { data: BodyType<CreateInventoryIssueBody> },
+  TContext
+> => {
+  const mutationKey = ["createInventoryIssue"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createInventoryIssue>>,
+    { data: BodyType<CreateInventoryIssueBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createInventoryIssue(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateInventoryIssueMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createInventoryIssue>>
+>;
+export type CreateInventoryIssueMutationBody =
+  BodyType<CreateInventoryIssueBody>;
+export type CreateInventoryIssueMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Issue stock to a GL account or project
+ */
+export const useCreateInventoryIssue = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryIssue>>,
+    TError,
+    { data: BodyType<CreateInventoryIssueBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createInventoryIssue>>,
+  TError,
+  { data: BodyType<CreateInventoryIssueBody> },
+  TContext
+> => {
+  return useMutation(getCreateInventoryIssueMutationOptions(options));
+};
+
+/**
+ * @summary Return stock from customer or internal
+ */
+export const getCreateInventoryReturnUrl = () => {
+  return `/api/inventory/return`;
+};
+
+export const createInventoryReturn = async (
+  createInventoryReturnBody: CreateInventoryReturnBody,
+  options?: RequestInit,
+): Promise<CreateInventoryReturn201> => {
+  return customFetch<CreateInventoryReturn201>(getCreateInventoryReturnUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createInventoryReturnBody),
+  });
+};
+
+export const getCreateInventoryReturnMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryReturn>>,
+    TError,
+    { data: BodyType<CreateInventoryReturnBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createInventoryReturn>>,
+  TError,
+  { data: BodyType<CreateInventoryReturnBody> },
+  TContext
+> => {
+  const mutationKey = ["createInventoryReturn"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createInventoryReturn>>,
+    { data: BodyType<CreateInventoryReturnBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createInventoryReturn(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateInventoryReturnMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createInventoryReturn>>
+>;
+export type CreateInventoryReturnMutationBody =
+  BodyType<CreateInventoryReturnBody>;
+export type CreateInventoryReturnMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Return stock from customer or internal
+ */
+export const useCreateInventoryReturn = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryReturn>>,
+    TError,
+    { data: BodyType<CreateInventoryReturnBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createInventoryReturn>>,
+  TError,
+  { data: BodyType<CreateInventoryReturnBody> },
+  TContext
+> => {
+  return useMutation(getCreateInventoryReturnMutationOptions(options));
+};
+
+/**
+ * @summary Repack or split a lot into a new lot
+ */
+export const getCreateInventoryRepackUrl = () => {
+  return `/api/inventory/repack`;
+};
+
+export const createInventoryRepack = async (
+  createInventoryRepackBody: CreateInventoryRepackBody,
+  options?: RequestInit,
+): Promise<CreateInventoryRepack201> => {
+  return customFetch<CreateInventoryRepack201>(getCreateInventoryRepackUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createInventoryRepackBody),
+  });
+};
+
+export const getCreateInventoryRepackMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryRepack>>,
+    TError,
+    { data: BodyType<CreateInventoryRepackBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createInventoryRepack>>,
+  TError,
+  { data: BodyType<CreateInventoryRepackBody> },
+  TContext
+> => {
+  const mutationKey = ["createInventoryRepack"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createInventoryRepack>>,
+    { data: BodyType<CreateInventoryRepackBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createInventoryRepack(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateInventoryRepackMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createInventoryRepack>>
+>;
+export type CreateInventoryRepackMutationBody =
+  BodyType<CreateInventoryRepackBody>;
+export type CreateInventoryRepackMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Repack or split a lot into a new lot
+ */
+export const useCreateInventoryRepack = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryRepack>>,
+    TError,
+    { data: BodyType<CreateInventoryRepackBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createInventoryRepack>>,
+  TError,
+  { data: BodyType<CreateInventoryRepackBody> },
+  TContext
+> => {
+  return useMutation(getCreateInventoryRepackMutationOptions(options));
+};
+
+/**
+ * @summary Build a kit / finished good from component stock
+ */
+export const getCreateInventoryBuildUrl = () => {
+  return `/api/inventory/build`;
+};
+
+export const createInventoryBuild = async (
+  createInventoryBuildBody: CreateInventoryBuildBody,
+  options?: RequestInit,
+): Promise<CreateInventoryBuild201> => {
+  return customFetch<CreateInventoryBuild201>(getCreateInventoryBuildUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createInventoryBuildBody),
+  });
+};
+
+export const getCreateInventoryBuildMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryBuild>>,
+    TError,
+    { data: BodyType<CreateInventoryBuildBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createInventoryBuild>>,
+  TError,
+  { data: BodyType<CreateInventoryBuildBody> },
+  TContext
+> => {
+  const mutationKey = ["createInventoryBuild"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createInventoryBuild>>,
+    { data: BodyType<CreateInventoryBuildBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createInventoryBuild(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateInventoryBuildMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createInventoryBuild>>
+>;
+export type CreateInventoryBuildMutationBody =
+  BodyType<CreateInventoryBuildBody>;
+export type CreateInventoryBuildMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Build a kit / finished good from component stock
+ */
+export const useCreateInventoryBuild = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInventoryBuild>>,
+    TError,
+    { data: BodyType<CreateInventoryBuildBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createInventoryBuild>>,
+  TError,
+  { data: BodyType<CreateInventoryBuildBody> },
+  TContext
+> => {
+  return useMutation(getCreateInventoryBuildMutationOptions(options));
+};
+
+/**
+ * @summary List lot / batch master records
+ */
+export const getListLotNumbersUrl = (params?: ListLotNumbersParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/lots?${stringifiedParams}`
+    : `/api/inventory/lots`;
+};
+
+export const listLotNumbers = async (
+  params?: ListLotNumbersParams,
+  options?: RequestInit,
+): Promise<ListLotNumbers200> => {
+  return customFetch<ListLotNumbers200>(getListLotNumbersUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListLotNumbersQueryKey = (params?: ListLotNumbersParams) => {
+  return [`/api/inventory/lots`, ...(params ? [params] : [])] as const;
+};
+
+export const getListLotNumbersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listLotNumbers>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListLotNumbersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listLotNumbers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListLotNumbersQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listLotNumbers>>> = ({
+    signal,
+  }) => listLotNumbers(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listLotNumbers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListLotNumbersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listLotNumbers>>
+>;
+export type ListLotNumbersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List lot / batch master records
+ */
+
+export function useListLotNumbers<
+  TData = Awaited<ReturnType<typeof listLotNumbers>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListLotNumbersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listLotNumbers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListLotNumbersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Forward trace all movements for a lot
+ */
+export const getTraceLotNumberUrl = (
+  lotNumber: string,
+  params?: TraceLotNumberParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/lots/${lotNumber}/trace?${stringifiedParams}`
+    : `/api/inventory/lots/${lotNumber}/trace`;
+};
+
+export const traceLotNumber = async (
+  lotNumber: string,
+  params?: TraceLotNumberParams,
+  options?: RequestInit,
+): Promise<TraceLotNumber200> => {
+  return customFetch<TraceLotNumber200>(
+    getTraceLotNumberUrl(lotNumber, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getTraceLotNumberQueryKey = (
+  lotNumber: string,
+  params?: TraceLotNumberParams,
+) => {
+  return [
+    `/api/inventory/lots/${lotNumber}/trace`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getTraceLotNumberQueryOptions = <
+  TData = Awaited<ReturnType<typeof traceLotNumber>>,
+  TError = ErrorType<unknown>,
+>(
+  lotNumber: string,
+  params?: TraceLotNumberParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof traceLotNumber>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getTraceLotNumberQueryKey(lotNumber, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof traceLotNumber>>> = ({
+    signal,
+  }) => traceLotNumber(lotNumber, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!lotNumber,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof traceLotNumber>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type TraceLotNumberQueryResult = NonNullable<
+  Awaited<ReturnType<typeof traceLotNumber>>
+>;
+export type TraceLotNumberQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Forward trace all movements for a lot
+ */
+
+export function useTraceLotNumber<
+  TData = Awaited<ReturnType<typeof traceLotNumber>>,
+  TError = ErrorType<unknown>,
+>(
+  lotNumber: string,
+  params?: TraceLotNumberParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof traceLotNumber>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getTraceLotNumberQueryOptions(
+    lotNumber,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List stocktake runs
+ */
+export const getListStocktakeRunsUrl = (params?: ListStocktakeRunsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/stocktakes?${stringifiedParams}`
+    : `/api/inventory/stocktakes`;
+};
+
+export const listStocktakeRuns = async (
+  params?: ListStocktakeRunsParams,
+  options?: RequestInit,
+): Promise<ListStocktakeRuns200> => {
+  return customFetch<ListStocktakeRuns200>(getListStocktakeRunsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListStocktakeRunsQueryKey = (
+  params?: ListStocktakeRunsParams,
+) => {
+  return [`/api/inventory/stocktakes`, ...(params ? [params] : [])] as const;
+};
+
+export const getListStocktakeRunsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listStocktakeRuns>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListStocktakeRunsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStocktakeRuns>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListStocktakeRunsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listStocktakeRuns>>
+  > = ({ signal }) => listStocktakeRuns(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listStocktakeRuns>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListStocktakeRunsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listStocktakeRuns>>
+>;
+export type ListStocktakeRunsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List stocktake runs
+ */
+
+export function useListStocktakeRuns<
+  TData = Awaited<ReturnType<typeof listStocktakeRuns>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListStocktakeRunsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listStocktakeRuns>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListStocktakeRunsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a stocktake run and freeze current system quantities
+ */
+export const getCreateStocktakeRunUrl = () => {
+  return `/api/inventory/stocktakes`;
+};
+
+export const createStocktakeRun = async (
+  createStocktakeRunBody: CreateStocktakeRunBody,
+  options?: RequestInit,
+): Promise<CreateStocktakeRun201> => {
+  return customFetch<CreateStocktakeRun201>(getCreateStocktakeRunUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createStocktakeRunBody),
+  });
+};
+
+export const getCreateStocktakeRunMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStocktakeRun>>,
+    TError,
+    { data: BodyType<CreateStocktakeRunBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createStocktakeRun>>,
+  TError,
+  { data: BodyType<CreateStocktakeRunBody> },
+  TContext
+> => {
+  const mutationKey = ["createStocktakeRun"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createStocktakeRun>>,
+    { data: BodyType<CreateStocktakeRunBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createStocktakeRun(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateStocktakeRunMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createStocktakeRun>>
+>;
+export type CreateStocktakeRunMutationBody = BodyType<CreateStocktakeRunBody>;
+export type CreateStocktakeRunMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a stocktake run and freeze current system quantities
+ */
+export const useCreateStocktakeRun = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStocktakeRun>>,
+    TError,
+    { data: BodyType<CreateStocktakeRunBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createStocktakeRun>>,
+  TError,
+  { data: BodyType<CreateStocktakeRunBody> },
+  TContext
+> => {
+  return useMutation(getCreateStocktakeRunMutationOptions(options));
+};
+
+/**
+ * @summary Get stocktake run with lines
+ */
+export const getGetStocktakeRunUrl = (id: number) => {
+  return `/api/inventory/stocktakes/${id}`;
+};
+
+export const getStocktakeRun = async (
+  id: number,
+  options?: RequestInit,
+): Promise<StocktakeRun> => {
+  return customFetch<StocktakeRun>(getGetStocktakeRunUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetStocktakeRunQueryKey = (id: number) => {
+  return [`/api/inventory/stocktakes/${id}`] as const;
+};
+
+export const getGetStocktakeRunQueryOptions = <
+  TData = Awaited<ReturnType<typeof getStocktakeRun>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStocktakeRun>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetStocktakeRunQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getStocktakeRun>>> = ({
+    signal,
+  }) => getStocktakeRun(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getStocktakeRun>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetStocktakeRunQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getStocktakeRun>>
+>;
+export type GetStocktakeRunQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get stocktake run with lines
+ */
+
+export function useGetStocktakeRun<
+  TData = Awaited<ReturnType<typeof getStocktakeRun>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStocktakeRun>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetStocktakeRunQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Enter counted quantity for a stocktake line
+ */
+export const getUpdateStocktakeLineUrl = (id: number, lineId: number) => {
+  return `/api/inventory/stocktakes/${id}/lines/${lineId}`;
+};
+
+export const updateStocktakeLine = async (
+  id: number,
+  lineId: number,
+  updateStocktakeLineBody: UpdateStocktakeLineBody,
+  options?: RequestInit,
+): Promise<StocktakeLine> => {
+  return customFetch<StocktakeLine>(getUpdateStocktakeLineUrl(id, lineId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateStocktakeLineBody),
+  });
+};
+
+export const getUpdateStocktakeLineMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateStocktakeLine>>,
+    TError,
+    { id: number; lineId: number; data: BodyType<UpdateStocktakeLineBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateStocktakeLine>>,
+  TError,
+  { id: number; lineId: number; data: BodyType<UpdateStocktakeLineBody> },
+  TContext
+> => {
+  const mutationKey = ["updateStocktakeLine"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateStocktakeLine>>,
+    { id: number; lineId: number; data: BodyType<UpdateStocktakeLineBody> }
+  > = (props) => {
+    const { id, lineId, data } = props ?? {};
+
+    return updateStocktakeLine(id, lineId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateStocktakeLineMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateStocktakeLine>>
+>;
+export type UpdateStocktakeLineMutationBody = BodyType<UpdateStocktakeLineBody>;
+export type UpdateStocktakeLineMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Enter counted quantity for a stocktake line
+ */
+export const useUpdateStocktakeLine = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateStocktakeLine>>,
+    TError,
+    { id: number; lineId: number; data: BodyType<UpdateStocktakeLineBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateStocktakeLine>>,
+  TError,
+  { id: number; lineId: number; data: BodyType<UpdateStocktakeLineBody> },
+  TContext
+> => {
+  return useMutation(getUpdateStocktakeLineMutationOptions(options));
+};
+
+/**
+ * @summary Post stocktake variances as inventory adjustments
+ */
+export const getPostStocktakeRunUrl = (id: number) => {
+  return `/api/inventory/stocktakes/${id}/post`;
+};
+
+export const postStocktakeRun = async (
+  id: number,
+  options?: RequestInit,
+): Promise<PostStocktakeRun200> => {
+  return customFetch<PostStocktakeRun200>(getPostStocktakeRunUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getPostStocktakeRunMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postStocktakeRun>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postStocktakeRun>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["postStocktakeRun"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postStocktakeRun>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return postStocktakeRun(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostStocktakeRunMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postStocktakeRun>>
+>;
+
+export type PostStocktakeRunMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Post stocktake variances as inventory adjustments
+ */
+export const usePostStocktakeRun = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postStocktakeRun>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof postStocktakeRun>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getPostStocktakeRunMutationOptions(options));
+};
+
+/**
+ * @summary List cycle count tasks
+ */
+export const getListCycleCountsUrl = (params?: ListCycleCountsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/cycle-counts?${stringifiedParams}`
+    : `/api/inventory/cycle-counts`;
+};
+
+export const listCycleCounts = async (
+  params?: ListCycleCountsParams,
+  options?: RequestInit,
+): Promise<ListCycleCounts200> => {
+  return customFetch<ListCycleCounts200>(getListCycleCountsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCycleCountsQueryKey = (params?: ListCycleCountsParams) => {
+  return [`/api/inventory/cycle-counts`, ...(params ? [params] : [])] as const;
+};
+
+export const getListCycleCountsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCycleCounts>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListCycleCountsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCycleCounts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCycleCountsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCycleCounts>>> = ({
+    signal,
+  }) => listCycleCounts(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCycleCounts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCycleCountsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCycleCounts>>
+>;
+export type ListCycleCountsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List cycle count tasks
+ */
+
+export function useListCycleCounts<
+  TData = Awaited<ReturnType<typeof listCycleCounts>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListCycleCountsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCycleCounts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCycleCountsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a cycle count task and pre-populate lines
+ */
+export const getCreateCycleCountUrl = () => {
+  return `/api/inventory/cycle-counts`;
+};
+
+export const createCycleCount = async (
+  createCycleCountBody: CreateCycleCountBody,
+  options?: RequestInit,
+): Promise<CreateCycleCount201> => {
+  return customFetch<CreateCycleCount201>(getCreateCycleCountUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createCycleCountBody),
+  });
+};
+
+export const getCreateCycleCountMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCycleCount>>,
+    TError,
+    { data: BodyType<CreateCycleCountBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCycleCount>>,
+  TError,
+  { data: BodyType<CreateCycleCountBody> },
+  TContext
+> => {
+  const mutationKey = ["createCycleCount"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCycleCount>>,
+    { data: BodyType<CreateCycleCountBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCycleCount(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCycleCountMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCycleCount>>
+>;
+export type CreateCycleCountMutationBody = BodyType<CreateCycleCountBody>;
+export type CreateCycleCountMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a cycle count task and pre-populate lines
+ */
+export const useCreateCycleCount = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCycleCount>>,
+    TError,
+    { data: BodyType<CreateCycleCountBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCycleCount>>,
+  TError,
+  { data: BodyType<CreateCycleCountBody> },
+  TContext
+> => {
+  return useMutation(getCreateCycleCountMutationOptions(options));
+};
+
+/**
+ * @summary Get cycle count task with lines
+ */
+export const getGetCycleCountUrl = (id: number) => {
+  return `/api/inventory/cycle-counts/${id}`;
+};
+
+export const getCycleCount = async (
+  id: number,
+  options?: RequestInit,
+): Promise<CycleCountTask> => {
+  return customFetch<CycleCountTask>(getGetCycleCountUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCycleCountQueryKey = (id: number) => {
+  return [`/api/inventory/cycle-counts/${id}`] as const;
+};
+
+export const getGetCycleCountQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCycleCount>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCycleCount>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCycleCountQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCycleCount>>> = ({
+    signal,
+  }) => getCycleCount(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCycleCount>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCycleCountQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCycleCount>>
+>;
+export type GetCycleCountQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get cycle count task with lines
+ */
+
+export function useGetCycleCount<
+  TData = Awaited<ReturnType<typeof getCycleCount>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCycleCount>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCycleCountQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update status or assignment for a cycle count task
+ */
+export const getUpdateCycleCountUrl = (id: number) => {
+  return `/api/inventory/cycle-counts/${id}`;
+};
+
+export const updateCycleCount = async (
+  id: number,
+  updateCycleCountBody: UpdateCycleCountBody,
+  options?: RequestInit,
+): Promise<CycleCountTask> => {
+  return customFetch<CycleCountTask>(getUpdateCycleCountUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateCycleCountBody),
+  });
+};
+
+export const getUpdateCycleCountMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCycleCount>>,
+    TError,
+    { id: number; data: BodyType<UpdateCycleCountBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateCycleCount>>,
+  TError,
+  { id: number; data: BodyType<UpdateCycleCountBody> },
+  TContext
+> => {
+  const mutationKey = ["updateCycleCount"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateCycleCount>>,
+    { id: number; data: BodyType<UpdateCycleCountBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateCycleCount(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateCycleCountMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateCycleCount>>
+>;
+export type UpdateCycleCountMutationBody = BodyType<UpdateCycleCountBody>;
+export type UpdateCycleCountMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update status or assignment for a cycle count task
+ */
+export const useUpdateCycleCount = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCycleCount>>,
+    TError,
+    { id: number; data: BodyType<UpdateCycleCountBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateCycleCount>>,
+  TError,
+  { id: number; data: BodyType<UpdateCycleCountBody> },
+  TContext
+> => {
+  return useMutation(getUpdateCycleCountMutationOptions(options));
+};
+
+/**
+ * @summary Enter counted quantity for a cycle count line
+ */
+export const getUpdateCycleCountLineUrl = (id: number, lineId: number) => {
+  return `/api/inventory/cycle-counts/${id}/lines/${lineId}`;
+};
+
+export const updateCycleCountLine = async (
+  id: number,
+  lineId: number,
+  updateCycleCountLineBody: UpdateCycleCountLineBody,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getUpdateCycleCountLineUrl(id, lineId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateCycleCountLineBody),
+  });
+};
+
+export const getUpdateCycleCountLineMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCycleCountLine>>,
+    TError,
+    { id: number; lineId: number; data: BodyType<UpdateCycleCountLineBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateCycleCountLine>>,
+  TError,
+  { id: number; lineId: number; data: BodyType<UpdateCycleCountLineBody> },
+  TContext
+> => {
+  const mutationKey = ["updateCycleCountLine"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateCycleCountLine>>,
+    { id: number; lineId: number; data: BodyType<UpdateCycleCountLineBody> }
+  > = (props) => {
+    const { id, lineId, data } = props ?? {};
+
+    return updateCycleCountLine(id, lineId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateCycleCountLineMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateCycleCountLine>>
+>;
+export type UpdateCycleCountLineMutationBody =
+  BodyType<UpdateCycleCountLineBody>;
+export type UpdateCycleCountLineMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Enter counted quantity for a cycle count line
+ */
+export const useUpdateCycleCountLine = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCycleCountLine>>,
+    TError,
+    { id: number; lineId: number; data: BodyType<UpdateCycleCountLineBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateCycleCountLine>>,
+  TError,
+  { id: number; lineId: number; data: BodyType<UpdateCycleCountLineBody> },
+  TContext
+> => {
+  return useMutation(getUpdateCycleCountLineMutationOptions(options));
+};
+
+/**
+ * @summary List landed cost allocations
+ */
+export const getListLandedCostsUrl = (params?: ListLandedCostsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/landed-costs?${stringifiedParams}`
+    : `/api/inventory/landed-costs`;
+};
+
+export const listLandedCosts = async (
+  params?: ListLandedCostsParams,
+  options?: RequestInit,
+): Promise<ListLandedCosts200> => {
+  return customFetch<ListLandedCosts200>(getListLandedCostsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListLandedCostsQueryKey = (params?: ListLandedCostsParams) => {
+  return [`/api/inventory/landed-costs`, ...(params ? [params] : [])] as const;
+};
+
+export const getListLandedCostsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listLandedCosts>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListLandedCostsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listLandedCosts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListLandedCostsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listLandedCosts>>> = ({
+    signal,
+  }) => listLandedCosts(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listLandedCosts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListLandedCostsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listLandedCosts>>
+>;
+export type ListLandedCostsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List landed cost allocations
+ */
+
+export function useListLandedCosts<
+  TData = Awaited<ReturnType<typeof listLandedCosts>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListLandedCostsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listLandedCosts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListLandedCostsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a landed cost allocation for a receipt
+ */
+export const getCreateLandedCostUrl = () => {
+  return `/api/inventory/landed-costs`;
+};
+
+export const createLandedCost = async (
+  createLandedCostBody: CreateLandedCostBody,
+  options?: RequestInit,
+): Promise<LandedCostAllocation> => {
+  return customFetch<LandedCostAllocation>(getCreateLandedCostUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createLandedCostBody),
+  });
+};
+
+export const getCreateLandedCostMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createLandedCost>>,
+    TError,
+    { data: BodyType<CreateLandedCostBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createLandedCost>>,
+  TError,
+  { data: BodyType<CreateLandedCostBody> },
+  TContext
+> => {
+  const mutationKey = ["createLandedCost"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createLandedCost>>,
+    { data: BodyType<CreateLandedCostBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createLandedCost(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateLandedCostMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createLandedCost>>
+>;
+export type CreateLandedCostMutationBody = BodyType<CreateLandedCostBody>;
+export type CreateLandedCostMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a landed cost allocation for a receipt
+ */
+export const useCreateLandedCost = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createLandedCost>>,
+    TError,
+    { data: BodyType<CreateLandedCostBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createLandedCost>>,
+  TError,
+  { data: BodyType<CreateLandedCostBody> },
+  TContext
+> => {
+  return useMutation(getCreateLandedCostMutationOptions(options));
+};
+
+/**
+ * @summary List FIFO cost layers for an item
+ */
+export const getListCostLayersUrl = (params: ListCostLayersParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory/cost-layers?${stringifiedParams}`
+    : `/api/inventory/cost-layers`;
+};
+
+export const listCostLayers = async (
+  params: ListCostLayersParams,
+  options?: RequestInit,
+): Promise<ListCostLayers200> => {
+  return customFetch<ListCostLayers200>(getListCostLayersUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCostLayersQueryKey = (params?: ListCostLayersParams) => {
+  return [`/api/inventory/cost-layers`, ...(params ? [params] : [])] as const;
+};
+
+export const getListCostLayersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCostLayers>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListCostLayersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCostLayers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCostLayersQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCostLayers>>> = ({
+    signal,
+  }) => listCostLayers(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCostLayers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCostLayersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCostLayers>>
+>;
+export type ListCostLayersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List FIFO cost layers for an item
+ */
+
+export function useListCostLayers<
+  TData = Awaited<ReturnType<typeof listCostLayers>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListCostLayersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCostLayers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCostLayersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}

@@ -6121,3 +6121,901 @@ export const MarkNotificationReadResponse = zod.object({
   createdAt: zod.coerce.date().optional(),
   readAt: zod.coerce.date().nullish(),
 });
+
+/**
+ * @summary Multi-warehouse stock dashboard
+ */
+export const ListInventoryStockDashboardQueryParams = zod.object({
+  warehouseId: zod.coerce.number().optional(),
+  locationId: zod.coerce.number().optional(),
+  itemId: zod.coerce.number().optional(),
+  category: zod.coerce.string().optional(),
+  search: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListInventoryStockDashboardHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListInventoryStockDashboardResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        category: zod.string().nullish(),
+        warehouseId: zod.number().optional(),
+        warehouseName: zod.string().nullish(),
+        locationId: zod.number().nullish(),
+        locationCode: zod.string().nullish(),
+        locationName: zod.string().nullish(),
+        lotNumber: zod.string().nullish(),
+        serialNumber: zod.string().nullish(),
+        batchNumber: zod.string().nullish(),
+        expiryDate: zod.string().nullish(),
+        qtyOnHand: zod.number().optional(),
+        qtyReserved: zod.number().optional(),
+        qtyAvailable: zod.number().optional(),
+        averageCost: zod.string().nullish(),
+        stockValue: zod.number().optional(),
+        lastMovementAt: zod.string().nullish(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Item availability across all warehouses
+ */
+export const GetItemAvailabilityParams = zod.object({
+  itemId: zod.coerce.number(),
+});
+
+export const GetItemAvailabilityQueryParams = zod.object({
+  warehouseId: zod.coerce.number().optional(),
+});
+
+export const GetItemAvailabilityHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetItemAvailabilityResponse = zod.object({
+  item: zod
+    .object({
+      id: zod.number().optional(),
+      code: zod.string().optional(),
+      name: zod.string().optional(),
+    })
+    .optional(),
+  totalOnHand: zod.number().optional(),
+  totalReserved: zod.number().optional(),
+  totalAvailable: zod.number().optional(),
+  byWarehouse: zod
+    .array(
+      zod.object({
+        warehouseId: zod.number().optional(),
+        warehouseName: zod.string().nullish(),
+        qtyOnHand: zod.number().optional(),
+        qtyReserved: zod.number().optional(),
+        qtyAvailable: zod.number().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Searchable movement log
+ */
+export const ListInventoryMovementsQueryParams = zod.object({
+  warehouseId: zod.coerce.number().optional(),
+  itemId: zod.coerce.number().optional(),
+  movementType: zod.coerce.string().optional(),
+  fromDate: zod.coerce.string().optional(),
+  toDate: zod.coerce.string().optional(),
+  search: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListInventoryMovementsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListInventoryMovementsResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        movementType: zod.string().optional(),
+        quantity: zod.number().optional(),
+        unitCost: zod.string().nullish(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        warehouseId: zod.number().optional(),
+        warehouseName: zod.string().nullish(),
+        locationId: zod.number().nullish(),
+        toWarehouseId: zod.number().nullish(),
+        toLocationId: zod.number().nullish(),
+        refType: zod.string().nullish(),
+        refId: zod.number().nullish(),
+        refCode: zod.string().nullish(),
+        lotNumber: zod.string().nullish(),
+        adjReason: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        postedByClerkId: zod.string().nullish(),
+        postedByEmail: zod.string().nullish(),
+        glPostingId: zod.number().nullish(),
+        createdAt: zod.string().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create a manual stock adjustment (increase or decrease)
+ */
+export const CreateInventoryAdjustmentHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateInventoryAdjustmentBody = zod.object({
+  adjustmentType: zod.enum(["increase", "decrease", "recount"]).optional(),
+  reason: zod.string(),
+  glAccountId: zod.number().nullish(),
+  glAccountCode: zod.string().nullish(),
+  warehouseId: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  lines: zod.array(
+    zod.object({
+      itemId: zod.number(),
+      warehouseId: zod.number(),
+      locationId: zod.number().nullish(),
+      lotNumber: zod.string().nullish(),
+      qtyAdjusted: zod.number(),
+      unitCost: zod.number().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary List adjustment documents
+ */
+export const ListInventoryAdjustmentsQueryParams = zod.object({
+  warehouseId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListInventoryAdjustmentsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListInventoryAdjustmentsResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        adjustmentType: zod.string().optional(),
+        reason: zod.string().optional(),
+        glAccountId: zod.number().nullish(),
+        glAccountCode: zod.string().nullish(),
+        warehouseId: zod.number().nullish(),
+        status: zod.string().optional(),
+        postedAt: zod.string().nullish(),
+        postedByEmail: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.string().optional(),
+        lines: zod
+          .array(
+            zod.object({
+              id: zod.number().optional(),
+              itemId: zod.number().optional(),
+              itemCode: zod.string().nullish(),
+              itemName: zod.string().nullish(),
+              warehouseId: zod.number().optional(),
+              locationId: zod.number().nullish(),
+              lotNumber: zod.string().nullish(),
+              qtyAdjusted: zod.string().optional(),
+              unitCost: zod.string().nullish(),
+            }),
+          )
+          .nullish(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Get adjustment with lines
+ */
+export const GetInventoryAdjustmentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetInventoryAdjustmentHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetInventoryAdjustmentResponse = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  adjustmentType: zod.string().optional(),
+  reason: zod.string().optional(),
+  glAccountId: zod.number().nullish(),
+  glAccountCode: zod.string().nullish(),
+  warehouseId: zod.number().nullish(),
+  status: zod.string().optional(),
+  postedAt: zod.string().nullish(),
+  postedByEmail: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        warehouseId: zod.number().optional(),
+        locationId: zod.number().nullish(),
+        lotNumber: zod.string().nullish(),
+        qtyAdjusted: zod.string().optional(),
+        unitCost: zod.string().nullish(),
+      }),
+    )
+    .nullish(),
+});
+
+/**
+ * @summary Transfer stock between warehouses or locations
+ */
+export const CreateInventoryTransferHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateInventoryTransferBody = zod.object({
+  itemId: zod.number(),
+  fromWarehouseId: zod.number(),
+  fromLocationId: zod.number().nullish(),
+  toWarehouseId: zod.number(),
+  toLocationId: zod.number().nullish(),
+  quantity: zod.number(),
+  lotNumber: zod.string().nullish(),
+  unitCost: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Issue stock to a GL account or project
+ */
+export const CreateInventoryIssueHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateInventoryIssueBody = zod.object({
+  itemId: zod.number(),
+  warehouseId: zod.number(),
+  locationId: zod.number().nullish(),
+  quantity: zod.number(),
+  lotNumber: zod.string().nullish(),
+  glAccountId: zod.number(),
+  glAccountCode: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Return stock from customer or internal
+ */
+export const CreateInventoryReturnHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateInventoryReturnBody = zod.object({
+  itemId: zod.number(),
+  warehouseId: zod.number(),
+  locationId: zod.number().nullish(),
+  quantity: zod.number(),
+  lotNumber: zod.string().nullish(),
+  unitCost: zod.number().nullish(),
+  refType: zod.enum(["customer_return", "internal_return"]).optional(),
+  refId: zod.number().nullish(),
+  refCode: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Repack or split a lot into a new lot
+ */
+export const CreateInventoryRepackHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateInventoryRepackBody = zod.object({
+  itemId: zod.number(),
+  warehouseId: zod.number(),
+  locationId: zod.number().nullish(),
+  fromLotNumber: zod.string().nullish(),
+  toLotNumber: zod.string().nullish(),
+  qtyIn: zod.number(),
+  qtyOut: zod.number(),
+  unitCost: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Build a kit / finished good from component stock
+ */
+export const CreateInventoryBuildHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateInventoryBuildBody = zod.object({
+  finishedItemId: zod.number(),
+  finishedQty: zod.number(),
+  finishedWarehouseId: zod.number(),
+  finishedLocationId: zod.number().nullish(),
+  finishedLotNumber: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  components: zod.array(
+    zod.object({
+      itemId: zod.number(),
+      qty: zod.number(),
+      warehouseId: zod.number(),
+      locationId: zod.number().nullish(),
+      lotNumber: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary List lot / batch master records
+ */
+export const ListLotNumbersQueryParams = zod.object({
+  itemId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  search: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListLotNumbersHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListLotNumbersResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        lotNumber: zod.string().optional(),
+        batchNumber: zod.string().nullish(),
+        expiryDate: zod.string().nullish(),
+        manufacturedDate: zod.string().nullish(),
+        status: zod.string().optional(),
+        qtyReceived: zod.string().optional(),
+        qtyOnHand: zod.string().optional(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.string().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Forward trace all movements for a lot
+ */
+export const TraceLotNumberParams = zod.object({
+  lotNumber: zod.coerce.string(),
+});
+
+export const TraceLotNumberQueryParams = zod.object({
+  itemId: zod.coerce.number().optional(),
+});
+
+export const TraceLotNumberHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const TraceLotNumberResponse = zod.object({
+  lotNumber: zod.string().optional(),
+  lot: zod
+    .object({
+      id: zod.number().optional(),
+      lotNumber: zod.string().optional(),
+      batchNumber: zod.string().nullish(),
+      expiryDate: zod.string().nullish(),
+      manufacturedDate: zod.string().nullish(),
+      status: zod.string().optional(),
+      qtyReceived: zod.string().optional(),
+      qtyOnHand: zod.string().optional(),
+      itemId: zod.number().optional(),
+      itemCode: zod.string().nullish(),
+      itemName: zod.string().nullish(),
+      notes: zod.string().nullish(),
+      createdAt: zod.string().optional(),
+    })
+    .optional(),
+  movements: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        movementType: zod.string().optional(),
+        quantity: zod.number().optional(),
+        unitCost: zod.string().nullish(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        warehouseId: zod.number().optional(),
+        warehouseName: zod.string().nullish(),
+        locationId: zod.number().nullish(),
+        toWarehouseId: zod.number().nullish(),
+        toLocationId: zod.number().nullish(),
+        refType: zod.string().nullish(),
+        refId: zod.number().nullish(),
+        refCode: zod.string().nullish(),
+        lotNumber: zod.string().nullish(),
+        adjReason: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        postedByClerkId: zod.string().nullish(),
+        postedByEmail: zod.string().nullish(),
+        glPostingId: zod.number().nullish(),
+        createdAt: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary List stocktake runs
+ */
+export const ListStocktakeRunsQueryParams = zod.object({
+  warehouseId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListStocktakeRunsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListStocktakeRunsResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        warehouseId: zod.number().optional(),
+        warehouseName: zod.string().nullish(),
+        status: zod
+          .enum(["open", "counting", "variance", "posted", "cancelled"])
+          .optional(),
+        countedAt: zod.string().nullish(),
+        postedAt: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.string().optional(),
+        lines: zod
+          .array(
+            zod.object({
+              id: zod.number().optional(),
+              stocktakeId: zod.number().optional(),
+              itemId: zod.number().optional(),
+              itemCode: zod.string().nullish(),
+              itemName: zod.string().nullish(),
+              locationId: zod.number().nullish(),
+              lotNumber: zod.string().nullish(),
+              systemQty: zod.string().optional(),
+              countedQty: zod.string().nullish(),
+              varianceQty: zod.string().nullish(),
+              varianceValue: zod.string().nullish(),
+              unitCost: zod.string().nullish(),
+              countedAt: zod.string().nullish(),
+            }),
+          )
+          .nullish(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create a stocktake run and freeze current system quantities
+ */
+export const CreateStocktakeRunHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateStocktakeRunBody = zod.object({
+  warehouseId: zod.number(),
+  locationId: zod.number().nullish(),
+  category: zod.string().nullish(),
+  countedAt: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Get stocktake run with lines
+ */
+export const GetStocktakeRunParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetStocktakeRunHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetStocktakeRunResponse = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  warehouseId: zod.number().optional(),
+  warehouseName: zod.string().nullish(),
+  status: zod
+    .enum(["open", "counting", "variance", "posted", "cancelled"])
+    .optional(),
+  countedAt: zod.string().nullish(),
+  postedAt: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        stocktakeId: zod.number().optional(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        locationId: zod.number().nullish(),
+        lotNumber: zod.string().nullish(),
+        systemQty: zod.string().optional(),
+        countedQty: zod.string().nullish(),
+        varianceQty: zod.string().nullish(),
+        varianceValue: zod.string().nullish(),
+        unitCost: zod.string().nullish(),
+        countedAt: zod.string().nullish(),
+      }),
+    )
+    .nullish(),
+});
+
+/**
+ * @summary Enter counted quantity for a stocktake line
+ */
+export const UpdateStocktakeLineParams = zod.object({
+  id: zod.coerce.number(),
+  lineId: zod.coerce.number(),
+});
+
+export const UpdateStocktakeLineHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateStocktakeLineBody = zod.object({
+  countedQty: zod.number(),
+});
+
+export const UpdateStocktakeLineResponse = zod.object({
+  id: zod.number().optional(),
+  stocktakeId: zod.number().optional(),
+  itemId: zod.number().optional(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  locationId: zod.number().nullish(),
+  lotNumber: zod.string().nullish(),
+  systemQty: zod.string().optional(),
+  countedQty: zod.string().nullish(),
+  varianceQty: zod.string().nullish(),
+  varianceValue: zod.string().nullish(),
+  unitCost: zod.string().nullish(),
+  countedAt: zod.string().nullish(),
+});
+
+/**
+ * @summary Post stocktake variances as inventory adjustments
+ */
+export const PostStocktakeRunParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const PostStocktakeRunHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const PostStocktakeRunResponse = zod.object({
+  id: zod.number().optional(),
+  status: zod.string().optional(),
+  movementsPosted: zod.number().optional(),
+});
+
+/**
+ * @summary List cycle count tasks
+ */
+export const ListCycleCountsQueryParams = zod.object({
+  warehouseId: zod.coerce.number().optional(),
+  status: zod.coerce.string().optional(),
+  assignedTo: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListCycleCountsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListCycleCountsResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        warehouseId: zod.number().optional(),
+        warehouseName: zod.string().nullish(),
+        locationId: zod.number().nullish(),
+        category: zod.string().nullish(),
+        assignedToClerkId: zod.string().nullish(),
+        assignedToName: zod.string().nullish(),
+        dueDate: zod.string().nullish(),
+        status: zod
+          .enum(["pending", "in_progress", "completed", "cancelled"])
+          .optional(),
+        completedAt: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.string().optional(),
+        lines: zod
+          .array(
+            zod.object({
+              id: zod.number().optional(),
+              itemId: zod.number().optional(),
+              itemCode: zod.string().nullish(),
+              itemName: zod.string().nullish(),
+              lotNumber: zod.string().nullish(),
+              systemQty: zod.string().optional(),
+              countedQty: zod.string().nullish(),
+              varianceQty: zod.string().nullish(),
+              countedAt: zod.string().nullish(),
+            }),
+          )
+          .nullish(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create a cycle count task and pre-populate lines
+ */
+export const CreateCycleCountHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateCycleCountBody = zod.object({
+  warehouseId: zod.number(),
+  locationId: zod.number().nullish(),
+  category: zod.string().nullish(),
+  assignedToClerkId: zod.string().nullish(),
+  assignedToName: zod.string().nullish(),
+  dueDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Get cycle count task with lines
+ */
+export const GetCycleCountParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetCycleCountHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetCycleCountResponse = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  warehouseId: zod.number().optional(),
+  warehouseName: zod.string().nullish(),
+  locationId: zod.number().nullish(),
+  category: zod.string().nullish(),
+  assignedToClerkId: zod.string().nullish(),
+  assignedToName: zod.string().nullish(),
+  dueDate: zod.string().nullish(),
+  status: zod
+    .enum(["pending", "in_progress", "completed", "cancelled"])
+    .optional(),
+  completedAt: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        lotNumber: zod.string().nullish(),
+        systemQty: zod.string().optional(),
+        countedQty: zod.string().nullish(),
+        varianceQty: zod.string().nullish(),
+        countedAt: zod.string().nullish(),
+      }),
+    )
+    .nullish(),
+});
+
+/**
+ * @summary Update status or assignment for a cycle count task
+ */
+export const UpdateCycleCountParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateCycleCountHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateCycleCountBody = zod.object({
+  status: zod
+    .enum(["pending", "in_progress", "completed", "cancelled"])
+    .optional(),
+  assignedToClerkId: zod.string().nullish(),
+  assignedToName: zod.string().nullish(),
+  dueDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateCycleCountResponse = zod.object({
+  id: zod.number().optional(),
+  code: zod.string().optional(),
+  warehouseId: zod.number().optional(),
+  warehouseName: zod.string().nullish(),
+  locationId: zod.number().nullish(),
+  category: zod.string().nullish(),
+  assignedToClerkId: zod.string().nullish(),
+  assignedToName: zod.string().nullish(),
+  dueDate: zod.string().nullish(),
+  status: zod
+    .enum(["pending", "in_progress", "completed", "cancelled"])
+    .optional(),
+  completedAt: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string().optional(),
+  lines: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        itemId: zod.number().optional(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        lotNumber: zod.string().nullish(),
+        systemQty: zod.string().optional(),
+        countedQty: zod.string().nullish(),
+        varianceQty: zod.string().nullish(),
+        countedAt: zod.string().nullish(),
+      }),
+    )
+    .nullish(),
+});
+
+/**
+ * @summary Enter counted quantity for a cycle count line
+ */
+export const UpdateCycleCountLineParams = zod.object({
+  id: zod.coerce.number(),
+  lineId: zod.coerce.number(),
+});
+
+export const UpdateCycleCountLineHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateCycleCountLineBody = zod.object({
+  countedQty: zod.number(),
+});
+
+/**
+ * @summary List landed cost allocations
+ */
+export const ListLandedCostsQueryParams = zod.object({
+  receiptId: zod.coerce.number().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListLandedCostsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListLandedCostsResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        receiptId: zod.number().optional(),
+        receiptLineId: zod.number().nullish(),
+        costType: zod.string().optional(),
+        description: zod.string().nullish(),
+        totalLandedCost: zod.string().optional(),
+        allocationMethod: zod.string().optional(),
+        allocatedAmount: zod.string().nullish(),
+        glAccountId: zod.number().nullish(),
+        isPosted: zod.boolean().optional(),
+        postedAt: zod.string().nullish(),
+        createdAt: zod.string().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Create a landed cost allocation for a receipt
+ */
+export const CreateLandedCostHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CreateLandedCostBody = zod.object({
+  receiptId: zod.number(),
+  receiptLineId: zod.number().nullish(),
+  costType: zod.enum(["freight", "duty", "insurance", "other"]),
+  description: zod.string().nullish(),
+  totalLandedCost: zod.number(),
+  allocationMethod: zod.enum(["value", "qty", "weight"]).optional(),
+  allocatedAmount: zod.number().nullish(),
+  glAccountId: zod.number().nullish(),
+});
+
+/**
+ * @summary List FIFO cost layers for an item
+ */
+export const ListCostLayersQueryParams = zod.object({
+  itemId: zod.coerce.number(),
+  warehouseId: zod.coerce.number().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListCostLayersHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListCostLayersResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        warehouseId: zod.number().optional(),
+        warehouseName: zod.string().nullish(),
+        lotNumber: zod.string().nullish(),
+        qtyOriginal: zod.number().optional(),
+        qtyRemaining: zod.number().optional(),
+        unitCost: zod.number().optional(),
+        receivedAt: zod.string().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});

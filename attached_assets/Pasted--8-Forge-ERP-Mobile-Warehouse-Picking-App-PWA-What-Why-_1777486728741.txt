@@ -1,0 +1,33 @@
+#8 - Forge ERP — Mobile Warehouse Picking App (PWA)
+What & Why
+A dedicated, installable PWA optimized for warehouse staff on tablets and phones. Designed for hands-free / gloved-hand use: large touch targets, minimal UI, one task at a time. Staff use this app to complete pick orders in real-time, with supervisors monitoring progress from the main web dashboard.
+
+Done looks like
+Installable as a PWA on Android and iOS (manifest + service worker for offline caching)
+Pick Queue: On login, warehouse staff see a list of pick slips assigned to them or their team. Shows order number, customer, item count, priority, and estimated pick time
+Guided Picking: Tap to start a pick order → show ONE line at a time: item code, description, image, quantity required, exact bin/location displayed prominently, barcode shown for confirmation
+Scan / Confirm: User taps "Confirm Pick" after physically picking. If item has lot/serial tracking, prompt to scan/enter the lot number. Photo upload option for audit trail (camera capture from device)
+Not Picked / Short Pick: Button to mark a line as unable-to-pick with a reason (out of stock, wrong location, damaged). Auto-creates a backorder note or flags for supervisor review
+Progress sync: After each line confirmation, progress updates immediately to the web dashboard supervisor view (real-time via polling or WebSocket). Pick slip shows % complete
+Offline support: Service worker caches the current pick list. Confirmations queue locally and sync when connectivity resumes
+Accessibility: Large fonts (minimum 18px body), high contrast mode, optional voice readout of item/location via Web Speech API
+Supervisor view (on main web app, not PWA): Real-time pick progress board — who is picking what, completion %, overdue orders highlighted
+Out of scope
+Barcode scanner hardware integration (app uses camera-based QR/barcode scanning via a JS library)
+Full WMS slot optimization / wave planning
+Steps
+Pick slip assignment API — Endpoints to: list pick slips assigned to a user/team, get pick slip lines in priority order, confirm a pick line (with lot/photo), mark a line as not-picked, get real-time pick progress summary for supervisor view
+Photo upload — Integrate object storage (App Storage / S3) for pick confirmation photos. Store photo references on the pick line confirmation record
+Real-time progress — Add a progress endpoint that returns current pick status per pick slip. Supervisor dashboard polls this every 10s (or WebSocket if available)
+OpenAPI spec + codegen — Add picking-specific routes and run codegen
+PWA scaffold — Set up a separate PWA entry point (or route-isolated view) within the react-vite artifact with its own manifest.json, service worker (using Workbox), and offline-first data layer
+Mobile picking UI — Delegate to DESIGN subagent. Build the pick queue, guided single-line picking screen, confirmation screen, not-picked modal, and supervisor progress board. Must be optimized for 7-10" tablets. Large touch targets, minimal chrome, highly legible. Include camera integration for photo capture
+Barcode scanning — Integrate a JS barcode scanning library (e.g. @zxing/library or html5-qrcode) into the picking confirmation screen
+Relevant files
+artifacts/api-server/src/routes/index.ts
+lib/db/src/schema/index.ts
+lib/api-spec/openapi.yaml
+lib/api-client-react/src/generated/api.ts
+Dependencies
+
+Sales Orders Module

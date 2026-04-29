@@ -22,6 +22,8 @@ tags:
     description: Master data management — items, suppliers, customers, warehouses, GL accounts
   - name: Sales
     description: Sales module — quotations, sales orders, despatch, invoicing, credit notes, RMA
+  - name: Inventory
+    description: Inventory management — stock levels, movements, adjustments, transfers, stocktake, cycle counts, lot traceability
 paths:
   /healthz:
     get:
@@ -4475,6 +4477,730 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Notification" }
 
+  # ── Inventory ──────────────────────────────────────────────────────────────
+
+  /inventory/stock:
+    get:
+      operationId: listInventoryStockDashboard
+      summary: Multi-warehouse stock dashboard
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: warehouseId, schema: { type: integer } }
+        - { in: query, name: locationId, schema: { type: integer } }
+        - { in: query, name: itemId, schema: { type: integer } }
+        - { in: query, name: category, schema: { type: string } }
+        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses:
+        "200":
+          description: Paginated stock lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/StockLine" } }
+                  hasMore: { type: boolean }
+                  page: { type: integer }
+
+  /inventory/stock/{itemId}:
+    get:
+      operationId: getItemAvailability
+      summary: Item availability across all warehouses
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: itemId, required: true, schema: { type: integer } }
+        - { in: query, name: warehouseId, schema: { type: integer } }
+      responses:
+        "200":
+          description: Item availability summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item: { type: object, properties: { id: { type: integer }, code: { type: string }, name: { type: string } } }
+                  totalOnHand: { type: number }
+                  totalReserved: { type: number }
+                  totalAvailable: { type: number }
+                  byWarehouse: { type: array, items: { type: object, properties: { warehouseId: { type: integer }, warehouseName: { type: string, nullable: true }, qtyOnHand: { type: number }, qtyReserved: { type: number }, qtyAvailable: { type: number } } } }
+
+  /inventory/movements:
+    get:
+      operationId: listInventoryMovements
+      summary: Searchable movement log
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: warehouseId, schema: { type: integer } }
+        - { in: query, name: itemId, schema: { type: integer } }
+        - { in: query, name: movementType, schema: { type: string } }
+        - { in: query, name: fromDate, schema: { type: string } }
+        - { in: query, name: toDate, schema: { type: string } }
+        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses:
+        "200":
+          description: Paginated movement log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/InventoryMovement" } }
+                  hasMore: { type: boolean }
+                  page: { type: integer }
+
+  /inventory/adjust:
+    post:
+      operationId: createInventoryAdjustment
+      summary: Create a manual stock adjustment (increase or decrease)
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, lines]
+              properties:
+                adjustmentType: { type: string, enum: [increase, decrease, recount] }
+                reason: { type: string }
+                glAccountId: { type: integer, nullable: true }
+                glAccountCode: { type: string, nullable: true }
+                warehouseId: { type: integer, nullable: true }
+                notes: { type: string, nullable: true }
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    required: [itemId, warehouseId, qtyAdjusted]
+                    properties:
+                      itemId: { type: integer }
+                      warehouseId: { type: integer }
+                      locationId: { type: integer, nullable: true }
+                      lotNumber: { type: string, nullable: true }
+                      qtyAdjusted: { type: number }
+                      unitCost: { type: number, nullable: true }
+      responses:
+        "201":
+          description: Adjustment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  code: { type: string }
+                  lines: { type: integer }
+
+  /inventory/adjustments:
+    get:
+      operationId: listInventoryAdjustments
+      summary: List adjustment documents
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: warehouseId, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses:
+        "200":
+          description: Paginated list of adjustments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/InventoryAdjustment" } }
+                  hasMore: { type: boolean }
+                  page: { type: integer }
+
+  /inventory/adjustments/{id}:
+    get:
+      operationId: getInventoryAdjustment
+      summary: Get adjustment with lines
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Adjustment with lines
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InventoryAdjustment" }
+
+  /inventory/transfer:
+    post:
+      operationId: createInventoryTransfer
+      summary: Transfer stock between warehouses or locations
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [itemId, fromWarehouseId, toWarehouseId, quantity]
+              properties:
+                itemId: { type: integer }
+                fromWarehouseId: { type: integer }
+                fromLocationId: { type: integer, nullable: true }
+                toWarehouseId: { type: integer }
+                toLocationId: { type: integer, nullable: true }
+                quantity: { type: number }
+                lotNumber: { type: string, nullable: true }
+                unitCost: { type: number, nullable: true }
+                notes: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Transfer created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transferCode: { type: string }
+                  outMovementId: { type: integer }
+                  inMovementId: { type: integer }
+
+  /inventory/issue:
+    post:
+      operationId: createInventoryIssue
+      summary: Issue stock to a GL account or project
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [itemId, warehouseId, quantity, glAccountId]
+              properties:
+                itemId: { type: integer }
+                warehouseId: { type: integer }
+                locationId: { type: integer, nullable: true }
+                quantity: { type: number }
+                lotNumber: { type: string, nullable: true }
+                glAccountId: { type: integer }
+                glAccountCode: { type: string, nullable: true }
+                notes: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Issue posted
+          content:
+            application/json:
+              schema: { type: object, properties: { movementId: { type: integer } } }
+
+  /inventory/return:
+    post:
+      operationId: createInventoryReturn
+      summary: Return stock from customer or internal
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [itemId, warehouseId, quantity]
+              properties:
+                itemId: { type: integer }
+                warehouseId: { type: integer }
+                locationId: { type: integer, nullable: true }
+                quantity: { type: number }
+                lotNumber: { type: string, nullable: true }
+                unitCost: { type: number, nullable: true }
+                refType: { type: string, enum: [customer_return, internal_return] }
+                refId: { type: integer, nullable: true }
+                refCode: { type: string, nullable: true }
+                notes: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Return posted
+          content:
+            application/json:
+              schema: { type: object, properties: { movementId: { type: integer } } }
+
+  /inventory/repack:
+    post:
+      operationId: createInventoryRepack
+      summary: Repack or split a lot into a new lot
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [itemId, warehouseId, qtyIn, qtyOut]
+              properties:
+                itemId: { type: integer }
+                warehouseId: { type: integer }
+                locationId: { type: integer, nullable: true }
+                fromLotNumber: { type: string, nullable: true }
+                toLotNumber: { type: string, nullable: true }
+                qtyIn: { type: number }
+                qtyOut: { type: number }
+                unitCost: { type: number, nullable: true }
+                notes: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Repack posted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  outMovementId: { type: integer }
+                  inMovementId: { type: integer }
+
+  /inventory/build:
+    post:
+      operationId: createInventoryBuild
+      summary: Build a kit / finished good from component stock
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [finishedItemId, finishedQty, finishedWarehouseId, components]
+              properties:
+                finishedItemId: { type: integer }
+                finishedQty: { type: number }
+                finishedWarehouseId: { type: integer }
+                finishedLocationId: { type: integer, nullable: true }
+                finishedLotNumber: { type: string, nullable: true }
+                notes: { type: string, nullable: true }
+                components:
+                  type: array
+                  items:
+                    type: object
+                    required: [itemId, qty, warehouseId]
+                    properties:
+                      itemId: { type: integer }
+                      qty: { type: number }
+                      warehouseId: { type: integer }
+                      locationId: { type: integer, nullable: true }
+                      lotNumber: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Build posted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  finishedMovementId: { type: integer }
+                  componentMovementIds: { type: array, items: { type: integer } }
+
+  /inventory/lots:
+    get:
+      operationId: listLotNumbers
+      summary: List lot / batch master records
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: itemId, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses:
+        "200":
+          description: Paginated lot list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/LotNumber" } }
+                  hasMore: { type: boolean }
+                  page: { type: integer }
+
+  /inventory/lots/{lotNumber}/trace:
+    get:
+      operationId: traceLotNumber
+      summary: Forward trace all movements for a lot
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: lotNumber, required: true, schema: { type: string } }
+        - { in: query, name: itemId, schema: { type: integer } }
+      responses:
+        "200":
+          description: Lot trace
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lotNumber: { type: string }
+                  lot: { $ref: "#/components/schemas/LotNumber" }
+                  movements: { type: array, items: { $ref: "#/components/schemas/InventoryMovement" } }
+
+  /inventory/stocktakes:
+    get:
+      operationId: listStocktakeRuns
+      summary: List stocktake runs
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: warehouseId, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses:
+        "200":
+          description: Paginated stocktake runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/StocktakeRun" } }
+                  hasMore: { type: boolean }
+                  page: { type: integer }
+    post:
+      operationId: createStocktakeRun
+      summary: Create a stocktake run and freeze current system quantities
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [warehouseId]
+              properties:
+                warehouseId: { type: integer }
+                locationId: { type: integer, nullable: true }
+                category: { type: string, nullable: true }
+                countedAt: { type: string, nullable: true }
+                notes: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Stocktake run created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  code: { type: string }
+                  lineCount: { type: integer }
+
+  /inventory/stocktakes/{id}:
+    get:
+      operationId: getStocktakeRun
+      summary: Get stocktake run with lines
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Stocktake run detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StocktakeRun" }
+
+  /inventory/stocktakes/{id}/lines/{lineId}:
+    patch:
+      operationId: updateStocktakeLine
+      summary: Enter counted quantity for a stocktake line
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: lineId, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [countedQty]
+              properties:
+                countedQty: { type: number }
+      responses:
+        "200":
+          description: Line updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StocktakeLine" }
+
+  /inventory/stocktakes/{id}/post:
+    post:
+      operationId: postStocktakeRun
+      summary: Post stocktake variances as inventory adjustments
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Stocktake posted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  status: { type: string }
+                  movementsPosted: { type: integer }
+
+  /inventory/cycle-counts:
+    get:
+      operationId: listCycleCounts
+      summary: List cycle count tasks
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: warehouseId, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: assignedTo, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses:
+        "200":
+          description: Paginated cycle count tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/CycleCountTask" } }
+                  hasMore: { type: boolean }
+                  page: { type: integer }
+    post:
+      operationId: createCycleCount
+      summary: Create a cycle count task and pre-populate lines
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [warehouseId]
+              properties:
+                warehouseId: { type: integer }
+                locationId: { type: integer, nullable: true }
+                category: { type: string, nullable: true }
+                assignedToClerkId: { type: string, nullable: true }
+                assignedToName: { type: string, nullable: true }
+                dueDate: { type: string, nullable: true }
+                notes: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Cycle count created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  code: { type: string }
+                  lineCount: { type: integer }
+
+  /inventory/cycle-counts/{id}:
+    get:
+      operationId: getCycleCount
+      summary: Get cycle count task with lines
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Cycle count detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CycleCountTask" }
+    patch:
+      operationId: updateCycleCount
+      summary: Update status or assignment for a cycle count task
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [pending, in_progress, completed, cancelled] }
+                assignedToClerkId: { type: string, nullable: true }
+                assignedToName: { type: string, nullable: true }
+                dueDate: { type: string, nullable: true }
+                notes: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Cycle count updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CycleCountTask" }
+
+  /inventory/cycle-counts/{id}/lines/{lineId}:
+    patch:
+      operationId: updateCycleCountLine
+      summary: Enter counted quantity for a cycle count line
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: lineId, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [countedQty]
+              properties:
+                countedQty: { type: number }
+      responses:
+        "200":
+          description: Line updated
+
+  /inventory/landed-costs:
+    get:
+      operationId: listLandedCosts
+      summary: List landed cost allocations
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: receiptId, schema: { type: integer } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses:
+        "200":
+          description: Paginated landed costs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/LandedCostAllocation" } }
+                  hasMore: { type: boolean }
+                  page: { type: integer }
+    post:
+      operationId: createLandedCost
+      summary: Create a landed cost allocation for a receipt
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [receiptId, costType, totalLandedCost]
+              properties:
+                receiptId: { type: integer }
+                receiptLineId: { type: integer, nullable: true }
+                costType: { type: string, enum: [freight, duty, insurance, other] }
+                description: { type: string, nullable: true }
+                totalLandedCost: { type: number }
+                allocationMethod: { type: string, enum: [value, qty, weight] }
+                allocatedAmount: { type: number, nullable: true }
+                glAccountId: { type: integer, nullable: true }
+      responses:
+        "201":
+          description: Landed cost created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LandedCostAllocation" }
+
+  /inventory/cost-layers:
+    get:
+      operationId: listCostLayers
+      summary: List FIFO cost layers for an item
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: itemId, required: true, schema: { type: integer } }
+        - { in: query, name: warehouseId, schema: { type: integer } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses:
+        "200":
+          description: FIFO cost layers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        warehouseId: { type: integer }
+                        warehouseName: { type: string, nullable: true }
+                        lotNumber: { type: string, nullable: true }
+                        qtyOriginal: { type: number }
+                        qtyRemaining: { type: number }
+                        unitCost: { type: number }
+                        receivedAt: { type: string }
+                  hasMore: { type: boolean }
+                  page: { type: integer }
+
 components:
   securitySchemes:
     clerkAuth:
@@ -7215,3 +7941,185 @@ components:
         notes: { type: string, nullable: true }
         createdAt: { type: string }
         updatedAt: { type: string }
+
+    # ── Inventory Schemas ──────────────────────────────────────────────────────
+
+    StockLine:
+      type: object
+      properties:
+        id: { type: integer }
+        itemId: { type: integer }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        category: { type: string, nullable: true }
+        warehouseId: { type: integer }
+        warehouseName: { type: string, nullable: true }
+        locationId: { type: integer, nullable: true }
+        locationCode: { type: string, nullable: true }
+        locationName: { type: string, nullable: true }
+        lotNumber: { type: string, nullable: true }
+        serialNumber: { type: string, nullable: true }
+        batchNumber: { type: string, nullable: true }
+        expiryDate: { type: string, nullable: true }
+        qtyOnHand: { type: number }
+        qtyReserved: { type: number }
+        qtyAvailable: { type: number }
+        averageCost: { type: string, nullable: true }
+        stockValue: { type: number }
+        lastMovementAt: { type: string, nullable: true }
+
+    InventoryMovement:
+      type: object
+      properties:
+        id: { type: integer }
+        movementType: { type: string }
+        quantity: { type: number }
+        unitCost: { type: string, nullable: true }
+        itemId: { type: integer }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        warehouseId: { type: integer }
+        warehouseName: { type: string, nullable: true }
+        locationId: { type: integer, nullable: true }
+        toWarehouseId: { type: integer, nullable: true }
+        toLocationId: { type: integer, nullable: true }
+        refType: { type: string, nullable: true }
+        refId: { type: integer, nullable: true }
+        refCode: { type: string, nullable: true }
+        lotNumber: { type: string, nullable: true }
+        adjReason: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        postedByClerkId: { type: string, nullable: true }
+        postedByEmail: { type: string, nullable: true }
+        glPostingId: { type: integer, nullable: true }
+        createdAt: { type: string }
+
+    InventoryAdjustment:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        adjustmentType: { type: string }
+        reason: { type: string }
+        glAccountId: { type: integer, nullable: true }
+        glAccountCode: { type: string, nullable: true }
+        warehouseId: { type: integer, nullable: true }
+        status: { type: string }
+        postedAt: { type: string, nullable: true }
+        postedByEmail: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string }
+        lines:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              itemId: { type: integer }
+              itemCode: { type: string, nullable: true }
+              itemName: { type: string, nullable: true }
+              warehouseId: { type: integer }
+              locationId: { type: integer, nullable: true }
+              lotNumber: { type: string, nullable: true }
+              qtyAdjusted: { type: string }
+              unitCost: { type: string, nullable: true }
+
+    LotNumber:
+      type: object
+      properties:
+        id: { type: integer }
+        lotNumber: { type: string }
+        batchNumber: { type: string, nullable: true }
+        expiryDate: { type: string, nullable: true }
+        manufacturedDate: { type: string, nullable: true }
+        status: { type: string }
+        qtyReceived: { type: string }
+        qtyOnHand: { type: string }
+        itemId: { type: integer }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string }
+
+    StocktakeRun:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        warehouseId: { type: integer }
+        warehouseName: { type: string, nullable: true }
+        status: { type: string, enum: [open, counting, variance, posted, cancelled] }
+        countedAt: { type: string, nullable: true }
+        postedAt: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string }
+        lines:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/StocktakeLine" }
+
+    StocktakeLine:
+      type: object
+      properties:
+        id: { type: integer }
+        stocktakeId: { type: integer }
+        itemId: { type: integer }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        locationId: { type: integer, nullable: true }
+        lotNumber: { type: string, nullable: true }
+        systemQty: { type: string }
+        countedQty: { type: string, nullable: true }
+        varianceQty: { type: string, nullable: true }
+        varianceValue: { type: string, nullable: true }
+        unitCost: { type: string, nullable: true }
+        countedAt: { type: string, nullable: true }
+
+    CycleCountTask:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        warehouseId: { type: integer }
+        warehouseName: { type: string, nullable: true }
+        locationId: { type: integer, nullable: true }
+        category: { type: string, nullable: true }
+        assignedToClerkId: { type: string, nullable: true }
+        assignedToName: { type: string, nullable: true }
+        dueDate: { type: string, nullable: true }
+        status: { type: string, enum: [pending, in_progress, completed, cancelled] }
+        completedAt: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string }
+        lines:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              itemId: { type: integer }
+              itemCode: { type: string, nullable: true }
+              itemName: { type: string, nullable: true }
+              lotNumber: { type: string, nullable: true }
+              systemQty: { type: string }
+              countedQty: { type: string, nullable: true }
+              varianceQty: { type: string, nullable: true }
+              countedAt: { type: string, nullable: true }
+
+    LandedCostAllocation:
+      type: object
+      properties:
+        id: { type: integer }
+        receiptId: { type: integer }
+        receiptLineId: { type: integer, nullable: true }
+        costType: { type: string }
+        description: { type: string, nullable: true }
+        totalLandedCost: { type: string }
+        allocationMethod: { type: string }
+        allocatedAmount: { type: string, nullable: true }
+        glAccountId: { type: integer, nullable: true }
+        isPosted: { type: boolean }
+        postedAt: { type: string, nullable: true }
+        createdAt: { type: string }

@@ -2492,6 +2492,192 @@ export interface Backorder {
   updatedAt?: string;
 }
 
+export interface StockLine {
+  id?: number;
+  itemId?: number;
+  itemCode?: string | null;
+  itemName?: string | null;
+  category?: string | null;
+  warehouseId?: number;
+  warehouseName?: string | null;
+  locationId?: number | null;
+  locationCode?: string | null;
+  locationName?: string | null;
+  lotNumber?: string | null;
+  serialNumber?: string | null;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  qtyOnHand?: number;
+  qtyReserved?: number;
+  qtyAvailable?: number;
+  averageCost?: string | null;
+  stockValue?: number;
+  lastMovementAt?: string | null;
+}
+
+export interface InventoryMovement {
+  id?: number;
+  movementType?: string;
+  quantity?: number;
+  unitCost?: string | null;
+  itemId?: number;
+  itemCode?: string | null;
+  itemName?: string | null;
+  warehouseId?: number;
+  warehouseName?: string | null;
+  locationId?: number | null;
+  toWarehouseId?: number | null;
+  toLocationId?: number | null;
+  refType?: string | null;
+  refId?: number | null;
+  refCode?: string | null;
+  lotNumber?: string | null;
+  adjReason?: string | null;
+  notes?: string | null;
+  postedByClerkId?: string | null;
+  postedByEmail?: string | null;
+  glPostingId?: number | null;
+  createdAt?: string;
+}
+
+export type InventoryAdjustmentLinesItem = {
+  id?: number;
+  itemId?: number;
+  itemCode?: string | null;
+  itemName?: string | null;
+  warehouseId?: number;
+  locationId?: number | null;
+  lotNumber?: string | null;
+  qtyAdjusted?: string;
+  unitCost?: string | null;
+};
+
+export interface InventoryAdjustment {
+  id?: number;
+  code?: string;
+  adjustmentType?: string;
+  reason?: string;
+  glAccountId?: number | null;
+  glAccountCode?: string | null;
+  warehouseId?: number | null;
+  status?: string;
+  postedAt?: string | null;
+  postedByEmail?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+  lines?: InventoryAdjustmentLinesItem[] | null;
+}
+
+export interface LotNumber {
+  id?: number;
+  lotNumber?: string;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  manufacturedDate?: string | null;
+  status?: string;
+  qtyReceived?: string;
+  qtyOnHand?: string;
+  itemId?: number;
+  itemCode?: string | null;
+  itemName?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+}
+
+export type StocktakeRunStatus =
+  (typeof StocktakeRunStatus)[keyof typeof StocktakeRunStatus];
+
+export const StocktakeRunStatus = {
+  open: "open",
+  counting: "counting",
+  variance: "variance",
+  posted: "posted",
+  cancelled: "cancelled",
+} as const;
+
+export interface StocktakeLine {
+  id?: number;
+  stocktakeId?: number;
+  itemId?: number;
+  itemCode?: string | null;
+  itemName?: string | null;
+  locationId?: number | null;
+  lotNumber?: string | null;
+  systemQty?: string;
+  countedQty?: string | null;
+  varianceQty?: string | null;
+  varianceValue?: string | null;
+  unitCost?: string | null;
+  countedAt?: string | null;
+}
+
+export interface StocktakeRun {
+  id?: number;
+  code?: string;
+  warehouseId?: number;
+  warehouseName?: string | null;
+  status?: StocktakeRunStatus;
+  countedAt?: string | null;
+  postedAt?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+  lines?: StocktakeLine[] | null;
+}
+
+export type CycleCountTaskStatus =
+  (typeof CycleCountTaskStatus)[keyof typeof CycleCountTaskStatus];
+
+export const CycleCountTaskStatus = {
+  pending: "pending",
+  in_progress: "in_progress",
+  completed: "completed",
+  cancelled: "cancelled",
+} as const;
+
+export type CycleCountTaskLinesItem = {
+  id?: number;
+  itemId?: number;
+  itemCode?: string | null;
+  itemName?: string | null;
+  lotNumber?: string | null;
+  systemQty?: string;
+  countedQty?: string | null;
+  varianceQty?: string | null;
+  countedAt?: string | null;
+};
+
+export interface CycleCountTask {
+  id?: number;
+  code?: string;
+  warehouseId?: number;
+  warehouseName?: string | null;
+  locationId?: number | null;
+  category?: string | null;
+  assignedToClerkId?: string | null;
+  assignedToName?: string | null;
+  dueDate?: string | null;
+  status?: CycleCountTaskStatus;
+  completedAt?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+  lines?: CycleCountTaskLinesItem[] | null;
+}
+
+export interface LandedCostAllocation {
+  id?: number;
+  receiptId?: number;
+  receiptLineId?: number | null;
+  costType?: string;
+  description?: string | null;
+  totalLandedCost?: string;
+  allocationMethod?: string;
+  allocatedAmount?: string | null;
+  glAccountId?: number | null;
+  isPosted?: boolean;
+  postedAt?: string | null;
+  createdAt?: string;
+}
+
 export type UploadOnboardingCsvBodyCsvType =
   (typeof UploadOnboardingCsvBodyCsvType)[keyof typeof UploadOnboardingCsvBodyCsvType];
 
@@ -2995,4 +3181,387 @@ export type ListNotifications200 = {
 
 export type MarkAllNotificationsRead200 = {
   ok?: boolean;
+};
+
+export type ListInventoryStockDashboardParams = {
+  warehouseId?: number;
+  locationId?: number;
+  itemId?: number;
+  category?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListInventoryStockDashboard200 = {
+  data?: StockLine[];
+  hasMore?: boolean;
+  page?: number;
+};
+
+export type GetItemAvailabilityParams = {
+  warehouseId?: number;
+};
+
+export type GetItemAvailability200Item = {
+  id?: number;
+  code?: string;
+  name?: string;
+};
+
+export type GetItemAvailability200ByWarehouseItem = {
+  warehouseId?: number;
+  warehouseName?: string | null;
+  qtyOnHand?: number;
+  qtyReserved?: number;
+  qtyAvailable?: number;
+};
+
+export type GetItemAvailability200 = {
+  item?: GetItemAvailability200Item;
+  totalOnHand?: number;
+  totalReserved?: number;
+  totalAvailable?: number;
+  byWarehouse?: GetItemAvailability200ByWarehouseItem[];
+};
+
+export type ListInventoryMovementsParams = {
+  warehouseId?: number;
+  itemId?: number;
+  movementType?: string;
+  fromDate?: string;
+  toDate?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListInventoryMovements200 = {
+  data?: InventoryMovement[];
+  hasMore?: boolean;
+  page?: number;
+};
+
+export type CreateInventoryAdjustmentBodyAdjustmentType =
+  (typeof CreateInventoryAdjustmentBodyAdjustmentType)[keyof typeof CreateInventoryAdjustmentBodyAdjustmentType];
+
+export const CreateInventoryAdjustmentBodyAdjustmentType = {
+  increase: "increase",
+  decrease: "decrease",
+  recount: "recount",
+} as const;
+
+export type CreateInventoryAdjustmentBodyLinesItem = {
+  itemId: number;
+  warehouseId: number;
+  locationId?: number | null;
+  lotNumber?: string | null;
+  qtyAdjusted: number;
+  unitCost?: number | null;
+};
+
+export type CreateInventoryAdjustmentBody = {
+  adjustmentType?: CreateInventoryAdjustmentBodyAdjustmentType;
+  reason: string;
+  glAccountId?: number | null;
+  glAccountCode?: string | null;
+  warehouseId?: number | null;
+  notes?: string | null;
+  lines: CreateInventoryAdjustmentBodyLinesItem[];
+};
+
+export type CreateInventoryAdjustment201 = {
+  id?: number;
+  code?: string;
+  lines?: number;
+};
+
+export type ListInventoryAdjustmentsParams = {
+  warehouseId?: number;
+  status?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListInventoryAdjustments200 = {
+  data?: InventoryAdjustment[];
+  hasMore?: boolean;
+  page?: number;
+};
+
+export type CreateInventoryTransferBody = {
+  itemId: number;
+  fromWarehouseId: number;
+  fromLocationId?: number | null;
+  toWarehouseId: number;
+  toLocationId?: number | null;
+  quantity: number;
+  lotNumber?: string | null;
+  unitCost?: number | null;
+  notes?: string | null;
+};
+
+export type CreateInventoryTransfer201 = {
+  transferCode?: string;
+  outMovementId?: number;
+  inMovementId?: number;
+};
+
+export type CreateInventoryIssueBody = {
+  itemId: number;
+  warehouseId: number;
+  locationId?: number | null;
+  quantity: number;
+  lotNumber?: string | null;
+  glAccountId: number;
+  glAccountCode?: string | null;
+  notes?: string | null;
+};
+
+export type CreateInventoryIssue201 = {
+  movementId?: number;
+};
+
+export type CreateInventoryReturnBodyRefType =
+  (typeof CreateInventoryReturnBodyRefType)[keyof typeof CreateInventoryReturnBodyRefType];
+
+export const CreateInventoryReturnBodyRefType = {
+  customer_return: "customer_return",
+  internal_return: "internal_return",
+} as const;
+
+export type CreateInventoryReturnBody = {
+  itemId: number;
+  warehouseId: number;
+  locationId?: number | null;
+  quantity: number;
+  lotNumber?: string | null;
+  unitCost?: number | null;
+  refType?: CreateInventoryReturnBodyRefType;
+  refId?: number | null;
+  refCode?: string | null;
+  notes?: string | null;
+};
+
+export type CreateInventoryReturn201 = {
+  movementId?: number;
+};
+
+export type CreateInventoryRepackBody = {
+  itemId: number;
+  warehouseId: number;
+  locationId?: number | null;
+  fromLotNumber?: string | null;
+  toLotNumber?: string | null;
+  qtyIn: number;
+  qtyOut: number;
+  unitCost?: number | null;
+  notes?: string | null;
+};
+
+export type CreateInventoryRepack201 = {
+  outMovementId?: number;
+  inMovementId?: number;
+};
+
+export type CreateInventoryBuildBodyComponentsItem = {
+  itemId: number;
+  qty: number;
+  warehouseId: number;
+  locationId?: number | null;
+  lotNumber?: string | null;
+};
+
+export type CreateInventoryBuildBody = {
+  finishedItemId: number;
+  finishedQty: number;
+  finishedWarehouseId: number;
+  finishedLocationId?: number | null;
+  finishedLotNumber?: string | null;
+  notes?: string | null;
+  components: CreateInventoryBuildBodyComponentsItem[];
+};
+
+export type CreateInventoryBuild201 = {
+  finishedMovementId?: number;
+  componentMovementIds?: number[];
+};
+
+export type ListLotNumbersParams = {
+  itemId?: number;
+  status?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListLotNumbers200 = {
+  data?: LotNumber[];
+  hasMore?: boolean;
+  page?: number;
+};
+
+export type TraceLotNumberParams = {
+  itemId?: number;
+};
+
+export type TraceLotNumber200 = {
+  lotNumber?: string;
+  lot?: LotNumber;
+  movements?: InventoryMovement[];
+};
+
+export type ListStocktakeRunsParams = {
+  warehouseId?: number;
+  status?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListStocktakeRuns200 = {
+  data?: StocktakeRun[];
+  hasMore?: boolean;
+  page?: number;
+};
+
+export type CreateStocktakeRunBody = {
+  warehouseId: number;
+  locationId?: number | null;
+  category?: string | null;
+  countedAt?: string | null;
+  notes?: string | null;
+};
+
+export type CreateStocktakeRun201 = {
+  id?: number;
+  code?: string;
+  lineCount?: number;
+};
+
+export type UpdateStocktakeLineBody = {
+  countedQty: number;
+};
+
+export type PostStocktakeRun200 = {
+  id?: number;
+  status?: string;
+  movementsPosted?: number;
+};
+
+export type ListCycleCountsParams = {
+  warehouseId?: number;
+  status?: string;
+  assignedTo?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListCycleCounts200 = {
+  data?: CycleCountTask[];
+  hasMore?: boolean;
+  page?: number;
+};
+
+export type CreateCycleCountBody = {
+  warehouseId: number;
+  locationId?: number | null;
+  category?: string | null;
+  assignedToClerkId?: string | null;
+  assignedToName?: string | null;
+  dueDate?: string | null;
+  notes?: string | null;
+};
+
+export type CreateCycleCount201 = {
+  id?: number;
+  code?: string;
+  lineCount?: number;
+};
+
+export type UpdateCycleCountBodyStatus =
+  (typeof UpdateCycleCountBodyStatus)[keyof typeof UpdateCycleCountBodyStatus];
+
+export const UpdateCycleCountBodyStatus = {
+  pending: "pending",
+  in_progress: "in_progress",
+  completed: "completed",
+  cancelled: "cancelled",
+} as const;
+
+export type UpdateCycleCountBody = {
+  status?: UpdateCycleCountBodyStatus;
+  assignedToClerkId?: string | null;
+  assignedToName?: string | null;
+  dueDate?: string | null;
+  notes?: string | null;
+};
+
+export type UpdateCycleCountLineBody = {
+  countedQty: number;
+};
+
+export type ListLandedCostsParams = {
+  receiptId?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type ListLandedCosts200 = {
+  data?: LandedCostAllocation[];
+  hasMore?: boolean;
+  page?: number;
+};
+
+export type CreateLandedCostBodyCostType =
+  (typeof CreateLandedCostBodyCostType)[keyof typeof CreateLandedCostBodyCostType];
+
+export const CreateLandedCostBodyCostType = {
+  freight: "freight",
+  duty: "duty",
+  insurance: "insurance",
+  other: "other",
+} as const;
+
+export type CreateLandedCostBodyAllocationMethod =
+  (typeof CreateLandedCostBodyAllocationMethod)[keyof typeof CreateLandedCostBodyAllocationMethod];
+
+export const CreateLandedCostBodyAllocationMethod = {
+  value: "value",
+  qty: "qty",
+  weight: "weight",
+} as const;
+
+export type CreateLandedCostBody = {
+  receiptId: number;
+  receiptLineId?: number | null;
+  costType: CreateLandedCostBodyCostType;
+  description?: string | null;
+  totalLandedCost: number;
+  allocationMethod?: CreateLandedCostBodyAllocationMethod;
+  allocatedAmount?: number | null;
+  glAccountId?: number | null;
+};
+
+export type ListCostLayersParams = {
+  itemId: number;
+  warehouseId?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type ListCostLayers200DataItem = {
+  id?: number;
+  warehouseId?: number;
+  warehouseName?: string | null;
+  lotNumber?: string | null;
+  qtyOriginal?: number;
+  qtyRemaining?: number;
+  unitCost?: number;
+  receivedAt?: string;
+};
+
+export type ListCostLayers200 = {
+  data?: ListCostLayers200DataItem[];
+  hasMore?: boolean;
+  page?: number;
 };

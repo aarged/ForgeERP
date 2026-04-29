@@ -58,7 +58,15 @@ A modern, multi-tenant SaaS ERP platform for mid-market businesses. Covers purch
 - `po_returns` — Return-to-supplier headers (returnReason)
 - `return_lines` — Return line items (returnedQty)
 - `inventory_stock` — Current stock on hand per item/warehouse (onHand, reserved, avgCost)
-- `inventory_movements` — Inventory transaction ledger (movementType, qty, unitCost, reference, lotNumber, serialNumber)
+- `inventory_movements` — Inventory transaction ledger (movementType, qty, unitCost, reference, lotNumber, serialNumber, toWarehouseId, toLocationId, adjReason, issueAccountId, glPostingId)
+- `cost_layers` — FIFO/LIFO cost layers per item/warehouse/lot (qty, unitCost, remainingQty, movementId)
+- `lot_numbers` — Lot master (lotNumber, itemId, warehouseId, qtyOnHand, expiryDate, status)
+- `stocktake_runs` — Physical count run headers (code, warehouseId, locationId, status, countedAt, postedAt)
+- `stocktake_lines` — Lines within a stocktake run (itemId, systemQty, countedQty, varianceQty, status)
+- `cycle_count_tasks` — Cycle count assignments (code, warehouseId, assignedTo, dueDate, status)
+- `cycle_count_lines` — Lines within a cycle count task (itemId, locationId, systemQty, countedQty, varianceQty)
+- `inventory_adjustments` — Manual stock adjustment records (adjustmentType, qty, unitCost, reason, glAccountId)
+- `landed_cost_allocations` — Landed cost apportionment to receipt lines (landedCostType, amount, allocationBasis)
 - `gl_postings` — GL journal entry headers (postingDate, reference, sourceType: po_receipt/return, description)
 - `gl_posting_lines` — Journal entry lines (accountCode, debit, credit, description)
 
@@ -140,7 +148,8 @@ Stripe is optional — all code is guarded by `isStripeConfigured()` which retur
 - `/settings` — User profile settings (protected)
 - `/procurement` — Full Procurement & Purchase Orders module (9 tabs: Dashboard, Requisitions, Purchase Orders, Goods Receipts, Returns, Inventory, GL Postings, Workflows, Reports)
 - `/sales` — Full Sales Orders module (8 tabs: Quotations, Sales Orders, Despatches, Invoices, Credit Notes, RMA, Pick Slips, Allocations). Covers quotation → SO → pick slip → despatch → invoice lifecycle, RMA/credit notes, ATP allocation, GL postings.
-- `/inventory`, `/finance` — Module placeholders (protected)
+- `/inventory` — Full Inventory & Warehouse Operations module (8 tabs: Stock Dashboard, Movement Log, Adjustments, Transfers, Issues, Stocktake, Cycle Counts, Lot Traceability). Features: multi-warehouse stock position, manual adjustments with GL, inter-warehouse transfers, stock issues to GL accounts, physical stocktake runs with variance posting, cycle count task assignment, lot traceability with forward trace.
+- `/finance` — Module placeholder (protected)
 - `/super-admin` — Super admin dashboard: KPI bar, tenant table w/ search/filter, create tenant dialog, tenant detail sheet with Stripe invoices, row actions (suspend/unsuspend/plan change/delete)
 - `/pending` — Shown when a signed-in user has no tenant; CTA to start onboarding
 - `/onboarding` — 5-step self-serve wizard (Company Details → Company Structure → Master Data Import → Plan & Payment → Team Setup). Features: progress persistence via session API, ABN/tax ID validation, CSV import with template download, sample data loading, Stripe Elements (graceful fallback), warehouse/department setup with GL template, up to 25 team invites, Quick Start Tour on completion. Redirects to `/dashboard` when the user already has a tenant.
@@ -159,7 +168,7 @@ Stripe is optional — all code is guarded by `isStripeConfigured()` which retur
 - [ ] Task 4: Master Data Management
 - [x] Task 5: Procurement & Purchase Orders Module
 - [x] Task 6: Sales Orders Module
-- [ ] Task 7: Inventory & Warehouse Operations
+- [x] Task 7: Inventory & Warehouse Operations
 - [ ] Task 8: Mobile Warehouse Picking App (PWA)
 - [ ] Task 9: GL Financial Integration & Reports
 

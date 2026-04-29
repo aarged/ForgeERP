@@ -7,3 +7,4 @@ export * from "./master_data";
 export * from "./procurement";
 export * from "./notifications";
 export * from "./sales";
+export * from "./inventory";
