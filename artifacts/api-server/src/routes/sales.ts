@@ -1322,10 +1322,40 @@ router.post("/sales/invoices/:id/send", ...tenantWriteMiddleware, async (req: Re
 router.delete("/sales/invoices/:id", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
-  const [invoice] = await withTenantDb(tenantId, (db) => db.select().from(customerInvoicesTable).where(and(eq(customerInvoicesTable.id, id), eq(customerInvoicesTable.tenantId, tenantId), isNull(customerInvoicesTable.deletedAt))).limit(1));
+  const [invoice] = await withTenantDb(tenantId, (db) =>
+    db.select().from(customerInvoicesTable)
+      .where(and(eq(customerInvoicesTable.id, id), eq(customerInvoicesTable.tenantId, tenantId), isNull(customerInvoicesTable.deletedAt))).limit(1));
   if (!invoice) { res.status(404).json({ error: "Invoice not found" }); return; }
   if (!["draft"].includes(invoice.status)) { res.status(400).json({ error: "Only draft invoices can be voided; for sent invoices create a credit note" }); return; }
-  await withTenantDb(tenantId, (db) => db.update(customerInvoicesTable).set({ status: "voided", deletedAt: new Date() }).where(and(eq(customerInvoicesTable.id, id), eq(customerInvoicesTable.tenantId, tenantId))));
+
+  // Fetch invoice lines so we can reverse their invoiced_qty contributions
+  const invoiceLines = await withTenantDb(tenantId, (db) =>
+    db.select({ soLineId: customerInvoiceLinesTable.soLineId, quantity: customerInvoiceLinesTable.quantity })
+      .from(customerInvoiceLinesTable)
+      .where(and(eq(customerInvoiceLinesTable.invoiceId, id), eq(customerInvoiceLinesTable.tenantId, tenantId))));
+
+  await withTenantDb(tenantId, async (db) => {
+    // Soft-delete the invoice
+    await db.update(customerInvoicesTable)
+      .set({ status: "voided", deletedAt: new Date() })
+      .where(and(eq(customerInvoicesTable.id, id), eq(customerInvoicesTable.tenantId, tenantId)));
+
+    // Reverse invoiced_qty on every SO line that was referenced
+    for (const line of invoiceLines) {
+      if (line.soLineId) {
+        const qty = Number(line.quantity ?? 0);
+        await db.update(soLinesTable)
+          .set({ invoiced_qty: sql`GREATEST(0, ${soLinesTable.invoiced_qty} - ${qty.toFixed(4)})` })
+          .where(and(eq(soLinesTable.id, line.soLineId), eq(soLinesTable.tenantId, tenantId)));
+      }
+    }
+
+    // Recalculate SO status after reversals
+    if (invoice.soId) {
+      await recalcSoStatus(db, tenantId, invoice.soId);
+    }
+  });
+
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "invoice.voided", entityType: "customer_invoice", entityId: String(id) });
   res.status(204).send();
 });
