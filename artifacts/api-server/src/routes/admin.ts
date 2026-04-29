@@ -426,6 +426,14 @@ router.patch(
     if (parsed.data.timezone !== undefined) updateFields.timezone = parsed.data.timezone;
     if (parsed.data.industryType !== undefined) updateFields.industryType = parsed.data.industryType;
 
+    if (Object.keys(updateFields).length === 0) {
+      res.status(400).json({
+        error: "No fields provided. Supply at least one of: name, status, planTier, email, currency, timezone, industryType.",
+        code: "EMPTY_UPDATE",
+      });
+      return;
+    }
+
     const [updated] = await adminDb
       .update(tenantsTable)
       .set(updateFields)
