@@ -8,8 +8,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 
+import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import { AppShell } from "@/components/layout/app-shell";
 import LandingPage from "@/pages/landing";
+import PendingPage from "@/pages/pending";
 import Dashboard from "@/pages/dashboard";
 import Settings from "@/pages/settings";
 import Procurement from "@/pages/procurement";
@@ -117,16 +119,31 @@ function HomeRedirect() {
   );
 }
 
+/**
+ * ProtectedRoute renders the component inside the AppShell for signed-in users
+ * who have an active tenant membership. Users who are signed in but have no
+ * tenant yet (no `role` returned from /auth/me) are redirected to /pending.
+ */
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { data: currentUser, isLoading } = useGetCurrentUser({
+    query: { queryKey: getGetCurrentUserQueryKey() },
+  });
+
   return (
     <>
-      <Show when="signed-in">
-        <AppShell>
-          <Component />
-        </AppShell>
-      </Show>
       <Show when="signed-out">
         <Redirect to="/" />
+      </Show>
+      <Show when="signed-in">
+        {isLoading ? null : (
+          !currentUser?.role ? (
+            <Redirect to="/pending" />
+          ) : (
+            <AppShell>
+              <Component />
+            </AppShell>
+          )
+        )}
       </Show>
     </>
   );
@@ -194,6 +211,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/inventory"><ProtectedRoute component={Inventory} /></Route>
           <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
           <Route path="/super-admin"><ProtectedRoute component={SuperAdmin} /></Route>
+          <Route path="/pending"><PendingPage /></Route>
           <Route component={NotFound} />
         </Switch>
       </QueryClientProvider>

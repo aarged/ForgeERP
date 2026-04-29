@@ -35,7 +35,40 @@ app.use(
 
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
-app.use(cors({ credentials: true, origin: true }));
+/**
+ * CORS configuration:
+ * - In development: allow the Replit dev domain and localhost
+ * - In production: restrict to the configured ALLOWED_ORIGINS env var
+ *   or the REPLIT_DOMAINS env var (set by Replit automatically)
+ */
+const replitDomains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()) ?? [];
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+  : [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      ...replitDomains.map((d) => `https://${d}`),
+    ];
+
+app.use(
+  cors({
+    credentials: true,
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      if (allowedOrigins.some((allowed) => origin === allowed || origin.endsWith(allowed))) {
+        callback(null, true);
+      } else if (process.env.NODE_ENV !== "production") {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS: origin '${origin}' not allowed`));
+      }
+    },
+  }),
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
