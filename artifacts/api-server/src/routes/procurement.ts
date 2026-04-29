@@ -676,11 +676,19 @@ async function executeApprovalDecision(opts: {
       const hasRoleConstraint = approverRoles.length > 0;
       const hasUserConstraint = approverUserIds.length > 0;
 
-      // Eligibility rules:
-      // • No constraints → any approver-role user is eligible (open step)
-      // • Role constraint only → actor's role must be in the list
-      // • User constraint only → actor's clerk ID must be in the list
-      // • Both constraints → either role OR user match is sufficient
+      // Eligibility rules — hard baseline: actor must have approver|tenant_admin|super_admin role.
+      // • No constraints (open step) → baseline role check applies (any baseline-role user may act)
+      // • Role constraint only → actor's role must be in the configured list
+      // • User constraint only → actor's clerk ID must be in the list AND role is baseline
+      // • Both constraints → either role OR user match is sufficient (role still baseline enforced at route level)
+      const baselineApproverRoles = ["approver", "tenant_admin", "super_admin"];
+      if (!baselineApproverRoles.includes(actorRole)) {
+        // Strict baseline: even explicit approverUserIds must hold a baseline approver role
+        throw Object.assign(
+          new Error("You do not have the required role to perform approval actions"),
+          { statusCode: 403 },
+        );
+      }
       if (hasRoleConstraint || hasUserConstraint) {
         const roleOk = hasRoleConstraint && approverRoles.includes(actorRole);
         const userOk = hasUserConstraint && approverUserIds.includes(actorClerkId);
@@ -1168,7 +1176,7 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
 });
 
 // Approve/reject/return — restricted to approver, tenant_admin, super_admin
-router.post("/procurement/requisitions/:id/decision", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/procurement/requisitions/:id/decision", ...approverMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail, userRole } = req as TenantRequest;
   const id = Number(req.params.id);
   const schema = z.object({
@@ -1650,7 +1658,7 @@ router.post("/procurement/purchase-orders/:id/submit", ...tenantWriteMiddleware,
 });
 
 // Approve/reject/return PO — restricted to approver, tenant_admin, super_admin
-router.post("/procurement/purchase-orders/:id/decision", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/procurement/purchase-orders/:id/decision", ...approverMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail, userRole } = req as TenantRequest;
   const id = Number(req.params.id);
   const schema = z.object({
