@@ -238,6 +238,24 @@ export const AdminTenantCreatedPlanTier = {
   enterprise: "enterprise",
 } as const;
 
+/**
+ * On plan-tier changes only: outcome of the Stripe subscription sync.
+"ok" = subscription updated/created. "skipped" = no Stripe customer
+or no price configured. "failed" = Stripe API call threw — DB plan
+persisted but billing diverged; reconcile manually.
+
+ * @nullable
+ */
+export type AdminTenantCreatedBillingSyncStatus =
+  | (typeof AdminTenantCreatedBillingSyncStatus)[keyof typeof AdminTenantCreatedBillingSyncStatus]
+  | null;
+
+export const AdminTenantCreatedBillingSyncStatus = {
+  ok: "ok",
+  skipped: "skipped",
+  failed: "failed",
+} as const;
+
 export interface AdminTenantCreated {
   id: number;
   name: string;
@@ -248,6 +266,20 @@ export interface AdminTenantCreated {
   email?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  /**
+   * On plan-tier changes only: outcome of the Stripe subscription sync.
+"ok" = subscription updated/created. "skipped" = no Stripe customer
+or no price configured. "failed" = Stripe API call threw — DB plan
+persisted but billing diverged; reconcile manually.
+
+   * @nullable
+   */
+  billingSyncStatus?: AdminTenantCreatedBillingSyncStatus;
+  /**
+   * Human-readable explanation when billingSyncStatus is "skipped" or "failed".
+   * @nullable
+   */
+  billingSyncReason?: string | null;
 }
 
 export type CreateTenantBodyPlanTier =

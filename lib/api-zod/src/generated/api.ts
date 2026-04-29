@@ -240,6 +240,23 @@ export const UpdateAdminTenantResponse = zod.object({
   email: zod.string().nullish(),
   createdAt: zod.string().optional(),
   updatedAt: zod.string().optional(),
+  billingSyncStatus: zod
+    .union([
+      zod.literal("ok"),
+      zod.literal("skipped"),
+      zod.literal("failed"),
+      zod.literal(null),
+    ])
+    .nullish()
+    .describe(
+      'On plan-tier changes only: outcome of the Stripe subscription sync.\n\"ok\" = subscription updated\/created. \"skipped\" = no Stripe customer\nor no price configured. \"failed\" = Stripe API call threw — DB plan\npersisted but billing diverged; reconcile manually.\n',
+    ),
+  billingSyncReason: zod
+    .string()
+    .nullish()
+    .describe(
+      'Human-readable explanation when billingSyncStatus is \"skipped\" or \"failed\".',
+    ),
 });
 
 /**

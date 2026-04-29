@@ -949,6 +949,17 @@ components:
           type: string
         updatedAt:
           type: string
+        billingSyncStatus:
+          type: ["string", "null"]
+          enum: [ok, skipped, failed, null]
+          description: |
+            On plan-tier changes only: outcome of the Stripe subscription sync.
+            "ok" = subscription updated/created. "skipped" = no Stripe customer
+            or no price configured. "failed" = Stripe API call threw — DB plan
+            persisted but billing diverged; reconcile manually.
+        billingSyncReason:
+          type: ["string", "null"]
+          description: Human-readable explanation when billingSyncStatus is "skipped" or "failed".
       required:
         - id
         - name

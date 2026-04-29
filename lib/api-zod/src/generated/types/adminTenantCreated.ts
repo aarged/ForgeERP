@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AdminTenantCreatedBillingSyncStatus } from "./adminTenantCreatedBillingSyncStatus";
 import type { AdminTenantCreatedPlanTier } from "./adminTenantCreatedPlanTier";
 import type { AdminTenantCreatedStatus } from "./adminTenantCreatedStatus";
 
@@ -18,4 +19,18 @@ export interface AdminTenantCreated {
   email?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  /**
+   * On plan-tier changes only: outcome of the Stripe subscription sync.
+"ok" = subscription updated/created. "skipped" = no Stripe customer
+or no price configured. "failed" = Stripe API call threw — DB plan
+persisted but billing diverged; reconcile manually.
+
+   * @nullable
+   */
+  billingSyncStatus?: AdminTenantCreatedBillingSyncStatus;
+  /**
+   * Human-readable explanation when billingSyncStatus is "skipped" or "failed".
+   * @nullable
+   */
+  billingSyncReason?: string | null;
 }

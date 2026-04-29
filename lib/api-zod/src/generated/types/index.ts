@@ -9,6 +9,7 @@
 export * from "./adminKpi";
 export * from "./adminTenant";
 export * from "./adminTenantCreated";
+export * from "./adminTenantCreatedBillingSyncStatus";
 export * from "./adminTenantCreatedPlanTier";
 export * from "./adminTenantCreatedStatus";
 export * from "./adminTenantDetail";

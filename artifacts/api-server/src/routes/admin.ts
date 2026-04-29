@@ -432,7 +432,12 @@ router.patch(
       .where(eq(tenantsTable.id, id))
       .returning();
 
-    // If plan tier changed and Stripe is configured, sync subscription
+    // If plan tier changed and Stripe is configured, sync subscription.
+    // Capture sync outcome so we can surface partial failure to the caller
+    // (DB plan persists, but billing state may be diverged).
+    let billingSyncStatus: "ok" | "skipped" | "failed" | null = null;
+    let billingSyncReason: string | null = null;
+
     if (
       parsed.data.planTier !== undefined &&
       parsed.data.planTier !== existing.planTier &&
@@ -440,11 +445,14 @@ router.patch(
     ) {
       try {
         const newPriceId = getPriceIdForPlan(parsed.data.planTier);
-        if (newPriceId) {
+        if (!newPriceId) {
+          billingSyncStatus = "skipped";
+          billingSyncReason = `No Stripe price configured for "${parsed.data.planTier}" — set STRIPE_PRICE_${parsed.data.planTier.toUpperCase()}`;
+          logger.warn({ planTier: parsed.data.planTier }, billingSyncReason);
+        } else {
           const stripe = await getUncachableStripeClient();
 
           if (existing.stripeSubscriptionId) {
-            // Update existing subscription
             const sub = await stripe.subscriptions.retrieve(existing.stripeSubscriptionId);
             const itemId = sub.items.data[0]?.id;
             if (itemId) {
@@ -452,10 +460,13 @@ router.patch(
                 items: [{ id: itemId, price: newPriceId }],
                 proration_behavior: "always_invoice",
               });
+              billingSyncStatus = "ok";
               logger.info({ tenantId: id, planTier: parsed.data.planTier }, "Stripe subscription updated");
+            } else {
+              billingSyncStatus = "skipped";
+              billingSyncReason = "Existing subscription has no items to update";
             }
           } else if (existing.stripeCustomerId) {
-            // Create new subscription for existing customer
             const sub = await stripe.subscriptions.create({
               customer: existing.stripeCustomerId,
               items: [{ price: newPriceId }],
@@ -465,16 +476,29 @@ router.patch(
               .update(tenantsTable)
               .set({ stripeSubscriptionId: sub.id })
               .where(eq(tenantsTable.id, id));
+            billingSyncStatus = "ok";
             logger.info({ tenantId: id, subscriptionId: sub.id }, "Stripe subscription created on plan change");
+          } else {
+            billingSyncStatus = "skipped";
+            billingSyncReason = "Tenant has no Stripe customer — run Stripe sync first";
           }
-        } else {
-          logger.warn(
-            { planTier: parsed.data.planTier },
-            "No Stripe price ID configured for plan tier — skipping subscription sync",
-          );
         }
       } catch (err) {
-        logger.error({ err }, "Failed to sync Stripe subscription on plan change");
+        billingSyncStatus = "failed";
+        billingSyncReason = err instanceof Error ? err.message : "Unknown Stripe error";
+        logger.error({ err, tenantId: id }, "Failed to sync Stripe subscription on plan change");
+        // Audit the divergence so it can be reconciled
+        await writeAuditLog({
+          req,
+          actorClerkId: actor.clerkUserId,
+          actorEmail: actor.userEmail,
+          tenantId: id,
+          action: "tenant.billing_sync_failed",
+          entityType: "tenant",
+          entityId: id,
+          oldValues: { planTier: existing.planTier },
+          newValues: { planTier: parsed.data.planTier, error: billingSyncReason },
+        });
       }
     }
 
@@ -502,6 +526,8 @@ router.patch(
       planTier: updated!.planTier,
       email: updated!.email ?? null,
       updatedAt: updated!.updatedAt.toISOString(),
+      billingSyncStatus,
+      billingSyncReason,
     });
   },
 );
