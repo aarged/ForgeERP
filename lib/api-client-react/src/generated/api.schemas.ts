@@ -788,6 +788,7 @@ export interface MasterItem {
   barcode?: string | null;
   unitCost?: string | null;
   salesPrice?: string | null;
+  marketPrice?: string | null;
   category?: string | null;
   imageUrl?: string | null;
   isActive?: boolean;
@@ -827,6 +828,8 @@ export interface ItemCrossReference {
   refCode?: string;
   refDescription?: string | null;
   supplierId?: number | null;
+  competitorName?: string | null;
+  competitorPrice?: string | null;
 }
 
 export type MasterItemDetailLocationsItem = { [key: string]: unknown };
@@ -873,6 +876,7 @@ export interface CreateItemBody {
   barcode?: string;
   unitCost?: number;
   salesPrice?: number;
+  marketPrice?: number;
   category?: string;
   imageUrl?: string;
   isActive?: boolean;
@@ -922,6 +926,8 @@ export interface ItemCrossReferenceInput {
   refCode: string;
   refDescription?: string;
   supplierId?: number;
+  competitorName?: string;
+  competitorPrice?: number;
 }
 
 export type ImportItemsBodyItemsItem = {
@@ -1150,6 +1156,19 @@ export interface WarehouseStockSummary {
   locations?: WarehouseLocationWithStock[];
 }
 
+export interface CustomerSalesSummary {
+  customerId?: number;
+  totalOrders?: number;
+  totalRevenue?: number;
+  averageOrderValue?: number;
+  lastOrderDate?: string | null;
+  firstOrderDate?: string | null;
+  outstandingBalance?: number;
+  creditLimit?: number | null;
+  paymentTerms?: string | null;
+  currency?: string;
+}
+
 export type MasterWarehouseDetail = MasterWarehouse & {
   locations?: WarehouseLocation[];
 };
@@ -1367,6 +1386,13 @@ export const ListItemsDir = {
   desc: "desc",
 } as const;
 
+export type LookupItemParams = {
+  /**
+   * Item code (business key)
+   */
+  code: string;
+};
+
 export type ListItemUnits200 = {
   units?: ItemUnit[];
 };
@@ -1375,6 +1401,10 @@ export type ConvertItemUomParams = {
   fromUom: string;
   toUom: string;
   qty?: number;
+};
+
+export type LookupSupplierParams = {
+  code: string;
 };
 
 export type ListSuppliersParams = {
@@ -1394,6 +1424,10 @@ export const ListSuppliersDir = {
   desc: "desc",
 } as const;
 
+export type LookupCustomerParams = {
+  code: string;
+};
+
 export type ListCustomersParams = {
   q?: string;
   page?: number;
@@ -1410,6 +1444,10 @@ export const ListCustomersDir = {
   asc: "asc",
   desc: "desc",
 } as const;
+
+export type LookupWarehouseParams = {
+  code: string;
+};
 
 export type ListWarehousesParams = {
   q?: string;

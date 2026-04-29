@@ -19,6 +19,7 @@ export interface MasterItem {
   barcode?: string | null;
   unitCost?: string | null;
   salesPrice?: string | null;
+  marketPrice?: string | null;
   category?: string | null;
   imageUrl?: string | null;
   isActive?: boolean;

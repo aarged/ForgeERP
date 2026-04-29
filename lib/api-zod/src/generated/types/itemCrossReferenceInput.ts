@@ -12,4 +12,6 @@ export interface ItemCrossReferenceInput {
   refCode: string;
   refDescription?: string;
   supplierId?: number;
+  competitorName?: string;
+  competitorPrice?: number;
 }

@@ -13,4 +13,6 @@ export interface ItemCrossReference {
   refCode?: string;
   refDescription?: string | null;
   supplierId?: number | null;
+  competitorName?: string | null;
+  competitorPrice?: string | null;
 }

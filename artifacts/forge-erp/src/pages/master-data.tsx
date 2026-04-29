@@ -56,6 +56,11 @@ import {
   useUpdateWarehouseLocation,
   useDeleteWarehouseLocation,
   useGetWarehouseStockSummary,
+  useGetCustomerSalesSummary,
+  useLookupItem,
+  useLookupSupplier,
+  useLookupCustomer,
+  useLookupWarehouse,
 } from "@workspace/api-client-react";
 import type {
   CreateItemBody,
@@ -83,6 +88,7 @@ import type {
   ItemAttribute,
   ItemCrossReference,
   WarehouseLocation,
+  CustomerSalesSummary,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -462,6 +468,7 @@ function ItemVariantsPanel({ itemId }: { itemId: number }) {
   const updateVariant = useUpdateItemVariant();
   const deleteVariant = useDeleteItemVariant();
   const [editVariant, setEditVariant] = useState<ItemVariant | undefined>();
+  const [auditTarget, setAuditTarget] = useState<{ id: string; name: string } | undefined>();
   const variants = data?.variants ?? [];
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<CreateItemVariantBody>({
@@ -502,6 +509,7 @@ function ItemVariantsPanel({ itemId }: { itemId: number }) {
               <span className="flex-1 text-xs">{v.name}</span>
               {v.sku && <span className="text-muted-foreground text-xs">{v.sku}</span>}
               <Badge variant={v.isActive ? "default" : "secondary"} className="text-xs">{v.isActive ? "Active" : "Inactive"}</Badge>
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" title="View audit trail" onClick={() => setAuditTarget({ id: String(v.id), name: v.variantCode ?? v.name ?? "" })}><History className="h-3 w-3" /></Button>
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditVariant(v)}><Pencil className="h-3 w-3" /></Button>
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await deleteVariant.mutateAsync({ itemId, variantId: v.id! }); refetch(); }}>
                 <Trash2 className="h-3 w-3 text-destructive" />
@@ -510,6 +518,7 @@ function ItemVariantsPanel({ itemId }: { itemId: number }) {
           ))}
         </div>
       ) : <p className="text-xs text-muted-foreground">No variants yet.</p>}
+      {auditTarget && <AuditTrailDialog open={!!auditTarget} onOpenChange={(v) => !v && setAuditTarget(undefined)} entityType="item_variant" entityId={auditTarget.id} entityName={auditTarget.name} />}
       <form onSubmit={onSubmit} className="space-y-2">
         <div className="flex gap-2">
           <div className="flex-1"><Input {...register("variantCode", { required: true })} placeholder="Code (e.g. RED-L)" className="h-8 text-xs" /></div>
@@ -596,23 +605,46 @@ function ItemAttributesPanel({ itemId }: { itemId: number }) {
 
 // ─── Item Cross-References Panel ──────────────────────────────────────────────
 
+type CrossRefEntry = {
+  refType: string;
+  refCode: string;
+  refDescription?: string;
+  competitorName?: string;
+  competitorPrice?: string;
+};
+
 function ItemCrossRefsPanel({ itemId }: { itemId: number }) {
   const { toast } = useToast();
   const { data, refetch } = useGetItem(itemId);
   const setCrossRefs = useSetItemCrossReferences();
   const crossRefs = (data?.crossRefs ?? []) as ItemCrossReference[];
 
-  const [localRefs, setLocalRefs] = useState<{ refType: string; refCode: string }[]>([]);
+  const [localRefs, setLocalRefs] = useState<CrossRefEntry[]>([]);
   const [newType, setNewType] = useState("alternative");
   const [newCode, setNewCode] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newCompetitorName, setNewCompetitorName] = useState("");
+  const [newCompetitorPrice, setNewCompetitorPrice] = useState("");
 
   useEffect(() => {
-    setLocalRefs(crossRefs.map((r) => ({ refType: r.refType ?? "alternative", refCode: r.refCode ?? "" })));
+    setLocalRefs(crossRefs.map((r) => ({
+      refType: r.refType ?? "alternative",
+      refCode: r.refCode ?? "",
+      refDescription: r.refDescription ?? undefined,
+      competitorName: (r as { competitorName?: string }).competitorName ?? undefined,
+      competitorPrice: (r as { competitorPrice?: string }).competitorPrice ?? undefined,
+    })));
   }, [data]);
 
-  const save = async (updated: { refType: string; refCode: string }[]) => {
+  const save = async (updated: CrossRefEntry[]) => {
     try {
-      const payload: ItemCrossReferenceInput[] = updated.map((r) => ({ refType: r.refType as ItemCrossReferenceInput["refType"], refCode: r.refCode }));
+      const payload: ItemCrossReferenceInput[] = updated.map((r) => ({
+        refType: r.refType as ItemCrossReferenceInput["refType"],
+        refCode: r.refCode,
+        refDescription: r.refDescription,
+        competitorName: r.competitorName,
+        competitorPrice: r.competitorPrice ? Number(r.competitorPrice) : undefined,
+      }));
       await setCrossRefs.mutateAsync({ id: itemId, data: payload });
       toast({ title: "Cross-references saved" });
       refetch();
@@ -621,9 +653,16 @@ function ItemCrossRefsPanel({ itemId }: { itemId: number }) {
 
   const addRef = () => {
     if (!newCode.trim()) return;
-    const updated = [...localRefs, { refType: newType, refCode: newCode.trim() }];
+    const entry: CrossRefEntry = {
+      refType: newType,
+      refCode: newCode.trim(),
+      refDescription: newDesc.trim() || undefined,
+      competitorName: newType === "competitor" ? (newCompetitorName.trim() || undefined) : undefined,
+      competitorPrice: newType === "competitor" ? (newCompetitorPrice.trim() || undefined) : undefined,
+    };
+    const updated = [...localRefs, entry];
     setLocalRefs(updated);
-    setNewCode("");
+    setNewCode(""); setNewDesc(""); setNewCompetitorName(""); setNewCompetitorPrice("");
     save(updated);
   };
 
@@ -635,13 +674,17 @@ function ItemCrossRefsPanel({ itemId }: { itemId: number }) {
 
   return (
     <div className="space-y-3 pt-2 border-t">
-      <h4 className="text-sm font-semibold">Cross-References / Barcodes</h4>
+      <h4 className="text-sm font-semibold">Cross-References &amp; Competitor Pricing</h4>
       {localRefs.length > 0 ? (
         <div className="rounded border divide-y text-sm">
           {localRefs.map((r, i) => (
-            <div key={i} className="flex items-center gap-2 px-3 py-1.5">
+            <div key={i} className="flex items-center gap-2 px-3 py-1.5 flex-wrap">
               <Badge variant="outline" className="text-xs shrink-0">{r.refType}</Badge>
-              <span className="flex-1 font-mono text-xs">{r.refCode}</span>
+              <span className="font-mono text-xs">{r.refCode}</span>
+              {r.refDescription && <span className="text-muted-foreground text-xs">{r.refDescription}</span>}
+              {r.competitorName && <span className="text-xs font-medium text-orange-600">{r.competitorName}</span>}
+              {r.competitorPrice && <span className="text-xs text-orange-600 font-mono">${r.competitorPrice}</span>}
+              <div className="flex-1" />
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeRef(i)}>
                 <Trash2 className="h-3 w-3 text-destructive" />
               </Button>
@@ -649,17 +692,26 @@ function ItemCrossRefsPanel({ itemId }: { itemId: number }) {
           ))}
         </div>
       ) : <p className="text-xs text-muted-foreground">No cross-references yet.</p>}
-      <div className="flex gap-2">
-        <Select value={newType} onValueChange={setNewType}>
-          <SelectTrigger className="h-8 text-xs w-32"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="alternative">Alternative</SelectItem>
-            <SelectItem value="cross">Cross</SelectItem>
-            <SelectItem value="competitor">Competitor</SelectItem>
-          </SelectContent>
-        </Select>
-        <Input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="Code / number" className="h-8 text-xs flex-1" />
-        <Button size="sm" className="h-8" onClick={addRef} disabled={setCrossRefs.isPending}>
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <Select value={newType} onValueChange={setNewType}>
+            <SelectTrigger className="h-8 text-xs w-32"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="alternative">Alternative</SelectItem>
+              <SelectItem value="cross">Cross</SelectItem>
+              <SelectItem value="competitor">Competitor</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="Code / Part number" className="h-8 text-xs flex-1" />
+          <Input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Description (opt)" className="h-8 text-xs w-40" />
+        </div>
+        {newType === "competitor" && (
+          <div className="flex gap-2">
+            <Input value={newCompetitorName} onChange={(e) => setNewCompetitorName(e.target.value)} placeholder="Competitor name" className="h-8 text-xs flex-1" />
+            <Input value={newCompetitorPrice} onChange={(e) => setNewCompetitorPrice(e.target.value)} placeholder="Their price" type="number" className="h-8 text-xs w-32" />
+          </div>
+        )}
+        <Button size="sm" className="h-8" onClick={addRef} disabled={setCrossRefs.isPending || !newCode.trim()}>
           <Plus className="h-3 w-3 mr-1" /> Add
         </Button>
       </div>
@@ -769,14 +821,17 @@ function ContactsPanelUI({
   onSubmit,
   onDelete,
   isPending,
+  contactEntityType = "contact",
 }: {
   contacts: MasterContact[];
   refetch: () => void;
   onSubmit: (d: CreateContactBody, editId?: number) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   isPending: boolean;
+  contactEntityType?: string;
 }) {
   const [editContact, setEditContact] = useState<MasterContact | null>(null);
+  const [auditTarget, setAuditTarget] = useState<{ id: string; name: string } | undefined>();
   const { register, handleSubmit, reset, formState: { errors } } = useForm<CreateContactBody>({
     defaultValues: { firstName: "", isPrimary: false },
   });
@@ -808,6 +863,7 @@ function ContactsPanelUI({
                 <div className="text-muted-foreground text-xs">{c.email} {c.phone ? `· ${c.phone}` : ""} {c.role ? `· ${c.role}` : ""}</div>
               </div>
               {c.isPrimary && <Badge variant="outline" className="text-xs">Primary</Badge>}
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" title="View audit trail" onClick={() => setAuditTarget({ id: String(c.id), name: `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim() })}><History className="h-3 w-3" /></Button>
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditContact(c)}><Pencil className="h-3 w-3" /></Button>
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(c.id!).then(refetch)}>
                 <Trash2 className="h-3 w-3 text-destructive" />
@@ -816,6 +872,7 @@ function ContactsPanelUI({
           ))}
         </div>
       ) : <p className="text-xs text-muted-foreground">No contacts yet.</p>}
+      {auditTarget && <AuditTrailDialog open={!!auditTarget} onOpenChange={(v) => !v && setAuditTarget(undefined)} entityType={contactEntityType} entityId={auditTarget.id} entityName={auditTarget.name} />}
       <form onSubmit={handleFormSubmit} className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -878,7 +935,7 @@ function SupplierContactsPanel({ supplierId }: { supplierId: number }) {
     catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
   };
 
-  return <ContactsPanelUI contacts={contacts} refetch={refetch} onSubmit={handleSubmit} onDelete={handleDelete} isPending={createCont.isPending || updateCont.isPending} />;
+  return <ContactsPanelUI contacts={contacts} refetch={refetch} onSubmit={handleSubmit} onDelete={handleDelete} isPending={createCont.isPending || updateCont.isPending} contactEntityType="supplier_contact" />;
 }
 
 function CustomerContactsPanel({ customerId }: { customerId: number }) {
@@ -902,10 +959,22 @@ function CustomerContactsPanel({ customerId }: { customerId: number }) {
     catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
   };
 
-  return <ContactsPanelUI contacts={contacts} refetch={refetch} onSubmit={handleSubmit} onDelete={handleDelete} isPending={createCont.isPending || updateCont.isPending} />;
+  return <ContactsPanelUI contacts={contacts} refetch={refetch} onSubmit={handleSubmit} onDelete={handleDelete} isPending={createCont.isPending || updateCont.isPending} contactEntityType="customer_contact" />;
 }
 
 // ─── Warehouse Locations Panel ────────────────────────────────────────────────
+
+function buildLocationTree(locs: WarehouseLocation[]): Array<WarehouseLocation & { depth: number }> {
+  const result: Array<WarehouseLocation & { depth: number }> = [];
+  const addChildren = (parentId: number | null | undefined, depth: number) => {
+    locs
+      .filter((l) => (l.parentId ?? null) === (parentId ?? null))
+      .sort((a, b) => (a.code ?? "").localeCompare(b.code ?? ""))
+      .forEach((l) => { result.push({ ...l, depth }); addChildren(l.id, depth + 1); });
+  };
+  addChildren(null, 0);
+  return result;
+}
 
 function WarehouseLocationsPanel({ warehouseId }: { warehouseId: number }) {
   const { toast } = useToast();
@@ -915,16 +984,17 @@ function WarehouseLocationsPanel({ warehouseId }: { warehouseId: number }) {
   const deleteLoc = useDeleteWarehouseLocation();
   const locations = (data?.locations ?? []) as WarehouseLocation[];
   const [editLoc, setEditLoc] = useState<WarehouseLocation | null>(null);
+  const tree = buildLocationTree(locations);
 
-  const { register, handleSubmit, reset, control } = useForm<CreateWarehouseLocationBody>({
+  const { register, handleSubmit, reset, control } = useForm<CreateWarehouseLocationBody & { parentId?: number }>({
     defaultValues: { code: "", name: "", locationType: "zone" as CreateWarehouseLocationBodyLocationType, isActive: true },
   });
 
   useEffect(() => {
     if (editLoc) {
-      reset({ code: editLoc.code ?? "", name: editLoc.name ?? "", locationType: (editLoc.locationType ?? "zone") as CreateWarehouseLocationBodyLocationType, description: editLoc.description ?? "", isActive: editLoc.isActive ?? true });
+      reset({ code: editLoc.code ?? "", name: editLoc.name ?? "", locationType: (editLoc.locationType ?? "zone") as CreateWarehouseLocationBodyLocationType, description: editLoc.description ?? "", isActive: editLoc.isActive ?? true, parentId: editLoc.parentId ?? undefined });
     } else {
-      reset({ code: "", name: "", locationType: "zone" as CreateWarehouseLocationBodyLocationType, isActive: true });
+      reset({ code: "", name: "", locationType: "zone" as CreateWarehouseLocationBodyLocationType, isActive: true, parentId: undefined });
     }
   }, [editLoc, reset]);
 
@@ -938,21 +1008,23 @@ function WarehouseLocationsPanel({ warehouseId }: { warehouseId: number }) {
         toast({ title: "Location added" });
       }
       setEditLoc(null);
-      reset({ code: "", name: "", locationType: "zone", isActive: true });
+      reset({ code: "", name: "", locationType: "zone", isActive: true, parentId: undefined });
       refetch();
     } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
   });
 
   const isPending = createLoc.isPending || updateLoc.isPending;
+  const typeIcon: Record<string, string> = { zone: "🏭", aisle: "🛤️", bin: "📦" };
 
   return (
     <div className="space-y-3 pt-2 border-t">
-      <h4 className="text-sm font-semibold">Locations (Zones / Aisles / Bins)</h4>
-      {locations.length > 0 ? (
+      <h4 className="text-sm font-semibold">Locations (Zone → Aisle → Bin Tree)</h4>
+      {tree.length > 0 ? (
         <div className="rounded border divide-y text-sm">
-          {locations.map((l) => (
-            <div key={l.id} className="flex items-center gap-2 px-3 py-1.5">
-              <span className="font-mono text-xs font-medium w-24 shrink-0">{l.code}</span>
+          {tree.map((l) => (
+            <div key={l.id} className="flex items-center gap-2 py-1.5" style={{ paddingLeft: `${12 + l.depth * 20}px`, paddingRight: "12px" }}>
+              <span className="text-sm">{typeIcon[l.locationType ?? ""] ?? "📍"}</span>
+              <span className="font-mono text-xs font-medium w-20 shrink-0">{l.code}</span>
               <span className="flex-1 text-xs">{l.name}</span>
               <Badge variant="outline" className="text-xs">{l.locationType}</Badge>
               <Badge variant={l.isActive ? "default" : "secondary"} className="text-xs">{l.isActive ? "Active" : "Inactive"}</Badge>
@@ -963,18 +1035,20 @@ function WarehouseLocationsPanel({ warehouseId }: { warehouseId: number }) {
             </div>
           ))}
         </div>
-      ) : <p className="text-xs text-muted-foreground">No locations defined yet.</p>}
+      ) : <p className="text-xs text-muted-foreground">No locations yet. Add zones first, then aisles within zones, then bins.</p>}
       <form onSubmit={onSubmit} className="space-y-2">
-        <div className="flex gap-2">
-          <div className="w-28">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
             <Label className="text-xs mb-1 block">Code *</Label>
-            <Input {...register("code", { required: true })} placeholder="A1, B2, BULK" className="h-8 text-xs" />
+            <Input {...register("code", { required: true })} placeholder="ZONE-A, AISLE-01, BIN-001" className="h-8 text-xs" />
           </div>
-          <div className="flex-1">
+          <div>
             <Label className="text-xs mb-1 block">Name *</Label>
-            <Input {...register("name", { required: true })} placeholder="Zone A, Bin 1" className="h-8 text-xs" />
+            <Input {...register("name", { required: true })} placeholder="Zone A, Aisle 1, Bin 01" className="h-8 text-xs" />
           </div>
-          <div className="w-28">
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
             <Label className="text-xs mb-1 block">Type</Label>
             <Controller control={control} name="locationType" render={({ field }) => (
               <Select value={field.value ?? "zone"} onValueChange={field.onChange}>
@@ -987,10 +1061,24 @@ function WarehouseLocationsPanel({ warehouseId }: { warehouseId: number }) {
               </Select>
             )} />
           </div>
-          <Button type="submit" size="sm" className="h-8 mt-5" disabled={isPending}>
-            {editLoc ? <><Pencil className="h-3 w-3 mr-1" /> Update</> : <><Plus className="h-3 w-3 mr-1" /> Add</>}
+          <div>
+            <Label className="text-xs mb-1 block">Parent Location</Label>
+            <Controller control={control} name="parentId" render={({ field }) => (
+              <Select value={field.value != null ? String(field.value) : ""} onValueChange={(v) => field.onChange(v ? Number(v) : undefined)}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="None (top-level)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None (top-level)</SelectItem>
+                  {locations.map((l) => <SelectItem key={l.id} value={String(l.id)}>{l.code} — {l.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )} />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button type="submit" size="sm" className="h-8" disabled={isPending}>
+            {editLoc ? <><Pencil className="h-3 w-3 mr-1" /> Update</> : <><Plus className="h-3 w-3 mr-1" /> Add Location</>}
           </Button>
-          {editLoc && <Button type="button" variant="ghost" size="sm" className="h-8 mt-5" onClick={() => { setEditLoc(null); reset(); }}>Cancel</Button>}
+          {editLoc && <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => { setEditLoc(null); reset(); }}>Cancel</Button>}
         </div>
       </form>
     </div>
@@ -1051,6 +1139,48 @@ function WarehouseStockPanel({ warehouseId }: { warehouseId: number }) {
   );
 }
 
+// ─── Customer Sales Summary Panel ────────────────────────────────────────────
+
+function CustomerSalesSummaryPanel({ customerId }: { customerId: number }) {
+  const { data, isLoading } = useGetCustomerSalesSummary(customerId);
+
+  if (isLoading) return <div className="pt-2 border-t"><Skeleton className="h-16 w-full" /></div>;
+  if (!data) return null;
+
+  const summary = data as CustomerSalesSummary;
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <h4 className="text-sm font-semibold">Sales Summary</h4>
+      <div className="grid grid-cols-3 gap-3 text-sm">
+        <Card className="p-3 text-center">
+          <div className="text-2xl font-bold">{summary.totalOrders ?? 0}</div>
+          <div className="text-xs text-muted-foreground">Total Orders</div>
+        </Card>
+        <Card className="p-3 text-center">
+          <div className="text-2xl font-bold text-green-600">
+            {summary.currency ?? "USD"} {(summary.totalRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div className="text-xs text-muted-foreground">Total Revenue</div>
+        </Card>
+        <Card className="p-3 text-center">
+          <div className="text-2xl font-bold text-blue-600">
+            {(summary.averageOrderValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div className="text-xs text-muted-foreground">Avg Order Value</div>
+        </Card>
+      </div>
+      <div className="rounded border p-3 text-sm grid grid-cols-2 gap-2">
+        <div><span className="text-muted-foreground text-xs">First Order</span><div className="text-xs font-medium">{summary.firstOrderDate ? new Date(summary.firstOrderDate).toLocaleDateString() : "—"}</div></div>
+        <div><span className="text-muted-foreground text-xs">Last Order</span><div className="text-xs font-medium">{summary.lastOrderDate ? new Date(summary.lastOrderDate).toLocaleDateString() : "—"}</div></div>
+        <div><span className="text-muted-foreground text-xs">Credit Limit</span><div className="text-xs font-medium">{summary.creditLimit != null ? `${summary.currency ?? "USD"} ${summary.creditLimit.toLocaleString()}` : "—"}</div></div>
+        <div><span className="text-muted-foreground text-xs">Outstanding Balance</span><div className="text-xs font-medium">{summary.currency ?? "USD"} {(summary.outstandingBalance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>
+        {summary.paymentTerms && <div className="col-span-2"><span className="text-muted-foreground text-xs">Payment Terms</span><div className="text-xs font-medium">{summary.paymentTerms}</div></div>}
+      </div>
+    </div>
+  );
+}
+
 // ─── ITEMS TAB ────────────────────────────────────────────────────────────────
 
 type ItemRow = NonNullable<ListItemsQueryResult["items"]>[number];
@@ -1089,6 +1219,7 @@ function ItemModal({
         barcode: item?.barcode ?? "",
         unitCost: item?.unitCost ? Number(item.unitCost) : undefined,
         salesPrice: item?.salesPrice ? Number(item.salesPrice) : undefined,
+        marketPrice: (item as { marketPrice?: number | string })?.marketPrice ? Number((item as { marketPrice?: number | string }).marketPrice) : undefined,
         category: item?.category ?? "",
         notes: item?.notes ?? "",
         isActive: item?.isActive ?? true,
@@ -1154,12 +1285,15 @@ function ItemModal({
               <Input {...register("barcode")} placeholder="EAN / SKU" />
             </FormField>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <FormField label="Unit Cost">
               <Input {...register("unitCost", { valueAsNumber: true })} type="number" step="0.0001" placeholder="0.00" />
             </FormField>
             <FormField label="Sales Price">
               <Input {...register("salesPrice", { valueAsNumber: true })} type="number" step="0.0001" placeholder="0.00" />
+            </FormField>
+            <FormField label="Market / RRP Price">
+              <Input {...register("marketPrice" as keyof CreateItemBody, { valueAsNumber: true })} type="number" step="0.0001" placeholder="0.00" />
             </FormField>
           </div>
           <FormField label="Category">
@@ -1195,7 +1329,7 @@ function ItemModal({
   );
 }
 
-function ItemsTab({ initialId }: { initialId?: number }) {
+function ItemsTab({ initialId, initialCode }: { initialId?: number; initialCode?: string }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [allRows, setAllRows] = useState<ItemRow[]>([]);
@@ -1258,6 +1392,11 @@ function ItemsTab({ initialId }: { initialId?: number }) {
       if (found) { setEditItem(found); setModalOpen(true); }
     }
   }, [initialId, allRows]);
+
+  const { data: lookupData } = useLookupItem({ code: initialCode ?? "" }, { query: { enabled: !!initialCode, queryKey: ["lookupItem", initialCode] } });
+  useEffect(() => {
+    if (lookupData) { setEditItem(lookupData as ItemRow); setModalOpen(true); }
+  }, [lookupData]);
 
   const deleteM = useDeleteItem();
 
@@ -1509,7 +1648,7 @@ function SupplierModal({
   );
 }
 
-function SuppliersTab({ initialId }: { initialId?: number }) {
+function SuppliersTab({ initialId, initialCode }: { initialId?: number; initialCode?: string }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [allRows, setAllRows] = useState<SupplierRow[]>([]);
@@ -1563,6 +1702,11 @@ function SuppliersTab({ initialId }: { initialId?: number }) {
       if (found) { setEditRow(found); setModalOpen(true); }
     }
   }, [initialId, allRows]);
+
+  const { data: supplierLookup } = useLookupSupplier({ code: initialCode ?? "" }, { query: { enabled: !!initialCode, queryKey: ["lookupSupplier", initialCode] } });
+  useEffect(() => {
+    if (supplierLookup) { setEditRow(supplierLookup as SupplierRow); setModalOpen(true); }
+  }, [supplierLookup]);
 
   const deleteM = useDeleteSupplier();
   const refresh = useCallback(() => { queryClient.invalidateQueries({ queryKey: getListSuppliersQueryKey() }); setPage(1); setAllRows([]); }, [queryClient]);
@@ -1730,13 +1874,18 @@ function CustomerModal({ open, onOpenChange, customer, onSuccess }: {
             <Button type="submit" disabled={isPending}>{isPending ? "Saving…" : isEdit ? "Save Changes" : "Create Customer"}</Button>
           </DialogFooter>
         </form>
-        {isEdit && customer?.id && <CustomerContactsPanel customerId={customer.id} />}
+        {isEdit && customer?.id && (
+          <div className="space-y-4 mt-2">
+            <CustomerContactsPanel customerId={customer.id} />
+            <CustomerSalesSummaryPanel customerId={customer.id} />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function CustomersTab({ initialId }: { initialId?: number }) {
+function CustomersTab({ initialId, initialCode }: { initialId?: number; initialCode?: string }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [allRows, setAllRows] = useState<CustomerRow[]>([]);
@@ -1777,6 +1926,11 @@ function CustomersTab({ initialId }: { initialId?: number }) {
   useEffect(() => {
     if (initialId && allRows.length > 0) { const found = allRows.find((r) => r.id === initialId); if (found) { setEditRow(found); setModalOpen(true); } }
   }, [initialId, allRows]);
+
+  const { data: customerLookup } = useLookupCustomer({ code: initialCode ?? "" }, { query: { enabled: !!initialCode, queryKey: ["lookupCustomer", initialCode] } });
+  useEffect(() => {
+    if (customerLookup) { setEditRow(customerLookup as CustomerRow); setModalOpen(true); }
+  }, [customerLookup]);
 
   const deleteM = useDeleteCustomer();
   const refresh = useCallback(() => { queryClient.invalidateQueries({ queryKey: getListCustomersQueryKey() }); setPage(1); setAllRows([]); }, [queryClient]);
@@ -1940,7 +2094,7 @@ function WarehouseModal({ open, onOpenChange, warehouse, onSuccess }: {
   );
 }
 
-function WarehousesTab({ initialId }: { initialId?: number }) {
+function WarehousesTab({ initialId, initialCode }: { initialId?: number; initialCode?: string }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [allRows, setAllRows] = useState<WarehouseRow[]>([]);
@@ -1981,6 +2135,11 @@ function WarehousesTab({ initialId }: { initialId?: number }) {
   useEffect(() => {
     if (initialId && allRows.length > 0) { const found = allRows.find((r) => r.id === initialId); if (found) { setEditRow(found); setModalOpen(true); } }
   }, [initialId, allRows]);
+
+  const { data: warehouseLookup } = useLookupWarehouse({ code: initialCode ?? "" }, { query: { enabled: !!initialCode, queryKey: ["lookupWarehouse", initialCode] } });
+  useEffect(() => {
+    if (warehouseLookup) { setEditRow(warehouseLookup as WarehouseRow); setModalOpen(true); }
+  }, [warehouseLookup]);
 
   const deleteM = useDeleteWarehouse();
   const refresh = useCallback(() => { queryClient.invalidateQueries({ queryKey: getListWarehousesQueryKey() }); setPage(1); setAllRows([]); }, [queryClient]);
@@ -2376,6 +2535,7 @@ export default function MasterData() {
   const rawTab = urlParams.get("tab");
   const activeTab: TabId = (TABS.find((t) => t.id === rawTab)?.id ?? "items");
   const initialId = urlParams.get("id") ? Number(urlParams.get("id")) : undefined;
+  const initialCode = urlParams.get("code") ?? undefined;
 
   const handleTabChange = (tab: string) => {
     setLocation(`/master-data?tab=${tab}`);
@@ -2401,16 +2561,16 @@ export default function MasterData() {
         </TabsList>
 
         <TabsContent value="items" className="mt-0">
-          <ItemsTab initialId={activeTab === "items" ? initialId : undefined} />
+          <ItemsTab initialId={activeTab === "items" ? initialId : undefined} initialCode={activeTab === "items" ? initialCode : undefined} />
         </TabsContent>
         <TabsContent value="suppliers" className="mt-0">
-          <SuppliersTab initialId={activeTab === "suppliers" ? initialId : undefined} />
+          <SuppliersTab initialId={activeTab === "suppliers" ? initialId : undefined} initialCode={activeTab === "suppliers" ? initialCode : undefined} />
         </TabsContent>
         <TabsContent value="customers" className="mt-0">
-          <CustomersTab initialId={activeTab === "customers" ? initialId : undefined} />
+          <CustomersTab initialId={activeTab === "customers" ? initialId : undefined} initialCode={activeTab === "customers" ? initialCode : undefined} />
         </TabsContent>
         <TabsContent value="warehouses" className="mt-0">
-          <WarehousesTab initialId={activeTab === "warehouses" ? initialId : undefined} />
+          <WarehousesTab initialId={activeTab === "warehouses" ? initialId : undefined} initialCode={activeTab === "warehouses" ? initialCode : undefined} />
         </TabsContent>
         <TabsContent value="gl-accounts" className="mt-0">
           <GlAccountsTab initialId={activeTab === "gl-accounts" ? initialId : undefined} />

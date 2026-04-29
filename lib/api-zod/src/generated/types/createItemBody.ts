@@ -19,6 +19,7 @@ export interface CreateItemBody {
   barcode?: string;
   unitCost?: number;
   salesPrice?: number;
+  marketPrice?: number;
   category?: string;
   imageUrl?: string;
   isActive?: boolean;

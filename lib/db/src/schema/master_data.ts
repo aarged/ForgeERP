@@ -79,6 +79,7 @@ export const itemsTable = pgTable("items", {
   barcode: text("barcode"),
   unitCost: numeric("unit_cost", { precision: 18, scale: 4 }),
   salesPrice: numeric("sales_price", { precision: 18, scale: 4 }),
+  marketPrice: numeric("market_price", { precision: 18, scale: 4 }),
   category: text("category"),
   imageUrl: text("image_url"),
   isActive: boolean("is_active").notNull().default(true),
@@ -176,6 +177,8 @@ export const itemCrossReferencesTable = pgTable("item_cross_references", {
   refCode: text("ref_code").notNull(),
   refDescription: text("ref_description"),
   supplierId: integer("supplier_id"),
+  competitorName: text("competitor_name"),
+  competitorPrice: numeric("competitor_price", { precision: 18, scale: 4 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

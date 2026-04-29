@@ -941,6 +941,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /master-data/items/lookup:
+    get:
+      operationId: lookupItem
+      tags: [master-data]
+      summary: Look up an item by business key (code)
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string }, description: Item code (business key) }
+      responses:
+        "200":
+          description: Item found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterItemDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /master-data/items/import:
     post:
       operationId: importItems
@@ -1326,6 +1349,29 @@ paths:
         "204":
           description: Deleted
 
+  /master-data/suppliers/lookup:
+    get:
+      operationId: lookupSupplier
+      tags: [master-data]
+      summary: Look up a supplier by code (business key)
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Supplier found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterSupplierDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /master-data/suppliers:
     get:
       operationId: listSuppliers
@@ -1505,6 +1551,29 @@ paths:
         "204":
           description: Deleted
 
+  /master-data/customers/lookup:
+    get:
+      operationId: lookupCustomer
+      tags: [master-data]
+      summary: Look up a customer by code (business key)
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Customer found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterCustomerDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /master-data/customers:
     get:
       operationId: listCustomers
@@ -1619,6 +1688,23 @@ paths:
         "204":
           description: Deleted
 
+  /master-data/customers/{id}/sales-summary:
+    get:
+      operationId: getCustomerSalesSummary
+      tags: [master-data]
+      summary: Get customer sales history summary
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Customer sales summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerSalesSummary"
+
   /master-data/customers/{id}/contacts:
     post:
       operationId: createCustomerContact
@@ -1683,6 +1769,29 @@ paths:
       responses:
         "204":
           description: Deleted
+
+  /master-data/warehouses/lookup:
+    get:
+      operationId: lookupWarehouse
+      tags: [master-data]
+      summary: Look up a warehouse by code (business key)
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Warehouse found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterWarehouseDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /master-data/warehouses:
     get:
@@ -2999,6 +3108,7 @@ components:
         barcode: { type: string, nullable: true }
         unitCost: { type: string, nullable: true }
         salesPrice: { type: string, nullable: true }
+        marketPrice: { type: string, nullable: true }
         category: { type: string, nullable: true }
         imageUrl: { type: string, nullable: true }
         isActive: { type: boolean }
@@ -3039,6 +3149,8 @@ components:
         refCode: { type: string }
         refDescription: { type: string, nullable: true }
         supplierId: { type: integer, nullable: true }
+        competitorName: { type: string, nullable: true }
+        competitorPrice: { type: string, nullable: true }
 
     MasterItemDetail:
       allOf:
@@ -3085,6 +3197,7 @@ components:
         barcode: { type: string }
         unitCost: { type: number }
         salesPrice: { type: number }
+        marketPrice: { type: number }
         category: { type: string }
         imageUrl: { type: string }
         isActive: { type: boolean }
@@ -3130,6 +3243,8 @@ components:
         refCode: { type: string }
         refDescription: { type: string }
         supplierId: { type: integer }
+        competitorName: { type: string }
+        competitorPrice: { type: number }
 
     ImportItemsBody:
       type: object
@@ -3402,6 +3517,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WarehouseLocationWithStock"
+
+    CustomerSalesSummary:
+      type: object
+      properties:
+        customerId: { type: integer }
+        totalOrders: { type: integer }
+        totalRevenue: { type: number }
+        averageOrderValue: { type: number }
+        lastOrderDate: { type: string, format: date-time, nullable: true }
+        firstOrderDate: { type: string, format: date-time, nullable: true }
+        outstandingBalance: { type: number }
+        creditLimit: { type: number, nullable: true }
+        paymentTerms: { type: string, nullable: true }
+        currency: { type: string }
 
     MasterWarehouseDetail:
       allOf:

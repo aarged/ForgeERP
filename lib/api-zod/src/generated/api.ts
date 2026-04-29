@@ -825,6 +825,7 @@ export const ListItemsResponse = zod.object({
         barcode: zod.string().nullish(),
         unitCost: zod.string().nullish(),
         salesPrice: zod.string().nullish(),
+        marketPrice: zod.string().nullish(),
         category: zod.string().nullish(),
         imageUrl: zod.string().nullish(),
         isActive: zod.boolean().optional(),
@@ -852,12 +853,90 @@ export const CreateItemBody = zod.object({
   barcode: zod.string().optional(),
   unitCost: zod.number().optional(),
   salesPrice: zod.number().optional(),
+  marketPrice: zod.number().optional(),
   category: zod.string().optional(),
   imageUrl: zod.string().optional(),
   isActive: zod.boolean().optional(),
   hasVariants: zod.boolean().optional(),
   notes: zod.string().optional(),
 });
+
+/**
+ * @summary Look up an item by business key (code)
+ */
+export const LookupItemQueryParams = zod.object({
+  code: zod.coerce.string().describe("Item code (business key)"),
+});
+
+export const LookupItemResponse = zod
+  .object({
+    id: zod.number().optional(),
+    tenantId: zod.number().optional(),
+    code: zod.string().optional(),
+    name: zod.string().optional(),
+    description: zod.string().nullish(),
+    itemType: zod.string().optional(),
+    trackingType: zod.string().optional(),
+    unitOfMeasure: zod.string().nullish(),
+    packSize: zod.string().nullish(),
+    barcode: zod.string().nullish(),
+    unitCost: zod.string().nullish(),
+    salesPrice: zod.string().nullish(),
+    marketPrice: zod.string().nullish(),
+    category: zod.string().nullish(),
+    imageUrl: zod.string().nullish(),
+    isActive: zod.boolean().optional(),
+    hasVariants: zod.boolean().optional(),
+    notes: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+    updatedAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      variants: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            itemId: zod.number().optional(),
+            variantCode: zod.string().optional(),
+            name: zod.string().optional(),
+            sku: zod.string().nullish(),
+            barcode: zod.string().nullish(),
+            attributes: zod.object({}).passthrough().nullish(),
+            costAdjustment: zod.string().nullish(),
+            priceAdjustment: zod.string().nullish(),
+            isActive: zod.boolean().optional(),
+            createdAt: zod.coerce.date().optional(),
+          }),
+        )
+        .optional(),
+      attributes: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            itemId: zod.number().optional(),
+            attrKey: zod.string().optional(),
+            attrValue: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+      locations: zod.array(zod.object({}).passthrough()).optional(),
+      crossRefs: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            itemId: zod.number().optional(),
+            refType: zod.string().optional(),
+            refCode: zod.string().optional(),
+            refDescription: zod.string().nullish(),
+            supplierId: zod.number().nullish(),
+            competitorName: zod.string().nullish(),
+            competitorPrice: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+    }),
+  );
 
 /**
  * @summary Bulk import items from CSV data
@@ -913,6 +992,7 @@ export const GetItemResponse = zod
     barcode: zod.string().nullish(),
     unitCost: zod.string().nullish(),
     salesPrice: zod.string().nullish(),
+    marketPrice: zod.string().nullish(),
     category: zod.string().nullish(),
     imageUrl: zod.string().nullish(),
     isActive: zod.boolean().optional(),
@@ -960,6 +1040,8 @@ export const GetItemResponse = zod
             refCode: zod.string().optional(),
             refDescription: zod.string().nullish(),
             supplierId: zod.number().nullish(),
+            competitorName: zod.string().nullish(),
+            competitorPrice: zod.string().nullish(),
           }),
         )
         .optional(),
@@ -984,6 +1066,7 @@ export const UpdateItemBody = zod.object({
   barcode: zod.string().optional(),
   unitCost: zod.number().optional(),
   salesPrice: zod.number().optional(),
+  marketPrice: zod.number().optional(),
   category: zod.string().optional(),
   imageUrl: zod.string().optional(),
   isActive: zod.boolean().optional(),
@@ -1004,6 +1087,7 @@ export const UpdateItemResponse = zod.object({
   barcode: zod.string().nullish(),
   unitCost: zod.string().nullish(),
   salesPrice: zod.string().nullish(),
+  marketPrice: zod.string().nullish(),
   category: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
   isActive: zod.boolean().optional(),
@@ -1113,6 +1197,8 @@ export const SetItemCrossReferencesBodyItem = zod.object({
   refCode: zod.string(),
   refDescription: zod.string().optional(),
   supplierId: zod.number().optional(),
+  competitorName: zod.string().optional(),
+  competitorPrice: zod.number().optional(),
 });
 export const SetItemCrossReferencesBody = zod.array(
   SetItemCrossReferencesBodyItem,
@@ -1125,6 +1211,8 @@ export const SetItemCrossReferencesResponseItem = zod.object({
   refCode: zod.string().optional(),
   refDescription: zod.string().nullish(),
   supplierId: zod.number().nullish(),
+  competitorName: zod.string().nullish(),
+  competitorPrice: zod.string().nullish(),
 });
 export const SetItemCrossReferencesResponse = zod.array(
   SetItemCrossReferencesResponseItem,
@@ -1293,6 +1381,60 @@ export const DeleteItemLocationParams = zod.object({
   itemId: zod.coerce.number(),
   locId: zod.coerce.number(),
 });
+
+/**
+ * @summary Look up a supplier by code (business key)
+ */
+export const LookupSupplierQueryParams = zod.object({
+  code: zod.coerce.string(),
+});
+
+export const LookupSupplierResponse = zod
+  .object({
+    id: zod.number().optional(),
+    tenantId: zod.number().optional(),
+    code: zod.string().optional(),
+    name: zod.string().optional(),
+    legalName: zod.string().nullish(),
+    taxId: zod.string().nullish(),
+    abn: zod.string().nullish(),
+    email: zod.string().nullish(),
+    phone: zod.string().nullish(),
+    website: zod.string().nullish(),
+    addressLine1: zod.string().nullish(),
+    city: zod.string().nullish(),
+    state: zod.string().nullish(),
+    postalCode: zod.string().nullish(),
+    country: zod.string().nullish(),
+    paymentTerms: zod.string().nullish(),
+    currency: zod.string().optional(),
+    pricingTier: zod.string().nullish(),
+    creditLimit: zod.string().nullish(),
+    onTimeDeliveryPct: zod.string().nullish(),
+    fillRatePct: zod.string().nullish(),
+    isActive: zod.boolean().optional(),
+    notes: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+    updatedAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      contacts: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            firstName: zod.string().optional(),
+            lastName: zod.string().nullish(),
+            email: zod.string().nullish(),
+            phone: zod.string().nullish(),
+            role: zod.string().nullish(),
+            isPrimary: zod.boolean().optional(),
+            createdAt: zod.coerce.date().optional(),
+          }),
+        )
+        .optional(),
+    }),
+  );
 
 /**
  * @summary List suppliers
@@ -1562,6 +1704,60 @@ export const DeleteSupplierContactParams = zod.object({
 });
 
 /**
+ * @summary Look up a customer by code (business key)
+ */
+export const LookupCustomerQueryParams = zod.object({
+  code: zod.coerce.string(),
+});
+
+export const LookupCustomerResponse = zod
+  .object({
+    id: zod.number().optional(),
+    tenantId: zod.number().optional(),
+    code: zod.string().optional(),
+    name: zod.string().optional(),
+    legalName: zod.string().nullish(),
+    taxId: zod.string().nullish(),
+    abn: zod.string().nullish(),
+    email: zod.string().nullish(),
+    phone: zod.string().nullish(),
+    website: zod.string().nullish(),
+    billingAddressLine1: zod.string().nullish(),
+    billingCity: zod.string().nullish(),
+    billingState: zod.string().nullish(),
+    billingPostalCode: zod.string().nullish(),
+    billingCountry: zod.string().nullish(),
+    shippingAddressLine1: zod.string().nullish(),
+    shippingCity: zod.string().nullish(),
+    creditLimit: zod.string().nullish(),
+    paymentTerms: zod.string().nullish(),
+    currency: zod.string().optional(),
+    pricingTier: zod.string().nullish(),
+    isActive: zod.boolean().optional(),
+    notes: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+    updatedAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      contacts: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            firstName: zod.string().optional(),
+            lastName: zod.string().nullish(),
+            email: zod.string().nullish(),
+            phone: zod.string().nullish(),
+            role: zod.string().nullish(),
+            isPrimary: zod.boolean().optional(),
+            createdAt: zod.coerce.date().optional(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
  * @summary List customers
  */
 export const listCustomersQueryPageDefault = 1;
@@ -1769,6 +1965,26 @@ export const DeleteCustomerParams = zod.object({
 });
 
 /**
+ * @summary Get customer sales history summary
+ */
+export const GetCustomerSalesSummaryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetCustomerSalesSummaryResponse = zod.object({
+  customerId: zod.number().optional(),
+  totalOrders: zod.number().optional(),
+  totalRevenue: zod.number().optional(),
+  averageOrderValue: zod.number().optional(),
+  lastOrderDate: zod.coerce.date().nullish(),
+  firstOrderDate: zod.coerce.date().nullish(),
+  outstandingBalance: zod.number().optional(),
+  creditLimit: zod.number().nullish(),
+  paymentTerms: zod.string().nullish(),
+  currency: zod.string().optional(),
+});
+
+/**
  * @summary Add a contact to a customer
  */
 export const CreateCustomerContactParams = zod.object({
@@ -1819,6 +2035,48 @@ export const DeleteCustomerContactParams = zod.object({
   customerId: zod.coerce.number(),
   contactId: zod.coerce.number(),
 });
+
+/**
+ * @summary Look up a warehouse by code (business key)
+ */
+export const LookupWarehouseQueryParams = zod.object({
+  code: zod.coerce.string(),
+});
+
+export const LookupWarehouseResponse = zod
+  .object({
+    id: zod.number().optional(),
+    tenantId: zod.number().optional(),
+    name: zod.string().optional(),
+    code: zod.string().nullish(),
+    addressLine1: zod.string().nullish(),
+    city: zod.string().nullish(),
+    state: zod.string().nullish(),
+    country: zod.string().nullish(),
+    isDefault: zod.string().optional(),
+    isActive: zod.boolean().optional(),
+    notes: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+    updatedAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      locations: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            warehouseId: zod.number().optional(),
+            parentId: zod.number().nullish(),
+            code: zod.string().optional(),
+            name: zod.string().optional(),
+            locationType: zod.string().optional(),
+            description: zod.string().nullish(),
+            isActive: zod.boolean().optional(),
+          }),
+        )
+        .optional(),
+    }),
+  );
 
 /**
  * @summary List warehouses

@@ -42,6 +42,7 @@ import type {
   CsvUploadResult,
   CurrentUser,
   CustomerListResponse,
+  CustomerSalesSummary,
   ErrorResponse,
   GetAdminAuditLogsParams,
   GetMasterDataAuditTrailParams,
@@ -64,6 +65,10 @@ import type {
   ListItemsParams,
   ListSuppliersParams,
   ListWarehousesParams,
+  LookupCustomerParams,
+  LookupItemParams,
+  LookupSupplierParams,
+  LookupWarehouseParams,
   MasterContact,
   MasterCustomer,
   MasterCustomerDetail,
@@ -2391,6 +2396,103 @@ export const useCreateItem = <
 };
 
 /**
+ * @summary Look up an item by business key (code)
+ */
+export const getLookupItemUrl = (params: LookupItemParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/master-data/items/lookup?${stringifiedParams}`
+    : `/api/master-data/items/lookup`;
+};
+
+export const lookupItem = async (
+  params: LookupItemParams,
+  options?: RequestInit,
+): Promise<MasterItemDetail> => {
+  return customFetch<MasterItemDetail>(getLookupItemUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getLookupItemQueryKey = (params?: LookupItemParams) => {
+  return [
+    `/api/master-data/items/lookup`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getLookupItemQueryOptions = <
+  TData = Awaited<ReturnType<typeof lookupItem>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: LookupItemParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof lookupItem>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getLookupItemQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof lookupItem>>> = ({
+    signal,
+  }) => lookupItem(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof lookupItem>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type LookupItemQueryResult = NonNullable<
+  Awaited<ReturnType<typeof lookupItem>>
+>;
+export type LookupItemQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Look up an item by business key (code)
+ */
+
+export function useLookupItem<
+  TData = Awaited<ReturnType<typeof lookupItem>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: LookupItemParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof lookupItem>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getLookupItemQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Bulk import items from CSV data
  */
 export const getImportItemsUrl = () => {
@@ -3894,6 +3996,103 @@ export const useDeleteItemLocation = <
 };
 
 /**
+ * @summary Look up a supplier by code (business key)
+ */
+export const getLookupSupplierUrl = (params: LookupSupplierParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/master-data/suppliers/lookup?${stringifiedParams}`
+    : `/api/master-data/suppliers/lookup`;
+};
+
+export const lookupSupplier = async (
+  params: LookupSupplierParams,
+  options?: RequestInit,
+): Promise<MasterSupplierDetail> => {
+  return customFetch<MasterSupplierDetail>(getLookupSupplierUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getLookupSupplierQueryKey = (params?: LookupSupplierParams) => {
+  return [
+    `/api/master-data/suppliers/lookup`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getLookupSupplierQueryOptions = <
+  TData = Awaited<ReturnType<typeof lookupSupplier>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: LookupSupplierParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof lookupSupplier>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getLookupSupplierQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof lookupSupplier>>> = ({
+    signal,
+  }) => lookupSupplier(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof lookupSupplier>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type LookupSupplierQueryResult = NonNullable<
+  Awaited<ReturnType<typeof lookupSupplier>>
+>;
+export type LookupSupplierQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Look up a supplier by code (business key)
+ */
+
+export function useLookupSupplier<
+  TData = Awaited<ReturnType<typeof lookupSupplier>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: LookupSupplierParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof lookupSupplier>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getLookupSupplierQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary List suppliers
  */
 export const getListSuppliersUrl = (params?: ListSuppliersParams) => {
@@ -4609,6 +4808,103 @@ export const useDeleteSupplierContact = <
 };
 
 /**
+ * @summary Look up a customer by code (business key)
+ */
+export const getLookupCustomerUrl = (params: LookupCustomerParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/master-data/customers/lookup?${stringifiedParams}`
+    : `/api/master-data/customers/lookup`;
+};
+
+export const lookupCustomer = async (
+  params: LookupCustomerParams,
+  options?: RequestInit,
+): Promise<MasterCustomerDetail> => {
+  return customFetch<MasterCustomerDetail>(getLookupCustomerUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getLookupCustomerQueryKey = (params?: LookupCustomerParams) => {
+  return [
+    `/api/master-data/customers/lookup`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getLookupCustomerQueryOptions = <
+  TData = Awaited<ReturnType<typeof lookupCustomer>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: LookupCustomerParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof lookupCustomer>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getLookupCustomerQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof lookupCustomer>>> = ({
+    signal,
+  }) => lookupCustomer(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof lookupCustomer>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type LookupCustomerQueryResult = NonNullable<
+  Awaited<ReturnType<typeof lookupCustomer>>
+>;
+export type LookupCustomerQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Look up a customer by code (business key)
+ */
+
+export function useLookupCustomer<
+  TData = Awaited<ReturnType<typeof lookupCustomer>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: LookupCustomerParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof lookupCustomer>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getLookupCustomerQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary List customers
  */
 export const getListCustomersUrl = (params?: ListCustomersParams) => {
@@ -5047,6 +5343,95 @@ export const useDeleteCustomer = <
 };
 
 /**
+ * @summary Get customer sales history summary
+ */
+export const getGetCustomerSalesSummaryUrl = (id: number) => {
+  return `/api/master-data/customers/${id}/sales-summary`;
+};
+
+export const getCustomerSalesSummary = async (
+  id: number,
+  options?: RequestInit,
+): Promise<CustomerSalesSummary> => {
+  return customFetch<CustomerSalesSummary>(getGetCustomerSalesSummaryUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCustomerSalesSummaryQueryKey = (id: number) => {
+  return [`/api/master-data/customers/${id}/sales-summary`] as const;
+};
+
+export const getGetCustomerSalesSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCustomerSalesSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCustomerSalesSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCustomerSalesSummaryQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCustomerSalesSummary>>
+  > = ({ signal }) =>
+    getCustomerSalesSummary(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCustomerSalesSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCustomerSalesSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCustomerSalesSummary>>
+>;
+export type GetCustomerSalesSummaryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get customer sales history summary
+ */
+
+export function useGetCustomerSalesSummary<
+  TData = Awaited<ReturnType<typeof getCustomerSalesSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCustomerSalesSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCustomerSalesSummaryQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Add a contact to a customer
  */
 export const getCreateCustomerContactUrl = (id: number) => {
@@ -5322,6 +5707,103 @@ export const useDeleteCustomerContact = <
 > => {
   return useMutation(getDeleteCustomerContactMutationOptions(options));
 };
+
+/**
+ * @summary Look up a warehouse by code (business key)
+ */
+export const getLookupWarehouseUrl = (params: LookupWarehouseParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/master-data/warehouses/lookup?${stringifiedParams}`
+    : `/api/master-data/warehouses/lookup`;
+};
+
+export const lookupWarehouse = async (
+  params: LookupWarehouseParams,
+  options?: RequestInit,
+): Promise<MasterWarehouseDetail> => {
+  return customFetch<MasterWarehouseDetail>(getLookupWarehouseUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getLookupWarehouseQueryKey = (params?: LookupWarehouseParams) => {
+  return [
+    `/api/master-data/warehouses/lookup`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getLookupWarehouseQueryOptions = <
+  TData = Awaited<ReturnType<typeof lookupWarehouse>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: LookupWarehouseParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof lookupWarehouse>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getLookupWarehouseQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof lookupWarehouse>>> = ({
+    signal,
+  }) => lookupWarehouse(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof lookupWarehouse>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type LookupWarehouseQueryResult = NonNullable<
+  Awaited<ReturnType<typeof lookupWarehouse>>
+>;
+export type LookupWarehouseQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Look up a warehouse by code (business key)
+ */
+
+export function useLookupWarehouse<
+  TData = Awaited<ReturnType<typeof lookupWarehouse>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: LookupWarehouseParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof lookupWarehouse>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getLookupWarehouseQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List warehouses

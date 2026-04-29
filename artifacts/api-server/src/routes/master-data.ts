@@ -186,6 +186,7 @@ const itemCreateSchema = z.object({
   barcode: z.string().optional(),
   unitCost: z.coerce.number().optional(),
   salesPrice: z.coerce.number().optional(),
+  marketPrice: z.coerce.number().optional(),
   category: z.string().optional(),
   imageUrl: z.string().optional(),
   isActive: z.boolean().default(true),
@@ -377,6 +378,8 @@ router.put(
       refCode: z.string().min(1),
       refDescription: z.string().optional(),
       supplierId: z.number().optional(),
+      competitorName: z.string().optional(),
+      competitorPrice: z.number().optional(),
     }));
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
@@ -384,7 +387,12 @@ router.put(
     await withTenantDb(tenantId, async (db) => {
       await db.delete(itemCrossReferencesTable).where(and(eq(itemCrossReferencesTable.itemId, itemId), eq(itemCrossReferencesTable.tenantId, tenantId)));
       if (parsed.data.length > 0) {
-        await db.insert(itemCrossReferencesTable).values(parsed.data.map((r) => ({ ...r, itemId, tenantId })));
+        await db.insert(itemCrossReferencesTable).values(parsed.data.map((r) => ({
+          ...r,
+          competitorPrice: r.competitorPrice != null ? String(r.competitorPrice) : undefined,
+          itemId,
+          tenantId,
+        })));
       }
     });
 
@@ -392,6 +400,33 @@ router.put(
       db.select().from(itemCrossReferencesTable).where(and(eq(itemCrossReferencesTable.itemId, itemId), eq(itemCrossReferencesTable.tenantId, tenantId))),
     );
     res.json(refs);
+  },
+);
+
+// Item business-key lookup
+router.get(
+  "/master-data/items/lookup",
+  ...tenantUserMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId } = req as TenantRequest;
+    const code = req.query.code ? String(req.query.code).trim() : "";
+    if (!code) { res.status(400).json({ error: "code query param required" }); return; }
+
+    const items = await withTenantDb(tenantId, (db) =>
+      db.select().from(itemsTable)
+        .where(and(eq(itemsTable.code, code), eq(itemsTable.tenantId, tenantId), isNull(itemsTable.deletedAt)))
+        .limit(1),
+    );
+    if (!items[0]) { res.status(404).json({ error: "Item not found" }); return; }
+
+    const id = items[0].id;
+    const [variants, attributes, locations, crossRefs] = await Promise.all([
+      withTenantDb(tenantId, (db) => db.select().from(itemVariantsTable).where(and(eq(itemVariantsTable.itemId, id), eq(itemVariantsTable.tenantId, tenantId))).orderBy(asc(itemVariantsTable.variantCode))),
+      withTenantDb(tenantId, (db) => db.select().from(itemAttributesTable).where(and(eq(itemAttributesTable.itemId, id), eq(itemAttributesTable.tenantId, tenantId)))),
+      withTenantDb(tenantId, (db) => db.select().from(itemLocationsTable).where(and(eq(itemLocationsTable.itemId, id), eq(itemLocationsTable.tenantId, tenantId)))),
+      withTenantDb(tenantId, (db) => db.select().from(itemCrossReferencesTable).where(and(eq(itemCrossReferencesTable.itemId, id), eq(itemCrossReferencesTable.tenantId, tenantId)))),
+    ]);
+    res.json({ ...items[0], variants, attributes, locations, crossRefs });
   },
 );
 
@@ -658,6 +693,26 @@ router.delete(
 // ════════════════════════════════════════════════════════════════════════════
 
 router.get(
+  "/master-data/suppliers/lookup",
+  ...tenantUserMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId } = req as TenantRequest;
+    const code = req.query.code ? String(req.query.code).trim() : "";
+    if (!code) { res.status(400).json({ error: "code query param required" }); return; }
+
+    const rows = await withTenantDb(tenantId, (db) =>
+      db.select().from(suppliersTable).where(and(eq(suppliersTable.code, code), eq(suppliersTable.tenantId, tenantId), isNull(suppliersTable.deletedAt))).limit(1),
+    );
+    if (!rows[0]) { res.status(404).json({ error: "Supplier not found" }); return; }
+
+    const contacts = await withTenantDb(tenantId, (db) =>
+      db.select().from(supplierContactsTable).where(and(eq(supplierContactsTable.supplierId, rows[0]!.id), eq(supplierContactsTable.tenantId, tenantId))),
+    );
+    res.json({ ...rows[0], contacts });
+  },
+);
+
+router.get(
   "/master-data/suppliers",
   ...tenantUserMiddleware,
   async (req: Request, res: Response): Promise<void> => {
@@ -889,6 +944,55 @@ router.delete(
 // ════════════════════════════════════════════════════════════════════════════
 
 router.get(
+  "/master-data/customers/lookup",
+  ...tenantUserMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId } = req as TenantRequest;
+    const code = req.query.code ? String(req.query.code).trim() : "";
+    if (!code) { res.status(400).json({ error: "code query param required" }); return; }
+
+    const rows = await withTenantDb(tenantId, (db) =>
+      db.select().from(customersTable).where(and(eq(customersTable.code, code), eq(customersTable.tenantId, tenantId), isNull(customersTable.deletedAt))).limit(1),
+    );
+    if (!rows[0]) { res.status(404).json({ error: "Customer not found" }); return; }
+
+    const contacts = await withTenantDb(tenantId, (db) =>
+      db.select().from(customerContactsTable).where(and(eq(customerContactsTable.customerId, rows[0]!.id), eq(customerContactsTable.tenantId, tenantId))),
+    );
+    res.json({ ...rows[0], contacts });
+  },
+);
+
+router.get(
+  "/master-data/customers/:id/sales-summary",
+  ...tenantUserMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId } = req as TenantRequest;
+    const id = Number(req.params.id);
+    if (!id) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const customers = await withTenantDb(tenantId, (db) =>
+      db.select().from(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId), isNull(customersTable.deletedAt))).limit(1),
+    );
+    if (!customers[0]) { res.status(404).json({ error: "Customer not found" }); return; }
+
+    const customer = customers[0];
+    res.json({
+      customerId: id,
+      totalOrders: 0,
+      totalRevenue: 0,
+      averageOrderValue: 0,
+      lastOrderDate: null,
+      firstOrderDate: null,
+      outstandingBalance: 0,
+      creditLimit: customer.creditLimit ? Number(customer.creditLimit) : null,
+      paymentTerms: customer.paymentTerms ?? null,
+      currency: customer.currency ?? "USD",
+    });
+  },
+);
+
+router.get(
   "/master-data/customers",
   ...tenantUserMiddleware,
   async (req: Request, res: Response): Promise<void> => {
@@ -1108,6 +1212,26 @@ router.delete(
 // ════════════════════════════════════════════════════════════════════════════
 //  WAREHOUSES
 // ════════════════════════════════════════════════════════════════════════════
+
+router.get(
+  "/master-data/warehouses/lookup",
+  ...tenantUserMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId } = req as TenantRequest;
+    const code = req.query.code ? String(req.query.code).trim() : "";
+    if (!code) { res.status(400).json({ error: "code query param required" }); return; }
+
+    const rows = await withTenantDb(tenantId, (db) =>
+      db.select().from(warehousesTable).where(and(eq(warehousesTable.code, code), eq(warehousesTable.tenantId, tenantId), isNull(warehousesTable.deletedAt))).limit(1),
+    );
+    if (!rows[0]) { res.status(404).json({ error: "Warehouse not found" }); return; }
+
+    const locations = await withTenantDb(tenantId, (db) =>
+      db.select().from(warehouseLocationsTable).where(and(eq(warehouseLocationsTable.warehouseId, rows[0]!.id), eq(warehouseLocationsTable.tenantId, tenantId))).orderBy(asc(warehouseLocationsTable.code)),
+    );
+    res.json({ ...rows[0], locations });
+  },
+);
 
 router.get(
   "/master-data/warehouses",
