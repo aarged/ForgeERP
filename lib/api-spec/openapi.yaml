@@ -3778,6 +3778,18 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/DespatchDetail" }
         "404": { description: Not found }
+    delete:
+      operationId: cancelDespatch
+      summary: Cancel (delete) a draft despatch
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Cancelled }
+        "400": { description: Cannot cancel non-draft despatch }
+        "404": { description: Not found }
 
   /sales/despatches/{id}/confirm:
     post:
@@ -3848,6 +3860,18 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CustomerInvoiceDetail" }
+        "404": { description: Not found }
+    delete:
+      operationId: voidInvoice
+      summary: Void (delete) a draft invoice
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Voided }
+        "400": { description: Cannot void non-draft invoice }
         "404": { description: Not found }
 
   /sales/invoices/{id}/send:
@@ -3978,6 +4002,18 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RmaDetail" }
+        "404": { description: Not found }
+    delete:
+      operationId: cancelRma
+      summary: Cancel (delete) a pending RMA
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Cancelled }
+        "400": { description: Cannot cancel received/processed RMA }
         "404": { description: Not found }
 
   /sales/rma/{id}/authorize:
@@ -4195,48 +4231,6 @@ paths:
               schema: { type: string }
         "404": { description: Not found }
 
-  /sales/despatches/{id}/delete:
-    delete:
-      operationId: cancelDespatch
-      summary: Cancel (delete) a draft despatch
-      tags: [Sales]
-      security: [{ clerkAuth: [] }]
-      parameters:
-        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
-        - { in: path, name: id, required: true, schema: { type: integer } }
-      responses:
-        "204": { description: Cancelled }
-        "400": { description: Cannot cancel non-draft despatch }
-        "404": { description: Not found }
-
-  /sales/invoices/{id}/void:
-    delete:
-      operationId: voidInvoice
-      summary: Void (delete) a draft invoice
-      tags: [Sales]
-      security: [{ clerkAuth: [] }]
-      parameters:
-        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
-        - { in: path, name: id, required: true, schema: { type: integer } }
-      responses:
-        "204": { description: Voided }
-        "400": { description: Cannot void non-draft invoice }
-        "404": { description: Not found }
-
-  /sales/rma/{id}/cancel:
-    delete:
-      operationId: cancelRma
-      summary: Cancel (delete) a pending RMA
-      tags: [Sales]
-      security: [{ clerkAuth: [] }]
-      parameters:
-        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
-        - { in: path, name: id, required: true, schema: { type: integer } }
-      responses:
-        "204": { description: Cancelled }
-        "400": { description: Cannot cancel received/processed RMA }
-        "404": { description: Not found }
-
   /sales/reports/by-item:
     get:
       operationId: reportSalesByItem
@@ -4341,6 +4335,66 @@ paths:
                   totalBilled: { type: number }
                   totalPaid: { type: number }
                   balance: { type: number }
+
+  /sales/reports/by-rep:
+    get:
+      operationId: reportSalesByRep
+      summary: Sales analysis by sales rep (orders, revenue)
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Sales by rep
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    salesRepId: { type: string, nullable: true }
+                    salesRepName: { type: string }
+                    orderCount: { type: integer }
+                    totalOrders: { type: number }
+
+  /sales/alternatives:
+    get:
+      operationId: getSalesAlternatives
+      summary: Alternative item suggestions with available stock
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: itemId, required: true, schema: { type: integer } }
+        - { in: query, name: warehouseId, schema: { type: integer } }
+      responses:
+        "200":
+          description: Alternative items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  referenceItem:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      code: { type: string }
+                  alternatives:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        code: { type: string }
+                        name: { type: string }
+                        qtyOnHand: { type: number }
+                        qtyAvailable: { type: number }
+        "404": { description: Item not found }
 
   /notifications:
     get:

@@ -2936,6 +2936,41 @@ export type ReportCustomerStatement200 = {
   balance?: number;
 };
 
+export type ReportSalesByRepParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type ReportSalesByRep200Item = {
+  salesRepId?: string | null;
+  salesRepName?: string;
+  orderCount?: number;
+  totalOrders?: number;
+};
+
+export type GetSalesAlternativesParams = {
+  itemId: number;
+  warehouseId?: number;
+};
+
+export type GetSalesAlternatives200ReferenceItem = {
+  id?: number;
+  code?: string;
+};
+
+export type GetSalesAlternatives200AlternativesItem = {
+  id?: number;
+  code?: string;
+  name?: string;
+  qtyOnHand?: number;
+  qtyAvailable?: number;
+};
+
+export type GetSalesAlternatives200 = {
+  referenceItem?: GetSalesAlternatives200ReferenceItem;
+  alternatives?: GetSalesAlternatives200AlternativesItem[];
+};
+
 export type ListNotificationsParams = {
   unreadOnly?: ListNotificationsUnreadOnly;
   page?: number;

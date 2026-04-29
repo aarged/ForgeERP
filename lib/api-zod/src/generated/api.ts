@@ -5070,6 +5070,17 @@ export const GetDespatchResponse = zod
   );
 
 /**
+ * @summary Cancel (delete) a draft despatch
+ */
+export const CancelDespatchParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CancelDespatchHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
  * @summary Confirm despatch — posts inventory and GL
  */
 export const ConfirmDespatchParams = zod.object({
@@ -5228,6 +5239,17 @@ export const GetCustomerInvoiceResponse = zod
         .optional(),
     }),
   );
+
+/**
+ * @summary Void (delete) a draft invoice
+ */
+export const VoidInvoiceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const VoidInvoiceHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
 
 /**
  * @summary Send customer invoice by email
@@ -5506,6 +5528,17 @@ export const GetRmaOrderResponse = zod
         .optional(),
     }),
   );
+
+/**
+ * @summary Cancel (delete) a pending RMA
+ */
+export const CancelRmaParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CancelRmaHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
 
 /**
  * @summary Authorize RMA order
@@ -5849,39 +5882,6 @@ export const GetDespatchPdfHeader = zod.object({
 });
 
 /**
- * @summary Cancel (delete) a draft despatch
- */
-export const CancelDespatchParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const CancelDespatchHeader = zod.object({
-  "x-tenant-id": zod.number(),
-});
-
-/**
- * @summary Void (delete) a draft invoice
- */
-export const VoidInvoiceParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const VoidInvoiceHeader = zod.object({
-  "x-tenant-id": zod.number(),
-});
-
-/**
- * @summary Cancel (delete) a pending RMA
- */
-export const CancelRmaParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const CancelRmaHeader = zod.object({
-  "x-tenant-id": zod.number(),
-});
-
-/**
  * @summary Sales analysis by item (revenue, qty, invoice count)
  */
 export const ReportSalesByItemQueryParams = zod.object({
@@ -5993,6 +5993,58 @@ export const ReportCustomerStatementResponse = zod.object({
   totalBilled: zod.number().optional(),
   totalPaid: zod.number().optional(),
   balance: zod.number().optional(),
+});
+
+/**
+ * @summary Sales analysis by sales rep (orders, revenue)
+ */
+export const ReportSalesByRepQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ReportSalesByRepHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportSalesByRepResponseItem = zod.object({
+  salesRepId: zod.string().nullish(),
+  salesRepName: zod.string().optional(),
+  orderCount: zod.number().optional(),
+  totalOrders: zod.number().optional(),
+});
+export const ReportSalesByRepResponse = zod.array(ReportSalesByRepResponseItem);
+
+/**
+ * @summary Alternative item suggestions with available stock
+ */
+export const GetSalesAlternativesQueryParams = zod.object({
+  itemId: zod.coerce.number(),
+  warehouseId: zod.coerce.number().optional(),
+});
+
+export const GetSalesAlternativesHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetSalesAlternativesResponse = zod.object({
+  referenceItem: zod
+    .object({
+      id: zod.number().optional(),
+      code: zod.string().optional(),
+    })
+    .optional(),
+  alternatives: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        name: zod.string().optional(),
+        qtyOnHand: zod.number().optional(),
+        qtyAvailable: zod.number().optional(),
+      }),
+    )
+    .optional(),
 });
 
 /**
