@@ -2050,6 +2050,19 @@ export type ListPurchaseOrdersParams = {
   limit?: number;
 };
 
+export type GeneratePurchaseOrderPdfBody = {
+  /** If provided, dispatch PDF to this email address */
+  dispatchEmail?: string;
+};
+
+export type GeneratePurchaseOrderPdf200 = {
+  /** Base64-encoded PDF content */
+  pdfBase64?: string;
+  filename?: string;
+  dispatched?: boolean;
+  dispatchEmail?: string | null;
+};
+
 export type ListReceiptsParams = {
   poId?: number;
   status?: string;
@@ -2057,11 +2070,38 @@ export type ListReceiptsParams = {
   limit?: number;
 };
 
+export type UpdateReceiptBody = {
+  warehouseId?: number | null;
+  locationId?: number | null;
+  supplierDeliveryRef?: string;
+  notes?: string;
+};
+
+export type GetReceiptGlPreview200LinesItem = {
+  accountCode?: string;
+  accountName?: string;
+  debit?: number;
+  credit?: number;
+  description?: string;
+};
+
+export type GetReceiptGlPreview200 = {
+  lines?: GetReceiptGlPreview200LinesItem[];
+  totalDebit?: string;
+  totalCredit?: string;
+};
+
 export type ListReturnsParams = {
   poId?: number;
   status?: string;
   page?: number;
   limit?: number;
+};
+
+export type UpdateReturnBody = {
+  warehouseId?: number | null;
+  reason?: string;
+  notes?: string;
 };
 
 export type ListGlPostingsParams = {

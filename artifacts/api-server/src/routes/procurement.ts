@@ -205,6 +205,60 @@ async function postInventoryReceipt(tenantId: number, receiptId: number, postedB
   }
 }
 
+/**
+ * Select the most specific matching approval workflow for an entity.
+ * Evaluates triggerRules: valueAbove, supplierIds, warehouseIds, itemCategories.
+ * Returns the first workflow whose rules all match, or null if no workflow matches.
+ */
+async function selectWorkflow(
+  tenantId: number,
+  entityType: "purchase_requisition" | "purchase_order",
+  context: {
+    totalValue?: number | string | null;
+    supplierId?: number | null;
+    warehouseId?: number | null;
+    /** Item categories from lines */
+    lineCategories?: string[];
+  },
+): Promise<typeof approvalWorkflowsTable.$inferSelect | null> {
+  const workflows = await withTenantDb(tenantId, (db) =>
+    db.select().from(approvalWorkflowsTable)
+      .where(and(
+        eq(approvalWorkflowsTable.tenantId, tenantId),
+        eq(approvalWorkflowsTable.entityType, entityType),
+        eq(approvalWorkflowsTable.isActive, true),
+      )));
+
+  for (const w of workflows) {
+    const rules = (w.triggerRules ?? {}) as {
+      valueAbove?: number;
+      supplierIds?: number[];
+      warehouseIds?: number[];
+      itemCategories?: string[];
+    };
+
+    // Value threshold filter
+    if (rules.valueAbove !== undefined && (context.totalValue === undefined || context.totalValue === null || Number(context.totalValue) < rules.valueAbove)) continue;
+    // Supplier filter
+    if (rules.supplierIds && rules.supplierIds.length > 0 && (!context.supplierId || !rules.supplierIds.includes(context.supplierId))) continue;
+    // Warehouse filter
+    if (rules.warehouseIds && rules.warehouseIds.length > 0 && (!context.warehouseId || !rules.warehouseIds.includes(context.warehouseId))) continue;
+    // Item category filter — any line's category must be in the list
+    if (rules.itemCategories && rules.itemCategories.length > 0) {
+      const hasMatchingCategory = (context.lineCategories ?? []).some((cat) => rules.itemCategories!.includes(cat));
+      if (!hasMatchingCategory) continue;
+    }
+
+    return w;
+  }
+  // No rule-matching workflow found — fall back to any unconstrained active workflow
+  const unconstrained = workflows.find((w) => {
+    const rules = (w.triggerRules ?? {}) as { valueAbove?: number; supplierIds?: number[]; warehouseIds?: number[]; itemCategories?: string[] };
+    return !rules.valueAbove && (!rules.supplierIds?.length) && (!rules.warehouseIds?.length) && (!rules.itemCategories?.length);
+  });
+  return unconstrained ?? null;
+}
+
 /** Resolve a GL account for a tenant by ID (with fallback code/name when not configured). */
 async function resolveGlAccount(tenantId: number, glAccountId: number | null | undefined, fallbackCode: string, fallbackName: string) {
   if (glAccountId) {
@@ -798,11 +852,25 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
   if (!req_) { res.status(404).json({ error: "Requisition not found" }); return; }
   if (!["draft", "returned"].includes(req_.status)) { res.status(400).json({ error: `Cannot submit a requisition with status: ${req_.status}` }); return; }
 
-  // Find applicable workflow
-  const workflows = await withTenantDb(tenantId, (db) =>
-    db.select().from(approvalWorkflowsTable)
-      .where(and(eq(approvalWorkflowsTable.tenantId, tenantId), eq(approvalWorkflowsTable.entityType, "purchase_requisition"), eq(approvalWorkflowsTable.isActive, true))));
-  const workflow = workflows[0];
+  // Gather line item categories for workflow rule matching
+  const reqLines = await withTenantDb(tenantId, (db) =>
+    db.select({ itemId: requisitionLinesTable.itemId }).from(requisitionLinesTable)
+      .where(and(eq(requisitionLinesTable.requisitionId, id), eq(requisitionLinesTable.tenantId, tenantId))));
+  const lineItemIds = reqLines.map((l) => l.itemId).filter(Boolean) as number[];
+  const lineItems = lineItemIds.length > 0
+    ? await withTenantDb(tenantId, (db) =>
+        db.select({ category: itemsTable.category }).from(itemsTable)
+          .where(and(inArray(itemsTable.id, lineItemIds), eq(itemsTable.tenantId, tenantId))))
+    : [];
+  const lineCategories = lineItems.map((i) => i.category).filter(Boolean) as string[];
+
+  // Select workflow based on trigger rules (value, supplier, warehouse, category)
+  const workflow = await selectWorkflow(tenantId, "purchase_requisition", {
+    totalValue: req_.totalEstimated,
+    supplierId: req_.preferredSupplierId,
+    warehouseId: req_.deliverToWarehouseId,
+    lineCategories,
+  });
 
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(purchaseRequisitionsTable)
@@ -1186,13 +1254,25 @@ router.post("/procurement/purchase-orders/:id/submit", ...tenantWriteMiddleware,
   if (!po) { res.status(404).json({ error: "PO not found" }); return; }
   if (!["draft", "returned"].includes(po.status)) { res.status(400).json({ error: `Cannot submit a PO with status: ${po.status}` }); return; }
 
-  const workflows = await withTenantDb(tenantId, (db) =>
-    db.select().from(approvalWorkflowsTable)
-      .where(and(eq(approvalWorkflowsTable.tenantId, tenantId), eq(approvalWorkflowsTable.entityType, "purchase_order"), eq(approvalWorkflowsTable.isActive, true))));
-  const workflow = workflows.find((w) => {
-    const rules = w.triggerRules as { valueAbove?: number };
-    return !rules?.valueAbove || Number(po.total) >= rules.valueAbove;
-  }) ?? workflows[0];
+  // Gather line item categories for workflow rule matching
+  const poLinesForWf = await withTenantDb(tenantId, (db) =>
+    db.select({ itemId: poLinesTable.itemId }).from(poLinesTable)
+      .where(and(eq(poLinesTable.poId, id), eq(poLinesTable.tenantId, tenantId))));
+  const poLineItemIds = poLinesForWf.map((l) => l.itemId).filter(Boolean) as number[];
+  const poLineItems = poLineItemIds.length > 0
+    ? await withTenantDb(tenantId, (db) =>
+        db.select({ category: itemsTable.category }).from(itemsTable)
+          .where(and(inArray(itemsTable.id, poLineItemIds), eq(itemsTable.tenantId, tenantId))))
+    : [];
+  const poLineCategories = poLineItems.map((i) => i.category).filter(Boolean) as string[];
+
+  // Select workflow based on trigger rules (value, supplier, warehouse, category)
+  const workflow = await selectWorkflow(tenantId, "purchase_order", {
+    totalValue: po.total,
+    supplierId: po.supplierId,
+    warehouseId: po.deliverToWarehouseId,
+    lineCategories: poLineCategories,
+  });
 
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(purchaseOrdersTable)
@@ -1271,6 +1351,69 @@ router.post("/procurement/purchase-orders/:id/send", ...tenantWriteMiddleware, a
   if (!updated) { res.status(404).json({ error: "PO not found" }); return; }
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "purchase_order.sent", entityType: "purchase_order", entityId: String(id) });
   res.json(updated);
+});
+
+// Generate PO PDF document for supplier dispatch
+router.post("/procurement/purchase-orders/:id/pdf", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const { dispatchEmail } = req.body as { dispatchEmail?: string };
+
+  const [po] = await withTenantDb(tenantId, (db) =>
+    db.select().from(purchaseOrdersTable)
+      .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt)))
+      .limit(1));
+  if (!po) { res.status(404).json({ error: "PO not found" }); return; }
+
+  const lines = await withTenantDb(tenantId, (db) =>
+    db.select().from(poLinesTable)
+      .where(and(eq(poLinesTable.poId, id), eq(poLinesTable.tenantId, tenantId))));
+
+  // Generate HTML representation of the PO that can be rendered as a document
+  const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Purchase Order ${po.code}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
+  h1 { color: #1a1a1a; } table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+  th { background: #f5f5f5; font-weight: bold; }
+  .header { display: flex; justify-content: space-between; margin-bottom: 20px; }
+  .total { font-weight: bold; font-size: 1.1em; margin-top: 10px; }
+</style></head>
+<body>
+  <div class="header">
+    <div><h1>PURCHASE ORDER</h1><p><strong>${po.code}</strong></p></div>
+    <div><p>Status: ${po.status.toUpperCase()}</p><p>Date: ${new Date(po.createdAt).toLocaleDateString()}</p></div>
+  </div>
+  <p><strong>Supplier:</strong> ${po.supplierName ?? "—"}</p>
+  ${po.supplierRef ? `<p><strong>Supplier Ref:</strong> ${po.supplierRef}</p>` : ""}
+  ${po.deliveryDate ? `<p><strong>Delivery Date:</strong> ${po.deliveryDate}</p>` : ""}
+  ${po.paymentTerms ? `<p><strong>Payment Terms:</strong> ${po.paymentTerms}</p>` : ""}
+  <table>
+    <thead><tr><th>#</th><th>Item</th><th>Description</th><th>Qty</th><th>UoM</th><th>Unit Price</th><th>Total</th></tr></thead>
+    <tbody>
+      ${lines.map((l, i) => `<tr><td>${i + 1}</td><td>${l.itemCode ?? "—"}</td><td>${l.description ?? l.itemName ?? ""}</td><td>${l.quantity}</td><td>${l.unitOfMeasure ?? ""}</td><td>${Number(l.unitPrice).toFixed(2)} ${po.currencyCode}</td><td>${Number(l.lineTotal).toFixed(2)} ${po.currencyCode}</td></tr>`).join("")}
+    </tbody>
+  </table>
+  <p class="total">Total: ${Number(po.total).toFixed(2)} ${po.currencyCode}</p>
+  ${po.notes ? `<p><strong>Notes:</strong> ${po.notes}</p>` : ""}
+</body></html>`;
+
+  // Encode as base64 (client can use to render or print)
+  const pdfBase64 = Buffer.from(htmlContent).toString("base64");
+  const filename = `${po.code}.html`;
+
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "purchase_order.pdf_generated", entityType: "purchase_order", entityId: String(id), newValues: { dispatchEmail: dispatchEmail ?? null } });
+
+  // Note: actual email dispatch requires an email provider integration (e.g., SendGrid, SES).
+  // The pdfBase64 payload can be forwarded to an email API by the caller.
+  res.json({
+    pdfBase64,
+    filename,
+    dispatched: false, // email dispatch requires email provider integration
+    dispatchEmail: dispatchEmail ?? null,
+  });
 });
 
 // ── Goods Receipt ──────────────────────────────────────────────────────────────
@@ -1353,6 +1496,20 @@ router.post("/procurement/receipts", ...tenantWriteMiddleware, async (req: Reque
   await withTenantDb(tenantId, (db) => db.update(poReceiptsTable).set({ code: genCode("RCV", receiptId) }).where(eq(poReceiptsTable.id, receiptId)));
 
   if (lines.length > 0) {
+    // Security: validate every poLineId belongs to the declared poId and tenant
+    const poLineIds = lines.map((l) => l.poLineId).filter(Boolean) as number[];
+    if (poLineIds.length > 0) {
+      const validPoLines = await withTenantDb(tenantId, (db) =>
+        db.select({ id: poLinesTable.id }).from(poLinesTable)
+          .where(and(inArray(poLinesTable.id, poLineIds), eq(poLinesTable.poId, parsed.data.poId), eq(poLinesTable.tenantId, tenantId))));
+      const validIds = new Set(validPoLines.map((pl) => pl.id));
+      const invalidLine = poLineIds.find((lid) => !validIds.has(lid));
+      if (invalidLine) {
+        res.status(400).json({ error: `Line poLineId ${invalidLine} does not belong to PO ${parsed.data.poId}` });
+        return;
+      }
+    }
+
     await withTenantDb(tenantId, (db) =>
       db.insert(receiptLinesTable).values(lines.map((l) => ({
         ...l,
@@ -1401,6 +1558,45 @@ router.get("/procurement/receipts/:id/gl-preview", ...tenantUserMiddleware, asyn
   }
   glLines.push({ ...apAccount, debit: 0, credit: totalValue, description: `AP for PO receipt ${id}` });
   res.json({ lines: glLines, totalDebit: totalValue.toFixed(2), totalCredit: totalValue.toFixed(2) });
+});
+
+router.patch("/procurement/receipts/:id", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const schema = z.object({
+    warehouseId: z.number().int().optional().nullable(),
+    locationId: z.number().int().optional().nullable(),
+    supplierDeliveryRef: z.string().optional(),
+    notes: z.string().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+
+  const [existing] = await withTenantDb(tenantId, (db) =>
+    db.select({ status: poReceiptsTable.status }).from(poReceiptsTable)
+      .where(and(eq(poReceiptsTable.id, id), eq(poReceiptsTable.tenantId, tenantId))).limit(1));
+  if (!existing) { res.status(404).json({ error: "Receipt not found" }); return; }
+  if (existing.status !== "draft") { res.status(400).json({ error: "Only draft receipts can be edited" }); return; }
+
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(poReceiptsTable).set(parsed.data as Record<string, unknown>)
+      .where(and(eq(poReceiptsTable.id, id), eq(poReceiptsTable.tenantId, tenantId))).returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_receipt.updated", entityType: "po_receipt", entityId: String(id), newValues: parsed.data });
+  res.json(updated);
+});
+
+router.delete("/procurement/receipts/:id", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [existing] = await withTenantDb(tenantId, (db) =>
+    db.select({ status: poReceiptsTable.status }).from(poReceiptsTable)
+      .where(and(eq(poReceiptsTable.id, id), eq(poReceiptsTable.tenantId, tenantId))).limit(1));
+  if (!existing) { res.status(404).json({ error: "Receipt not found" }); return; }
+  if (existing.status !== "draft") { res.status(400).json({ error: "Only draft receipts can be deleted" }); return; }
+  await withTenantDb(tenantId, (db) =>
+    db.delete(poReceiptsTable).where(and(eq(poReceiptsTable.id, id), eq(poReceiptsTable.tenantId, tenantId))));
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_receipt.deleted", entityType: "po_receipt", entityId: String(id) });
+  res.status(204).send();
 });
 
 router.post("/procurement/receipts/:id/confirm", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
@@ -1563,6 +1759,44 @@ router.post("/procurement/returns", ...tenantWriteMiddleware, async (req: Reques
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_return.created", entityType: "po_return", entityId: String(retId), newValues: header });
   const full = (await withTenantDb(tenantId, (db) => db.select().from(poReturnsTable).where(eq(poReturnsTable.id, retId)).limit(1)))[0];
   res.status(201).json(full);
+});
+
+router.patch("/procurement/returns/:id", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const schema = z.object({
+    warehouseId: z.number().int().optional().nullable(),
+    reason: z.string().optional(),
+    notes: z.string().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+
+  const [existing] = await withTenantDb(tenantId, (db) =>
+    db.select({ status: poReturnsTable.status }).from(poReturnsTable)
+      .where(and(eq(poReturnsTable.id, id), eq(poReturnsTable.tenantId, tenantId))).limit(1));
+  if (!existing) { res.status(404).json({ error: "Return not found" }); return; }
+  if (existing.status !== "draft") { res.status(400).json({ error: "Only draft returns can be edited" }); return; }
+
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(poReturnsTable).set(parsed.data as Record<string, unknown>)
+      .where(and(eq(poReturnsTable.id, id), eq(poReturnsTable.tenantId, tenantId))).returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_return.updated", entityType: "po_return", entityId: String(id), newValues: parsed.data });
+  res.json(updated);
+});
+
+router.delete("/procurement/returns/:id", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [existing] = await withTenantDb(tenantId, (db) =>
+    db.select({ status: poReturnsTable.status }).from(poReturnsTable)
+      .where(and(eq(poReturnsTable.id, id), eq(poReturnsTable.tenantId, tenantId))).limit(1));
+  if (!existing) { res.status(404).json({ error: "Return not found" }); return; }
+  if (existing.status !== "draft") { res.status(400).json({ error: "Only draft returns can be deleted" }); return; }
+  await withTenantDb(tenantId, (db) =>
+    db.delete(poReturnsTable).where(and(eq(poReturnsTable.id, id), eq(poReturnsTable.tenantId, tenantId))));
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_return.deleted", entityType: "po_return", entityId: String(id) });
+  res.status(204).send();
 });
 
 router.post("/procurement/returns/:id/confirm", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {

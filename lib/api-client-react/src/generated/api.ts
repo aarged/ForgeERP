@@ -53,8 +53,11 @@ import type {
   CustomerListResponse,
   CustomerSalesSummary,
   ErrorResponse,
+  GeneratePurchaseOrderPdf200,
+  GeneratePurchaseOrderPdfBody,
   GetAdminAuditLogsParams,
   GetMasterDataAuditTrailParams,
+  GetReceiptGlPreview200,
   GlAccountListResponse,
   GlPostingList,
   GlTemplateImportBody,
@@ -132,7 +135,9 @@ import type {
   UpdateItemVariantBody,
   UpdateMemberBody,
   UpdatePurchaseOrderBody,
+  UpdateReceiptBody,
   UpdateRequisitionBody,
+  UpdateReturnBody,
   UpdateTenantBody,
   UpdateUserBody,
   UploadOnboardingCsvBody,
@@ -9304,7 +9309,7 @@ export const useDecidePurchaseOrder = <
 };
 
 /**
- * @summary Mark PO as sent to supplier
+ * @summary Mark PO as sent to supplier (only allowed from approved status)
  */
 export const getSendPurchaseOrderUrl = (id: number) => {
   return `/api/procurement/purchase-orders/${id}/send`;
@@ -9365,7 +9370,7 @@ export type SendPurchaseOrderMutationResult = NonNullable<
 export type SendPurchaseOrderMutationError = ErrorType<unknown>;
 
 /**
- * @summary Mark PO as sent to supplier
+ * @summary Mark PO as sent to supplier (only allowed from approved status)
  */
 export const useSendPurchaseOrder = <
   TError = ErrorType<unknown>,
@@ -9385,6 +9390,97 @@ export const useSendPurchaseOrder = <
   TContext
 > => {
   return useMutation(getSendPurchaseOrderMutationOptions(options));
+};
+
+/**
+ * @summary Generate PO PDF document for supplier dispatch
+ */
+export const getGeneratePurchaseOrderPdfUrl = (id: number) => {
+  return `/api/procurement/purchase-orders/${id}/pdf`;
+};
+
+export const generatePurchaseOrderPdf = async (
+  id: number,
+  generatePurchaseOrderPdfBody: GeneratePurchaseOrderPdfBody,
+  options?: RequestInit,
+): Promise<GeneratePurchaseOrderPdf200> => {
+  return customFetch<GeneratePurchaseOrderPdf200>(
+    getGeneratePurchaseOrderPdfUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(generatePurchaseOrderPdfBody),
+    },
+  );
+};
+
+export const getGeneratePurchaseOrderPdfMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generatePurchaseOrderPdf>>,
+    TError,
+    { id: number; data: BodyType<GeneratePurchaseOrderPdfBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generatePurchaseOrderPdf>>,
+  TError,
+  { id: number; data: BodyType<GeneratePurchaseOrderPdfBody> },
+  TContext
+> => {
+  const mutationKey = ["generatePurchaseOrderPdf"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generatePurchaseOrderPdf>>,
+    { id: number; data: BodyType<GeneratePurchaseOrderPdfBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return generatePurchaseOrderPdf(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GeneratePurchaseOrderPdfMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generatePurchaseOrderPdf>>
+>;
+export type GeneratePurchaseOrderPdfMutationBody =
+  BodyType<GeneratePurchaseOrderPdfBody>;
+export type GeneratePurchaseOrderPdfMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Generate PO PDF document for supplier dispatch
+ */
+export const useGeneratePurchaseOrderPdf = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generatePurchaseOrderPdf>>,
+    TError,
+    { id: number; data: BodyType<GeneratePurchaseOrderPdfBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generatePurchaseOrderPdf>>,
+  TError,
+  { id: number; data: BodyType<GeneratePurchaseOrderPdfBody> },
+  TContext
+> => {
+  return useMutation(getGeneratePurchaseOrderPdfMutationOptions(options));
 };
 
 /**
@@ -9646,6 +9742,264 @@ export function useGetReceipt<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetReceiptQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a draft receipt
+ */
+export const getUpdateReceiptUrl = (id: number) => {
+  return `/api/procurement/receipts/${id}`;
+};
+
+export const updateReceipt = async (
+  id: number,
+  updateReceiptBody: UpdateReceiptBody,
+  options?: RequestInit,
+): Promise<PoReceipt> => {
+  return customFetch<PoReceipt>(getUpdateReceiptUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateReceiptBody),
+  });
+};
+
+export const getUpdateReceiptMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateReceipt>>,
+    TError,
+    { id: number; data: BodyType<UpdateReceiptBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateReceipt>>,
+  TError,
+  { id: number; data: BodyType<UpdateReceiptBody> },
+  TContext
+> => {
+  const mutationKey = ["updateReceipt"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateReceipt>>,
+    { id: number; data: BodyType<UpdateReceiptBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateReceipt(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateReceiptMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateReceipt>>
+>;
+export type UpdateReceiptMutationBody = BodyType<UpdateReceiptBody>;
+export type UpdateReceiptMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a draft receipt
+ */
+export const useUpdateReceipt = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateReceipt>>,
+    TError,
+    { id: number; data: BodyType<UpdateReceiptBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateReceipt>>,
+  TError,
+  { id: number; data: BodyType<UpdateReceiptBody> },
+  TContext
+> => {
+  return useMutation(getUpdateReceiptMutationOptions(options));
+};
+
+/**
+ * @summary Delete a draft receipt
+ */
+export const getDeleteReceiptUrl = (id: number) => {
+  return `/api/procurement/receipts/${id}`;
+};
+
+export const deleteReceipt = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteReceiptUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteReceiptMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteReceipt>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteReceipt>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteReceipt"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteReceipt>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteReceipt(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteReceiptMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteReceipt>>
+>;
+
+export type DeleteReceiptMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a draft receipt
+ */
+export const useDeleteReceipt = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteReceipt>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteReceipt>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteReceiptMutationOptions(options));
+};
+
+/**
+ * @summary Preview GL entries that would be posted for a receipt (no commit)
+ */
+export const getGetReceiptGlPreviewUrl = (id: number) => {
+  return `/api/procurement/receipts/${id}/gl-preview`;
+};
+
+export const getReceiptGlPreview = async (
+  id: number,
+  options?: RequestInit,
+): Promise<GetReceiptGlPreview200> => {
+  return customFetch<GetReceiptGlPreview200>(getGetReceiptGlPreviewUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetReceiptGlPreviewQueryKey = (id: number) => {
+  return [`/api/procurement/receipts/${id}/gl-preview`] as const;
+};
+
+export const getGetReceiptGlPreviewQueryOptions = <
+  TData = Awaited<ReturnType<typeof getReceiptGlPreview>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReceiptGlPreview>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetReceiptGlPreviewQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getReceiptGlPreview>>
+  > = ({ signal }) => getReceiptGlPreview(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getReceiptGlPreview>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetReceiptGlPreviewQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getReceiptGlPreview>>
+>;
+export type GetReceiptGlPreviewQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Preview GL entries that would be posted for a receipt (no commit)
+ */
+
+export function useGetReceiptGlPreview<
+  TData = Awaited<ReturnType<typeof getReceiptGlPreview>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReceiptGlPreview>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReceiptGlPreviewQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -10002,6 +10356,177 @@ export function useGetReturn<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Update a draft return to vendor
+ */
+export const getUpdateReturnUrl = (id: number) => {
+  return `/api/procurement/returns/${id}`;
+};
+
+export const updateReturn = async (
+  id: number,
+  updateReturnBody: UpdateReturnBody,
+  options?: RequestInit,
+): Promise<PoReturn> => {
+  return customFetch<PoReturn>(getUpdateReturnUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateReturnBody),
+  });
+};
+
+export const getUpdateReturnMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateReturn>>,
+    TError,
+    { id: number; data: BodyType<UpdateReturnBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateReturn>>,
+  TError,
+  { id: number; data: BodyType<UpdateReturnBody> },
+  TContext
+> => {
+  const mutationKey = ["updateReturn"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateReturn>>,
+    { id: number; data: BodyType<UpdateReturnBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateReturn(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateReturnMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateReturn>>
+>;
+export type UpdateReturnMutationBody = BodyType<UpdateReturnBody>;
+export type UpdateReturnMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a draft return to vendor
+ */
+export const useUpdateReturn = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateReturn>>,
+    TError,
+    { id: number; data: BodyType<UpdateReturnBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateReturn>>,
+  TError,
+  { id: number; data: BodyType<UpdateReturnBody> },
+  TContext
+> => {
+  return useMutation(getUpdateReturnMutationOptions(options));
+};
+
+/**
+ * @summary Delete a draft return to vendor
+ */
+export const getDeleteReturnUrl = (id: number) => {
+  return `/api/procurement/returns/${id}`;
+};
+
+export const deleteReturn = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteReturnUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteReturnMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteReturn>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteReturn>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteReturn"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteReturn>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteReturn(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteReturnMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteReturn>>
+>;
+
+export type DeleteReturnMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a draft return to vendor
+ */
+export const useDeleteReturn = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteReturn>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteReturn>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteReturnMutationOptions(options));
+};
 
 /**
  * @summary Confirm return to vendor, reverse inventory

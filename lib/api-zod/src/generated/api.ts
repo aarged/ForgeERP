@@ -3360,7 +3360,7 @@ export const DecidePurchaseOrderResponse = zod.object({
 });
 
 /**
- * @summary Mark PO as sent to supplier
+ * @summary Mark PO as sent to supplier (only allowed from approved status)
  */
 export const SendPurchaseOrderParams = zod.object({
   id: zod.coerce.number(),
@@ -3395,6 +3395,31 @@ export const SendPurchaseOrderResponse = zod.object({
   createdByClerkId: zod.string().nullish(),
   createdAt: zod.coerce.date().optional(),
   updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Generate PO PDF document for supplier dispatch
+ */
+export const GeneratePurchaseOrderPdfParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GeneratePurchaseOrderPdfHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GeneratePurchaseOrderPdfBody = zod.object({
+  dispatchEmail: zod
+    .string()
+    .optional()
+    .describe("If provided, dispatch PDF to this email address"),
+});
+
+export const GeneratePurchaseOrderPdfResponse = zod.object({
+  pdfBase64: zod.string().optional().describe("Base64-encoded PDF content"),
+  filename: zod.string().optional(),
+  dispatched: zod.boolean().optional(),
+  dispatchEmail: zod.string().nullish(),
 });
 
 /**
@@ -3525,6 +3550,79 @@ export const GetReceiptResponse = zod
         .optional(),
     }),
   );
+
+/**
+ * @summary Update a draft receipt
+ */
+export const UpdateReceiptParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateReceiptHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateReceiptBody = zod.object({
+  warehouseId: zod.number().nullish(),
+  locationId: zod.number().nullish(),
+  supplierDeliveryRef: zod.string().optional(),
+  notes: zod.string().optional(),
+});
+
+export const UpdateReceiptResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  poId: zod.number().optional(),
+  warehouseId: zod.number().nullish(),
+  locationId: zod.number().nullish(),
+  supplierDeliveryRef: zod.string().nullish(),
+  status: zod.string().optional(),
+  receivedAt: zod.coerce.date().nullish(),
+  receivedByClerkId: zod.string().nullish(),
+  glPostingId: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Delete a draft receipt
+ */
+export const DeleteReceiptParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteReceiptHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+/**
+ * @summary Preview GL entries that would be posted for a receipt (no commit)
+ */
+export const GetReceiptGlPreviewParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetReceiptGlPreviewHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetReceiptGlPreviewResponse = zod.object({
+  lines: zod
+    .array(
+      zod.object({
+        accountCode: zod.string().optional(),
+        accountName: zod.string().optional(),
+        debit: zod.number().optional(),
+        credit: zod.number().optional(),
+        description: zod.string().optional(),
+      }),
+    )
+    .optional(),
+  totalDebit: zod.string().optional(),
+  totalCredit: zod.string().optional(),
+});
 
 /**
  * @summary Confirm receipt, post inventory and GL
@@ -3680,6 +3778,51 @@ export const GetReturnResponse = zod
         .optional(),
     }),
   );
+
+/**
+ * @summary Update a draft return to vendor
+ */
+export const UpdateReturnParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateReturnHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const UpdateReturnBody = zod.object({
+  warehouseId: zod.number().nullish(),
+  reason: zod.string().optional(),
+  notes: zod.string().optional(),
+});
+
+export const UpdateReturnResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  poId: zod.number().optional(),
+  receiptId: zod.number().nullish(),
+  supplierId: zod.number().nullish(),
+  warehouseId: zod.number().nullish(),
+  returnType: zod.string().optional(),
+  reason: zod.string().nullish(),
+  status: zod.string().optional(),
+  total: zod.string().optional(),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date().optional(),
+  updatedAt: zod.coerce.date().optional(),
+});
+
+/**
+ * @summary Delete a draft return to vendor
+ */
+export const DeleteReturnParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteReturnHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
 
 /**
  * @summary Confirm return to vendor, reverse inventory
