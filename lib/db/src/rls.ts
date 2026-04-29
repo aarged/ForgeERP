@@ -1,39 +1,15 @@
 /**
  * Row-Level Security utilities for Forge ERP.
  *
- * ## Isolation strategy (two layers)
+ * Two-layer tenant isolation:
+ * 1. Application layer (primary): all tenant-scoped queries must include
+ *    `.where(eq(table.tenantId, tenantId))` in the route handler.
+ * 2. DB layer (defense-in-depth): `withTenantDb()` executes queries inside a
+ *    transaction where `SET LOCAL app.tenant_id = <id>` scopes the RLS policy.
+ *    Always use `withTenantDb` for tenant-scoped mutations and reads.
  *
- * ### Layer 1 — Application-layer filtering (PRIMARY)
- * Every tenant-scoped query MUST include `.where(eq(table.tenantId, req.tenantId))`.
- * `tenantContext` middleware resolves `req.tenantId` from the active JWT claim or
- * DB membership lookup before any route handler executes.
- * This is the primary, always-active enforcement mechanism.
- *
- * ### Layer 2 — PostgreSQL RLS (DEFENSE-IN-DEPTH)
- * RLS policies are applied to tenant-scoped tables via `applyRLSPolicies()`.
- * Policies read the `app.tenant_id` session GUC variable.
- * Because the API server uses a connection pool, callers MUST use `withTenantDb()`
- * to execute queries inside a transaction where the GUC is SET LOCAL before any
- * query runs. This prevents stale context from one request bleeding into another.
- *
- * ⚠️  Never call `set_config('app.tenant_id', ..., false)` on a pooled connection
- *     outside of a transaction — it persists on the connection after the request
- *     ends, creating a cross-request data leakage risk.
- *
- * ### Usage pattern for tenant-scoped route handlers
- *
- * ```typescript
- * router.get("/example", tenantContext, async (req, res) => {
- *   const { tenantId } = req as TenantRequest;
- *   await withTenantDb(tenantId, async (txDb) => {
- *     const rows = await txDb
- *       .select()
- *       .from(someTable)
- *       .where(eq(someTable.tenantId, tenantId)); // app-layer filter (always)
- *     res.json(rows);
- *   });
- * });
- * ```
+ * Bootstrap queries (e.g. tenant resolution) use `adminPool` directly since
+ * `app.tenant_id` cannot be set before the tenant is known.
  */
 
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -42,16 +18,9 @@ import * as schema from "./schema";
 import { pool, adminPool } from "./index";
 
 /**
- * withTenantDb
- *
- * Executes `callback` inside a READ-COMMITTED transaction on a dedicated
- * connection. Before any query runs, `SET LOCAL app.tenant_id = tenantId`
- * scopes the RLS policy to the current tenant for the duration of the
- * transaction. The setting is automatically cleared when the transaction
- * ends (LOCAL = transaction-scoped only).
- *
- * All queries in `callback` MUST still include explicit `.where(tenantId)`
- * clauses — RLS is defense-in-depth, not a substitute for app-layer filters.
+ * Executes `callback` inside a transaction where `app.tenant_id` is set
+ * locally, scoping RLS policies to the given tenant. Commits on success,
+ * rolls back on error.
  */
 export async function withTenantDb<T>(
   tenantId: number,
@@ -61,8 +30,6 @@ export async function withTenantDb<T>(
   try {
     const txDb = drizzle(client, { schema });
     await client.query("BEGIN");
-    // Reset row_security in case a previous session on this pooled connection
-    // had SET row_security = off. This ensures RLS is always enforced.
     await client.query("SET LOCAL row_security = on");
     await client.query(
       "SELECT set_config('app.tenant_id', $1, true)",
@@ -80,15 +47,10 @@ export async function withTenantDb<T>(
 }
 
 /**
- * applyRLSPolicies
- *
- * Idempotent: enables RLS on all tenant-scoped tables and creates/replaces
- * `tenant_isolation` policies. Safe to run at server startup.
- *
- * Called once during `artifacts/api-server/src/index.ts` boot sequence.
+ * Idempotent startup function: enables RLS on all tenant-scoped tables and
+ * creates/replaces `tenant_isolation` policies. Called once at server boot.
  */
 export async function applyRLSPolicies(): Promise<void> {
-  // Use adminPool (superuser) to manage RLS policies
   const client = await adminPool.connect();
   try {
     await client.query("BEGIN");

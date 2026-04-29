@@ -1,8 +1,12 @@
 import type { Request, Response, NextFunction } from "express";
 import { getAuth, createClerkClient } from "@clerk/express";
 import { eq, and } from "drizzle-orm";
-import { db, tenantMembershipsTable } from "@workspace/db";
+import { adminPool, tenantMembershipsTable } from "@workspace/db";
+import { drizzle } from "drizzle-orm/node-postgres";
+import * as schema from "@workspace/db/schema";
 import { logger } from "../lib/logger";
+
+const adminDb = drizzle(adminPool, { schema });
 
 export interface TenantRequest extends Request {
   clerkUserId: string;
@@ -22,24 +26,14 @@ const clerk = createClerkClient({
 /**
  * tenantContext middleware
  *
- * ## What it does
- * 1. Verifies Clerk JWT and extracts clerkId.
- * 2. Resolves the active tenant:
- *    a. First tries the `tenantId` session claim (populated via Clerk publicMetadata
- *       and a "Forge ERP" JWT template in the Clerk dashboard: `{"tenantId": "{{user.public_metadata.tenantId}}"}`).
- *    b. Falls back to a DB membership lookup when the claim is absent or stale.
- *       On DB-lookup success, backfills `publicMetadata.tenantId` in Clerk so
- *       the next token refresh will carry the claim.
- * 3. Sets `req.clerkUserId`, `req.tenantId`, `req.userRole`, `req.userEmail`.
- * 4. Returns 401 if not authenticated, 403 + `NO_TENANT_MEMBERSHIP` code if
- *    the user is authenticated but has no active tenant (→ onboarding flow).
+ * Resolves the active tenant for an authenticated request:
+ * 1. Reads `tenantId` from the JWT session claim (backfilled via Clerk publicMetadata).
+ * 2. Falls back to a DB membership lookup by clerkId when the claim is missing.
+ *    On success, backfills `publicMetadata.tenantId` for future requests.
+ * 3. Attaches clerkUserId / tenantId / userRole / userEmail to the request.
  *
- * ## Multi-tenant isolation
- * - Application-layer (PRIMARY): route handlers MUST filter every query with
- *   `.where(eq(table.tenantId, req.tenantId))`.
- * - Database-layer (DEFENSE-IN-DEPTH): for queries executed inside `withTenantDb()`
- *   the PostgreSQL RLS GUC is set transaction-locally. Do NOT call `set_config`
- *   with `is_local=false` on a pooled connection — this middleware does not do so.
+ * Uses adminPool (superuser) for membership lookups so RLS does not block
+ * bootstrapping — app.tenant_id cannot be set before the tenant is resolved.
  */
 export async function tenantContext(
   req: Request,
@@ -68,7 +62,7 @@ export async function tenantContext(
     if (claimedTenantId) {
       const numericTenantId = Number(claimedTenantId);
       if (!Number.isNaN(numericTenantId)) {
-        const rows = await db
+        const rows = await adminDb
           .select({
             role: tenantMembershipsTable.role,
             email: tenantMembershipsTable.email,
@@ -93,7 +87,7 @@ export async function tenantContext(
 
     // ── 2. Fall back to DB lookup if JWT claim was absent or invalid ──────
     if (tenantId === null) {
-      const memberships = await db
+      const memberships = await adminDb
         .select({
           tenantId: tenantMembershipsTable.tenantId,
           role: tenantMembershipsTable.role,
@@ -134,11 +128,6 @@ export async function tenantContext(
         });
     }
 
-    // ── 3. Attach context to request ──────────────────────────────────────
-    // NOTE: Do NOT call set_config('app.tenant_id', ...) here on the shared
-    // pool. For RLS-enforced queries, use withTenantDb(tenantId, ...) in the
-    // route handler which sets the GUC transaction-locally on a dedicated
-    // connection, preventing cross-request context leakage.
     (req as TenantRequest).clerkUserId = userId;
     (req as TenantRequest).tenantId = tenantId;
     (req as TenantRequest).userRole = role!;

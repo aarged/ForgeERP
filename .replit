@@ -35,4 +35,3 @@ externalPort = 3000
 
 [userenv.shared]
 VITE_CLERK_PUBLISHABLE_KEY = "pk_test_bG9naWNhbC1pZ3VhbmEtNzAuY2xlcmsuYWNjb3VudHMuZGV2JA"
-FORGE_APP_DB_URL = "postgresql://forge_app:forge_app_dev@helium/heliumdb?sslmode=disable"

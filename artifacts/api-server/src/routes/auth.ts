@@ -1,23 +1,26 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, tenantsTable, tenantMembershipsTable } from "@workspace/db";
+import { adminPool, tenantsTable, tenantMembershipsTable } from "@workspace/db";
+import { drizzle } from "drizzle-orm/node-postgres";
+import * as schema from "@workspace/db/schema";
 import { withTenantDb } from "@workspace/db/rls";
+
 import { requireAuth, type AuthenticatedRequest } from "../middlewares/requireAuth";
 import { tenantContext, type TenantRequest } from "../middlewares/tenantContext";
 import type { Request, Response } from "express";
 
+const adminDb = drizzle(adminPool, { schema });
+
 const router: IRouter = Router();
 
 /**
- * GET /auth/me
- * Returns the current user's profile including tenant and role.
- * Uses requireAuth (not tenantContext) so users without a tenant membership
- * can still call this endpoint to check their onboarding status.
+ * GET /auth/me — current user profile + tenant + role.
+ * Uses adminPool so RLS does not block the lookup (no tenant context yet).
  */
 router.get("/auth/me", requireAuth, async (req: Request, res: Response): Promise<void> => {
   const clerkId = (req as AuthenticatedRequest).clerkUserId;
 
-  const membership = await db
+  const membership = await adminDb
     .select({
       clerkId: tenantMembershipsTable.clerkId,
       email: tenantMembershipsTable.email,
