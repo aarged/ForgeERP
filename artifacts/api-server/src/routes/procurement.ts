@@ -153,8 +153,19 @@ async function postInventoryReceipt(tenantId: number, receiptId: number, postedB
   // Warehouse is mandatory — receipt creation now enforces this, but guard defensively
   if (!rcpt.warehouseId) throw new Error(`Receipt ${receiptId} has no warehouseId; cannot post inventory. Set a warehouse on the receipt or PO before confirming.`);
 
+  // Defensive: resolve itemId from poLine for any lines already stored without it
+  const missingItemIdPoLineIds = receiptLines.filter((l) => !l.itemId && l.poLineId != null).map((l) => l.poLineId as number);
+  const poLineItemMap = new Map<number, number>();
+  if (missingItemIdPoLineIds.length > 0) {
+    const poLineRows = await withTenantDb(tenantId, (db) =>
+      db.select({ id: poLinesTable.id, itemId: poLinesTable.itemId }).from(poLinesTable).where(inArray(poLinesTable.id, missingItemIdPoLineIds)));
+    for (const pl of poLineRows) { if (pl.itemId) poLineItemMap.set(pl.id, pl.itemId); }
+  }
+
   for (const line of receiptLines) {
-    if (!line.itemId || Number(line.receivedQty) <= 0) continue;
+    const resolvedItemId = line.itemId ?? (line.poLineId != null ? poLineItemMap.get(line.poLineId) ?? null : null);
+    if (!resolvedItemId || Number(line.receivedQty) <= 0) continue;
+    const itemId = resolvedItemId;
 
     const warehouseId = rcpt.warehouseId;
     const locationId = line.locationId ?? rcpt.locationId;
@@ -164,7 +175,7 @@ async function postInventoryReceipt(tenantId: number, receiptId: number, postedB
       db.select().from(inventoryStockTable)
         .where(and(
           eq(inventoryStockTable.tenantId, tenantId),
-          eq(inventoryStockTable.itemId, line.itemId!),
+          eq(inventoryStockTable.itemId, itemId),
           eq(inventoryStockTable.warehouseId, warehouseId),
           locationId ? eq(inventoryStockTable.locationId, locationId) : isNull(inventoryStockTable.locationId),
           line.lotNumber ? eq(inventoryStockTable.lotNumber, line.lotNumber) : isNull(inventoryStockTable.lotNumber),
@@ -195,7 +206,7 @@ async function postInventoryReceipt(tenantId: number, receiptId: number, postedB
       await withTenantDb(tenantId, (db) =>
         db.insert(inventoryStockTable).values({
           tenantId,
-          itemId: line.itemId!,
+          itemId,
           warehouseId,
           locationId: locationId ?? undefined,
           lotNumber: line.lotNumber ?? undefined,
@@ -213,7 +224,7 @@ async function postInventoryReceipt(tenantId: number, receiptId: number, postedB
     await withTenantDb(tenantId, (db) =>
       db.insert(inventoryMovementsTable).values({
         tenantId,
-        itemId: line.itemId!,
+        itemId,
         warehouseId,
         locationId: locationId ?? undefined,
         movementType: "receipt",
@@ -246,8 +257,20 @@ async function postInventoryReceiptInTx(db: TenantDb, tenantId: number, receiptI
   if (!receipt) return;
   if (!receipt.warehouseId) throw new Error(`Receipt ${receiptId} has no warehouseId; cannot post inventory. Set a warehouse on the receipt or PO before confirming.`);
 
+  // Defensive: resolve itemId from poLine for any lines already stored without it (legacy or UI-omitted)
+  const missingItemIdPoLineIds = receiptLines.filter((l) => !l.itemId && l.poLineId != null).map((l) => l.poLineId as number);
+  const poLineItemMap = new Map<number, number>();
+  if (missingItemIdPoLineIds.length > 0) {
+    const poLineRows = await db.select({ id: poLinesTable.id, itemId: poLinesTable.itemId })
+      .from(poLinesTable).where(inArray(poLinesTable.id, missingItemIdPoLineIds));
+    for (const pl of poLineRows) { if (pl.itemId) poLineItemMap.set(pl.id, pl.itemId); }
+  }
+
   for (const line of receiptLines) {
-    if (!line.itemId || Number(line.receivedQty) <= 0) continue;
+    const resolvedItemId = line.itemId ?? (line.poLineId != null ? poLineItemMap.get(line.poLineId) ?? null : null);
+    if (!resolvedItemId || Number(line.receivedQty) <= 0) continue;
+    // Shadow line.itemId with resolved value for the rest of the loop body
+    const itemId = resolvedItemId;
     const warehouseId = receipt.warehouseId;
     const locationId = line.locationId ?? receipt.locationId;
     const qty = Number(line.receivedQty);
@@ -255,7 +278,7 @@ async function postInventoryReceiptInTx(db: TenantDb, tenantId: number, receiptI
     const existing = (await db.select().from(inventoryStockTable)
       .where(and(
         eq(inventoryStockTable.tenantId, tenantId),
-        eq(inventoryStockTable.itemId, line.itemId!),
+        eq(inventoryStockTable.itemId, itemId),
         eq(inventoryStockTable.warehouseId, warehouseId),
         locationId ? eq(inventoryStockTable.locationId, locationId) : isNull(inventoryStockTable.locationId),
         line.lotNumber ? eq(inventoryStockTable.lotNumber, line.lotNumber) : isNull(inventoryStockTable.lotNumber),
@@ -273,7 +296,7 @@ async function postInventoryReceiptInTx(db: TenantDb, tenantId: number, receiptI
         .where(and(eq(inventoryStockTable.id, existing.id), eq(inventoryStockTable.tenantId, tenantId)));
     } else {
       await db.insert(inventoryStockTable).values({
-        tenantId, itemId: line.itemId!, warehouseId,
+        tenantId, itemId, warehouseId,
         locationId: locationId ?? undefined,
         lotNumber: line.lotNumber ?? undefined, batchNumber: line.batchNumber ?? undefined,
         serialNumber: line.serialNumber ?? undefined, expiryDate: line.expiryDate ?? undefined,
@@ -282,7 +305,7 @@ async function postInventoryReceiptInTx(db: TenantDb, tenantId: number, receiptI
     }
 
     await db.insert(inventoryMovementsTable).values({
-      tenantId, itemId: line.itemId!, warehouseId,
+      tenantId, itemId, warehouseId,
       locationId: locationId ?? undefined,
       movementType: "receipt", quantity: qty.toFixed(4), unitCost: line.unitCost ?? undefined,
       refType: "po_receipt", refId: receiptId,
@@ -2033,15 +2056,17 @@ router.post("/procurement/receipts", ...tenantWriteMiddleware, async (req: Reque
     return;
   }
 
-  // Validate all poLineIds BEFORE creating any records (transactional integrity)
+  // Validate all poLineIds and load PO line data to fill in missing item details
+  let poLineMap = new Map<number, { id: number; itemId: number | null; itemCode: string | null; itemName: string | null; unitPrice: string | null }>();
   if (lines.length > 0) {
     const poLineIds = lines.map((l) => l.poLineId).filter(Boolean) as number[];
     if (poLineIds.length > 0) {
       const validPoLines = await withTenantDb(tenantId, (db) =>
-        db.select({ id: poLinesTable.id }).from(poLinesTable)
+        db.select({ id: poLinesTable.id, itemId: poLinesTable.itemId, itemCode: poLinesTable.itemCode, itemName: poLinesTable.itemName, unitPrice: poLinesTable.unitPrice })
+          .from(poLinesTable)
           .where(and(inArray(poLinesTable.id, poLineIds), eq(poLinesTable.poId, parsed.data.poId), eq(poLinesTable.tenantId, tenantId))));
-      const validIds = new Set(validPoLines.map((pl) => pl.id));
-      const invalidLine = poLineIds.find((lid) => !validIds.has(lid));
+      poLineMap = new Map(validPoLines.map((pl) => [pl.id, pl]));
+      const invalidLine = poLineIds.find((lid) => !poLineMap.has(lid));
       if (invalidLine) {
         res.status(400).json({ error: `Line poLineId ${invalidLine} does not belong to PO ${parsed.data.poId}` });
         return;
@@ -2066,14 +2091,21 @@ router.post("/procurement/receipts", ...tenantWriteMiddleware, async (req: Reque
 
   if (lines.length > 0) {
     await withTenantDb(tenantId, (db) =>
-      db.insert(receiptLinesTable).values(lines.map((l) => ({
-        ...l,
-        receiptId,
-        tenantId,
-        orderedQty: String(l.orderedQty),
-        receivedQty: String(l.receivedQty),
-        unitCost: l.unitCost != null ? String(l.unitCost) : undefined,
-      }) as typeof receiptLinesTable.$inferInsert)),
+      db.insert(receiptLinesTable).values(lines.map((l) => {
+        const poLine = poLineMap.get(l.poLineId);
+        return {
+          ...l,
+          receiptId,
+          tenantId,
+          // Auto-populate item details from PO line when not explicitly provided by caller
+          itemId: l.itemId ?? poLine?.itemId ?? undefined,
+          itemCode: l.itemCode ?? poLine?.itemCode ?? undefined,
+          itemName: l.itemName ?? poLine?.itemName ?? undefined,
+          unitCost: l.unitCost != null ? String(l.unitCost) : (poLine?.unitPrice ?? undefined),
+          orderedQty: String(l.orderedQty),
+          receivedQty: String(l.receivedQty),
+        } as typeof receiptLinesTable.$inferInsert;
+      })),
     );
   }
 
@@ -2309,6 +2341,20 @@ router.post("/procurement/returns", ...tenantWriteMiddleware, async (req: Reques
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
   const { lines, ...header } = parsed.data;
+
+  // Resolve item details from PO lines for any line that has a poLineId but is missing itemId
+  let returnPoLineMap = new Map<number, { id: number; itemId: number | null; itemCode: string | null; itemName: string | null; unitPrice: string | null }>();
+  if (lines.length > 0) {
+    const returnPoLineIds = lines.map((l) => l.poLineId).filter((id): id is number => id != null);
+    if (returnPoLineIds.length > 0) {
+      const returnPoLines = await withTenantDb(tenantId, (db) =>
+        db.select({ id: poLinesTable.id, itemId: poLinesTable.itemId, itemCode: poLinesTable.itemCode, itemName: poLinesTable.itemName, unitPrice: poLinesTable.unitPrice })
+          .from(poLinesTable)
+          .where(and(inArray(poLinesTable.id, returnPoLineIds), eq(poLinesTable.poId, parsed.data.poId), eq(poLinesTable.tenantId, tenantId))));
+      returnPoLineMap = new Map(returnPoLines.map((pl) => [pl.id, pl]));
+    }
+  }
+
   const total = lines.reduce((s, l) => s + l.quantity * (l.unitCost ?? 0), 0);
 
   const [ret] = await withTenantDb(tenantId, (db) =>
@@ -2326,13 +2372,20 @@ router.post("/procurement/returns", ...tenantWriteMiddleware, async (req: Reques
   await withTenantDb(tenantId, (db) => db.update(poReturnsTable).set({ code: genCode("RTV", retId) }).where(eq(poReturnsTable.id, retId)));
   if (lines.length > 0) {
     await withTenantDb(tenantId, (db) =>
-      db.insert(poReturnLinesTable).values(lines.map((l) => ({
-        ...l,
-        returnId: retId,
-        tenantId,
-        quantity: String(l.quantity),
-        unitCost: l.unitCost != null ? String(l.unitCost) : undefined,
-      }) as typeof poReturnLinesTable.$inferInsert)),
+      db.insert(poReturnLinesTable).values(lines.map((l) => {
+        const poLine = l.poLineId != null ? returnPoLineMap.get(l.poLineId) : undefined;
+        return {
+          ...l,
+          returnId: retId,
+          tenantId,
+          // Auto-populate item details from PO line when not explicitly provided
+          itemId: l.itemId ?? poLine?.itemId ?? undefined,
+          itemCode: l.itemCode ?? poLine?.itemCode ?? undefined,
+          itemName: l.itemName ?? poLine?.itemName ?? undefined,
+          unitCost: l.unitCost != null ? String(l.unitCost) : (poLine?.unitPrice ?? undefined),
+          quantity: String(l.quantity),
+        } as typeof poReturnLinesTable.$inferInsert;
+      })),
     );
   }
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_return.created", entityType: "po_return", entityId: String(retId), newValues: header });
@@ -2397,17 +2450,30 @@ router.post("/procurement/returns/:id/confirm", ...tenantWriteMiddleware, async 
 
   const warehouseId = ret.warehouseId;
 
+  // Defensive: resolve itemId from poLine for any lines already stored without it
+  const rtvMissingItemIdPoLineIds = lines.filter((l) => !l.itemId && l.poLineId != null).map((l) => l.poLineId as number);
+  const rtvPoLineItemMap = new Map<number, number>();
+  if (rtvMissingItemIdPoLineIds.length > 0) {
+    const rtvPoLineRows = await withTenantDb(tenantId, (db) =>
+      db.select({ id: poLinesTable.id, itemId: poLinesTable.itemId }).from(poLinesTable).where(inArray(poLinesTable.id, rtvMissingItemIdPoLineIds)));
+    for (const pl of rtvPoLineRows) { if (pl.itemId) rtvPoLineItemMap.set(pl.id, pl.itemId); }
+  }
+  // Helper to resolve itemId for a return line
+  const resolveRtvItemId = (line: typeof lines[number]): number | null =>
+    line.itemId ?? (line.poLineId != null ? rtvPoLineItemMap.get(line.poLineId) ?? null : null);
+
   // Quantity validation: each return line must not exceed available on-hand stock
   // in the same traceability bucket (warehouse + location + lot/batch/serial)
   for (const line of lines) {
-    if (!line.itemId || Number(line.quantity) <= 0) continue;
+    const resolvedItemId = resolveRtvItemId(line);
+    if (!resolvedItemId || Number(line.quantity) <= 0) continue;
     const qty = Number(line.quantity);
     const lineLocId = line.locationId ?? null;
     const [stock] = await withTenantDb(tenantId, (db) =>
       db.select({ qtyOnHand: inventoryStockTable.qtyOnHand }).from(inventoryStockTable)
         .where(and(
           eq(inventoryStockTable.tenantId, tenantId),
-          eq(inventoryStockTable.itemId, line.itemId!),
+          eq(inventoryStockTable.itemId, resolvedItemId),
           eq(inventoryStockTable.warehouseId, warehouseId),
           lineLocId ? eq(inventoryStockTable.locationId, lineLocId) : isNull(inventoryStockTable.locationId),
           line.lotNumber ? eq(inventoryStockTable.lotNumber, line.lotNumber) : isNull(inventoryStockTable.lotNumber),
@@ -2418,7 +2484,7 @@ router.post("/procurement/returns/:id/confirm", ...tenantWriteMiddleware, async 
     const available = Number(stock?.qtyOnHand ?? 0);
     if (qty > available) {
       res.status(400).json({
-        error: `Return quantity ${qty} for item ${line.itemCode ?? line.itemId} exceeds available on-hand stock (${available}) in the specified traceability bucket.`,
+        error: `Return quantity ${qty} for item ${line.itemCode ?? resolvedItemId} exceeds available on-hand stock (${available}) in the specified traceability bucket.`,
       });
       return;
     }
@@ -2427,13 +2493,14 @@ router.post("/procurement/returns/:id/confirm", ...tenantWriteMiddleware, async 
   // Fully atomic: inventory movements + stock decrements + status update + GL posting in one transaction
   const updated = await withTenantDb(tenantId, async (db) => {
     for (const line of lines) {
-      if (!line.itemId || Number(line.quantity) <= 0) continue;
+      const resolvedItemId = resolveRtvItemId(line);
+      if (!resolvedItemId || Number(line.quantity) <= 0) continue;
       const qty = Number(line.quantity);
       const lineLocId = line.locationId ?? null;
 
       await db.insert(inventoryMovementsTable).values({
         tenantId,
-        itemId: line.itemId!,
+        itemId: resolvedItemId,
         warehouseId,
         locationId: lineLocId ?? undefined,
         movementType: "return",
@@ -2451,7 +2518,7 @@ router.post("/procurement/returns/:id/confirm", ...tenantWriteMiddleware, async 
       const [stock] = await db.select().from(inventoryStockTable)
         .where(and(
           eq(inventoryStockTable.tenantId, tenantId),
-          eq(inventoryStockTable.itemId, line.itemId!),
+          eq(inventoryStockTable.itemId, resolvedItemId),
           eq(inventoryStockTable.warehouseId, warehouseId),
           lineLocId ? eq(inventoryStockTable.locationId, lineLocId) : isNull(inventoryStockTable.locationId),
           line.lotNumber ? eq(inventoryStockTable.lotNumber, line.lotNumber) : isNull(inventoryStockTable.lotNumber),
