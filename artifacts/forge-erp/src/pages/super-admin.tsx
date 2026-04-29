@@ -856,8 +856,27 @@ function TenantRowActions({
 
   const updateTenant = useUpdateAdminTenant({
     mutation: {
-      onSuccess: () => {
-        toast({ title: "Tenant updated" });
+      onSuccess: (data) => {
+        const sync = (data as { billingSyncStatus?: string | null; billingSyncReason?: string | null });
+        if (sync.billingSyncStatus === "failed") {
+          toast({
+            title: "Tenant updated — billing sync FAILED",
+            description: `Plan changed in DB but Stripe was not: ${sync.billingSyncReason ?? "unknown error"}. Reconcile manually.`,
+            variant: "destructive",
+          });
+        } else if (sync.billingSyncStatus === "skipped") {
+          toast({
+            title: "Tenant updated — billing sync skipped",
+            description: sync.billingSyncReason ?? "No Stripe action taken.",
+          });
+        } else if (sync.billingSyncStatus === "ok") {
+          toast({
+            title: "Tenant updated",
+            description: "Plan and Stripe subscription are in sync.",
+          });
+        } else {
+          toast({ title: "Tenant updated" });
+        }
         invalidate();
         setConfirm(null);
       },
