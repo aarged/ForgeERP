@@ -36,7 +36,8 @@
  * ```
  */
 
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PoolClient } from "pg";
 import * as schema from "./schema";
 import { pool, adminPool } from "./index";
 
@@ -54,7 +55,7 @@ import { pool, adminPool } from "./index";
  */
 export async function withTenantDb<T>(
   tenantId: number,
-  callback: (txDb: ReturnType<typeof drizzle<typeof schema>>) => Promise<T>,
+  callback: (txDb: NodePgDatabase<typeof schema> & { $client: PoolClient }) => Promise<T>,
 ): Promise<T> {
   const client = await pool.connect();
   try {
