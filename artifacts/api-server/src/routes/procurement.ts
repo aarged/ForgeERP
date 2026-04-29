@@ -119,11 +119,13 @@ async function postInventoryReceipt(tenantId: number, receiptId: number, postedB
   );
   const rcpt = receipt[0];
   if (!rcpt) return;
+  // A valid warehouse is required for inventory posting; skip posting if missing
+  if (!rcpt.warehouseId) return;
 
   for (const line of receiptLines) {
     if (!line.itemId || Number(line.receivedQty) <= 0) continue;
 
-    const warehouseId = rcpt.warehouseId ?? 0;
+    const warehouseId = rcpt.warehouseId;
     const locationId = line.locationId ?? rcpt.locationId;
     const qty = Number(line.receivedQty);
 
@@ -203,6 +205,25 @@ async function postInventoryReceipt(tenantId: number, receiptId: number, postedB
   }
 }
 
+/** Resolve a GL account for a tenant by ID (with fallback code/name when not configured). */
+async function resolveGlAccount(tenantId: number, glAccountId: number | null | undefined, fallbackCode: string, fallbackName: string) {
+  if (glAccountId) {
+    const [acct] = await withTenantDb(tenantId, (db) =>
+      db.select({ code: glAccountsTable.code, name: glAccountsTable.name })
+        .from(glAccountsTable)
+        .where(and(eq(glAccountsTable.id, glAccountId), eq(glAccountsTable.tenantId, tenantId)))
+        .limit(1));
+    if (acct) return { accountCode: acct.code, accountName: acct.name };
+  }
+  // Try to find account by code in the tenant's chart of accounts
+  const [byCode] = await withTenantDb(tenantId, (db) =>
+    db.select({ code: glAccountsTable.code, name: glAccountsTable.name })
+      .from(glAccountsTable)
+      .where(and(eq(glAccountsTable.code, fallbackCode), eq(glAccountsTable.tenantId, tenantId)))
+      .limit(1));
+  return { accountCode: byCode?.code ?? fallbackCode, accountName: byCode?.name ?? fallbackName };
+}
+
 async function createGlPosting(tenantId: number, receiptId: number, postedByClerkId: string, postedByEmail?: string) {
   const receipt = (await withTenantDb(tenantId, (db) =>
     db.select().from(poReceiptsTable)
@@ -221,21 +242,35 @@ async function createGlPosting(tenantId: number, receiptId: number, postedByCler
       .where(and(eq(receiptLinesTable.receiptId, receiptId), eq(receiptLinesTable.tenantId, tenantId))),
   );
 
-  // Build GL lines: Dr Inventory Account / Cr Accounts Payable
+  // Look up PO lines to get per-line GL account assignments from the master chart of accounts
+  const poLineIds = lines.map((l) => l.poLineId).filter(Boolean) as number[];
+  const poLineRows = poLineIds.length > 0
+    ? await withTenantDb(tenantId, (db) =>
+        db.select({ id: poLinesTable.id, glAccountId: poLinesTable.glAccountId })
+          .from(poLinesTable).where(inArray(poLinesTable.id, poLineIds)))
+    : [];
+  const poLineGlMap = new Map(poLineRows.map((pl) => [pl.id, pl.glAccountId]));
+
+  // Resolve the AP account from the chart of accounts (default code 2100)
+  const apAccount = await resolveGlAccount(tenantId, null, "2100", "Accounts Payable");
+
+  // Build GL lines: Dr Inventory Account (per PO line) / Cr Accounts Payable
   const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
 
   let totalValue = 0;
   for (const rl of lines) {
     const lineVal = Number(rl.receivedQty) * Number(rl.unitCost ?? 0);
     totalValue += lineVal;
+    // Derive inventory account from the PO line's glAccountId assignment
+    const invAccount = await resolveGlAccount(tenantId, poLineGlMap.get(rl.poLineId) ?? null, "1300", "Inventory");
     glLines.push({
-      accountCode: "1300", accountName: "Inventory",
+      ...invAccount,
       debit: lineVal, credit: 0,
       description: `Receipt of ${rl.itemCode ?? rl.itemName ?? "item"}`,
     });
   }
   glLines.push({
-    accountCode: "2100", accountName: "Accounts Payable",
+    ...apAccount,
     debit: 0, credit: totalValue,
     description: `AP for PO ${po.code}`,
   });
@@ -269,22 +304,27 @@ async function createReturnGlPosting(tenantId: number, returnId: number, postedB
   const lines = await withTenantDb(tenantId, (db) =>
     db.select().from(poReturnLinesTable).where(and(eq(poReturnLinesTable.returnId, returnId), eq(poReturnLinesTable.tenantId, tenantId))));
 
-  // Credit note: Dr AP 2100 / Cr Inventory 1300 (reverse of goods receipt)
+  // Credit note: Dr AP / Cr Inventory (reverse of goods receipt)
+  // Resolve AP and Inventory accounts from tenant's chart of accounts
+  const apAccount = await resolveGlAccount(tenantId, null, "2100", "Accounts Payable");
+
   let totalValue = 0;
   const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
   for (const rl of lines) {
     if (Number(rl.quantity) <= 0) continue;
     const lineVal = Number(rl.quantity) * Number(rl.unitCost ?? 0);
     totalValue += lineVal;
+    // Look up the inventory account via item's GL account if set, otherwise fall back to "1300"
+    const invAccount = await resolveGlAccount(tenantId, null, "1300", "Inventory");
     glLines.push({
-      accountCode: "1300", accountName: "Inventory",
+      ...invAccount,
       debit: 0, credit: lineVal,
       description: `RTV of ${rl.itemCode ?? rl.itemName ?? "item"}`,
     });
   }
   if (totalValue === 0) return null;
   glLines.push({
-    accountCode: "2100", accountName: "Accounts Payable",
+    ...apAccount,
     debit: totalValue, credit: 0,
     description: `AP credit note for return ${returnId}`,
   });
@@ -400,6 +440,42 @@ async function executeApprovalDecision(opts: {
       decision: "approved",
       comment,
     } as typeof approvalDecisionsTable.$inferInsert));
+
+  // For "all" mode with explicit user list: check if all required approvers have now approved
+  if (workflowId) {
+    const [step] = await withTenantDb(tenantId, (db) =>
+      db.select().from(approvalStepsTable)
+        .where(and(
+          eq(approvalStepsTable.workflowId, workflowId),
+          eq(approvalStepsTable.tenantId, tenantId),
+          eq(approvalStepsTable.stepNumber, currentStepNum),
+        ))
+        .limit(1));
+
+    if (step && step.approvalMode === "all") {
+      const requiredUserIds = (step.approverUserIds as string[]) ?? [];
+      if (requiredUserIds.length > 0) {
+        // Fetch all distinct approvals at this step (including the one just recorded)
+        const existingApprovals = await withTenantDb(tenantId, (db) =>
+          db.select({ approverClerkId: approvalDecisionsTable.approverClerkId })
+            .from(approvalDecisionsTable)
+            .where(and(
+              eq(approvalDecisionsTable.tenantId, tenantId),
+              eq(approvalDecisionsTable.entityType, entityType),
+              eq(approvalDecisionsTable.entityId, entityId),
+              eq(approvalDecisionsTable.stepNumber, currentStepNum),
+              eq(approvalDecisionsTable.decision, "approved"),
+            )));
+        const approvedIds = new Set(existingApprovals.map((d) => d.approverClerkId));
+        const allApproved = requiredUserIds.every((uid) => approvedIds.has(uid));
+        if (!allApproved) {
+          // Still waiting for more approvers — stay in pending_approval at the same step
+          return { newStatus: "pending_approval", newStepNum: currentStepNum };
+        }
+      }
+      // Role-only "all" mode: best-effort — treat as "any" (can't enumerate all users with a role)
+    }
+  }
 
   // Check for subsequent steps
   if (workflowId) {
@@ -639,6 +715,8 @@ router.post("/procurement/requisitions", ...tenantWriteMiddleware, async (req: R
 router.patch("/procurement/requisitions/:id", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
+  // Status transitions are only permitted via dedicated action endpoints
+  // (submit, decision, convert-to-po). Direct status mutation is rejected.
   const schema = z.object({
     title: z.string().min(1).optional(),
     description: z.string().optional(),
@@ -648,10 +726,21 @@ router.patch("/procurement/requisitions/:id", ...tenantWriteMiddleware, async (r
     priority: z.enum(["low", "normal", "urgent"]).optional(),
     requiredByDate: z.string().optional().nullable(),
     notes: z.string().optional(),
-    status: z.string().optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+
+  // Only allow edits on draft/returned requisitions (cannot edit once in-flight)
+  const [existing] = await withTenantDb(tenantId, (db) =>
+    db.select({ status: purchaseRequisitionsTable.status }).from(purchaseRequisitionsTable)
+      .where(and(eq(purchaseRequisitionsTable.id, id), eq(purchaseRequisitionsTable.tenantId, tenantId), isNull(purchaseRequisitionsTable.deletedAt)))
+      .limit(1));
+  if (!existing) { res.status(404).json({ error: "Requisition not found" }); return; }
+  if (!["draft", "returned"].includes(existing.status)) {
+    res.status(400).json({ error: `Requisition cannot be edited in status: ${existing.status}` });
+    return;
+  }
+
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(purchaseRequisitionsTable).set(parsed.data as Record<string, unknown>)
       .where(and(eq(purchaseRequisitionsTable.id, id), eq(purchaseRequisitionsTable.tenantId, tenantId), isNull(purchaseRequisitionsTable.deletedAt)))
@@ -975,8 +1064,10 @@ router.post("/procurement/purchase-orders", ...tenantWriteMiddleware, async (req
 router.patch("/procurement/purchase-orders/:id", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
+  // Status transitions are only permitted via dedicated action endpoints (submit, decision, send, receive, cancel).
   const schema = z.object({
     supplierId: z.number().int().optional().nullable(),
+    supplierName: z.string().optional(),
     supplierRef: z.string().optional(),
     deliverToWarehouseId: z.number().int().optional().nullable(),
     deliveryDate: z.string().optional().nullable(),
@@ -984,10 +1075,21 @@ router.patch("/procurement/purchase-orders/:id", ...tenantWriteMiddleware, async
     paymentTerms: z.string().optional(),
     notes: z.string().optional(),
     internalNotes: z.string().optional(),
-    status: z.string().optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+
+  // Only allow edits on draft/returned POs
+  const [existing] = await withTenantDb(tenantId, (db) =>
+    db.select({ status: purchaseOrdersTable.status }).from(purchaseOrdersTable)
+      .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt)))
+      .limit(1));
+  if (!existing) { res.status(404).json({ error: "Purchase order not found" }); return; }
+  if (!["draft", "returned"].includes(existing.status)) {
+    res.status(400).json({ error: `Purchase order cannot be edited in status: ${existing.status}` });
+    return;
+  }
+
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(purchaseOrdersTable).set(parsed.data as Record<string, unknown>)
       .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt))).returning());
@@ -1366,11 +1468,17 @@ router.post("/procurement/returns/:id/confirm", ...tenantWriteMiddleware, async 
   const lines = await withTenantDb(tenantId, (db) =>
     db.select().from(poReturnLinesTable).where(and(eq(poReturnLinesTable.returnId, id), eq(poReturnLinesTable.tenantId, tenantId))));
 
+  // A valid warehouse is required for inventory reversal
+  if (!ret.warehouseId) {
+    res.status(400).json({ error: "Return has no warehouse assigned; cannot reverse inventory" });
+    return;
+  }
+
   // Reverse inventory
   for (const line of lines) {
     if (!line.itemId || Number(line.quantity) <= 0) continue;
     const qty = Number(line.quantity);
-    const warehouseId = ret.warehouseId ?? 0;
+    const warehouseId = ret.warehouseId;
     await withTenantDb(tenantId, (db) =>
       db.insert(inventoryMovementsTable).values({
         tenantId,
@@ -1403,7 +1511,7 @@ router.post("/procurement/returns/:id/confirm", ...tenantWriteMiddleware, async 
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(poReturnsTable).set({ status: "confirmed" }).where(and(eq(poReturnsTable.id, id), eq(poReturnsTable.tenantId, tenantId))).returning());
 
-  // Post credit-note GL entry: Dr AP 2100 / Cr Inventory 1300
+  // Post credit-note GL entry (Dr AP / Cr Inventory derived from chart of accounts)
   await createReturnGlPosting(tenantId, id, clerkUserId, userEmail);
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_return.confirmed", entityType: "po_return", entityId: String(id) });
