@@ -268,7 +268,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/master-data/suppliers/:id">{(params) => <Redirect to={`/master-data?tab=suppliers&id=${params.id}`} />}</Route>
           <Route path="/master-data/customers/:id">{(params) => <Redirect to={`/master-data?tab=customers&id=${params.id}`} />}</Route>
           <Route path="/master-data/warehouses/:id">{(params) => <Redirect to={`/master-data?tab=warehouses&id=${params.id}`} />}</Route>
-          <Route path="/master-data/gl-accounts/:id">{(params) => <Redirect to={`/master-data?tab=gl&id=${params.id}`} />}</Route>
+          <Route path="/master-data/gl-accounts/:id">{(params) => <Redirect to={`/master-data?tab=gl-accounts&id=${params.id}`} />}</Route>
           <Route path="/procurement"><ProtectedRoute component={Procurement} /></Route>
           <Route path="/sales"><ProtectedRoute component={Sales} /></Route>
           <Route path="/inventory"><ProtectedRoute component={Inventory} /></Route>

@@ -286,6 +286,40 @@ router.post(
   },
 );
 
+router.patch(
+  "/master-data/items/:itemId/variants/:variantId",
+  ...tenantWriteMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+    const itemId = Number(req.params.itemId);
+    const variantId = Number(req.params.variantId);
+    if (!itemId || !variantId) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const schema = z.object({
+      variantCode: z.string().min(1).optional(),
+      name: z.string().min(1).optional(),
+      sku: z.string().optional(),
+      barcode: z.string().optional(),
+      costAdjustment: z.coerce.number().optional(),
+      priceAdjustment: z.coerce.number().optional(),
+      isActive: z.boolean().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+
+    const [variant] = await withTenantDb(tenantId, (db) =>
+      db.update(itemVariantsTable)
+        .set(parsed.data as Record<string, unknown>)
+        .where(and(eq(itemVariantsTable.id, variantId), eq(itemVariantsTable.itemId, itemId), eq(itemVariantsTable.tenantId, tenantId)))
+        .returning(),
+    );
+    if (!variant) { res.status(404).json({ error: "Variant not found" }); return; }
+
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "item_variant.updated", entityType: "item_variant", entityId: variantId, newValues: parsed.data });
+    res.json(variant);
+  },
+);
+
 router.delete(
   "/master-data/items/:itemId/variants/:variantId",
   ...tenantWriteMiddleware,

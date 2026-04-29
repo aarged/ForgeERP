@@ -893,6 +893,16 @@ export interface CreateItemVariantBody {
   isActive?: boolean;
 }
 
+export interface UpdateItemVariantBody {
+  variantCode?: string;
+  name?: string;
+  sku?: string;
+  barcode?: string;
+  costAdjustment?: number;
+  priceAdjustment?: number;
+  isActive?: boolean;
+}
+
 export interface ItemAttributeInput {
   attrKey: string;
   attrValue?: string;

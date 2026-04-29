@@ -134,6 +134,7 @@ export * from "./tenantMember";
 export * from "./tenantPlanTier";
 export * from "./tenantStatus";
 export * from "./uomConversionResult";
+export * from "./updateItemVariantBody";
 export * from "./updateMemberBody";
 export * from "./updateMemberBodyRole";
 export * from "./updateTenantBody";

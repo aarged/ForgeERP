@@ -1039,6 +1039,38 @@ export const CreateItemVariantBody = zod.object({
 });
 
 /**
+ * @summary Update an item variant
+ */
+export const UpdateItemVariantParams = zod.object({
+  itemId: zod.coerce.number(),
+  variantId: zod.coerce.number(),
+});
+
+export const UpdateItemVariantBody = zod.object({
+  variantCode: zod.string().optional(),
+  name: zod.string().optional(),
+  sku: zod.string().optional(),
+  barcode: zod.string().optional(),
+  costAdjustment: zod.number().optional(),
+  priceAdjustment: zod.number().optional(),
+  isActive: zod.boolean().optional(),
+});
+
+export const UpdateItemVariantResponse = zod.object({
+  id: zod.number().optional(),
+  itemId: zod.number().optional(),
+  variantCode: zod.string().optional(),
+  name: zod.string().optional(),
+  sku: zod.string().nullish(),
+  barcode: zod.string().nullish(),
+  attributes: zod.object({}).passthrough().nullish(),
+  costAdjustment: zod.string().nullish(),
+  priceAdjustment: zod.string().nullish(),
+  isActive: zod.boolean().optional(),
+  createdAt: zod.coerce.date().optional(),
+});
+
+/**
  * @summary Delete an item variant
  */
 export const DeleteItemVariantParams = zod.object({

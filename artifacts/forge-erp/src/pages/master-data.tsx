@@ -34,10 +34,39 @@ import {
   useListItemUnits,
   useCreateItemUnit,
   useDeleteItemUnit,
+  useGetItem,
+  useCreateItemVariant,
+  useUpdateItemVariant,
+  useDeleteItemVariant,
+  useSetItemAttributes,
+  useSetItemCrossReferences,
+  useCreateItemLocation,
+  useUpdateItemLocation,
+  useDeleteItemLocation,
+  useGetSupplier,
+  useCreateSupplierContact,
+  useUpdateSupplierContact,
+  useDeleteSupplierContact,
+  useGetCustomer,
+  useCreateCustomerContact,
+  useUpdateCustomerContact,
+  useDeleteCustomerContact,
+  useGetWarehouse,
+  useCreateWarehouseLocation,
+  useUpdateWarehouseLocation,
+  useDeleteWarehouseLocation,
+  useGetWarehouseStockSummary,
 } from "@workspace/api-client-react";
 import type {
   CreateItemBody,
   CreateItemUnitBody,
+  CreateItemVariantBody,
+  UpdateItemVariantBody,
+  ItemAttributeInput,
+  ItemCrossReferenceInput,
+  CreateContactBody,
+  CreateWarehouseLocationBody,
+  CreateWarehouseLocationBodyLocationType,
   CreateSupplierBody,
   CreateCustomerBody,
   CreateWarehouseBody,
@@ -49,6 +78,11 @@ import type {
   ListGlAccountsQueryResult,
   GlTemplateImportBodyTemplate,
   AuditTrailEntry,
+  MasterContact,
+  ItemVariant,
+  ItemAttribute,
+  ItemCrossReference,
+  WarehouseLocation,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -419,6 +453,604 @@ function ItemUnitsPanel({ itemId }: { itemId: number }) {
   );
 }
 
+// ─── Item Variants Panel ──────────────────────────────────────────────────────
+
+function ItemVariantsPanel({ itemId }: { itemId: number }) {
+  const { toast } = useToast();
+  const { data, refetch } = useGetItem(itemId);
+  const createVariant = useCreateItemVariant();
+  const updateVariant = useUpdateItemVariant();
+  const deleteVariant = useDeleteItemVariant();
+  const [editVariant, setEditVariant] = useState<ItemVariant | undefined>();
+  const variants = data?.variants ?? [];
+
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<CreateItemVariantBody>({
+    defaultValues: { variantCode: "", name: "", isActive: true },
+  });
+
+  useEffect(() => {
+    if (editVariant) {
+      reset({ variantCode: editVariant.variantCode ?? "", name: editVariant.name ?? "", sku: editVariant.sku ?? "", barcode: editVariant.barcode ?? "", isActive: editVariant.isActive ?? true });
+    } else {
+      reset({ variantCode: "", name: "", sku: "", barcode: "", isActive: true });
+    }
+  }, [editVariant, reset]);
+
+  const onSubmit = handleSubmit(async (d) => {
+    try {
+      if (editVariant?.id) {
+        await updateVariant.mutateAsync({ itemId, variantId: editVariant.id, data: d as UpdateItemVariantBody });
+        toast({ title: "Variant updated" });
+      } else {
+        await createVariant.mutateAsync({ id: itemId, data: d });
+        toast({ title: "Variant added" });
+      }
+      setEditVariant(undefined);
+      reset({ variantCode: "", name: "", isActive: true });
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+  });
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <h4 className="text-sm font-semibold">Variants</h4>
+      {variants.length > 0 ? (
+        <div className="rounded border divide-y text-sm">
+          {variants.map((v: ItemVariant) => (
+            <div key={v.id} className="flex items-center justify-between px-3 py-1.5 gap-2">
+              <span className="font-mono font-medium text-xs">{v.variantCode}</span>
+              <span className="flex-1 text-xs">{v.name}</span>
+              {v.sku && <span className="text-muted-foreground text-xs">{v.sku}</span>}
+              <Badge variant={v.isActive ? "default" : "secondary"} className="text-xs">{v.isActive ? "Active" : "Inactive"}</Badge>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditVariant(v)}><Pencil className="h-3 w-3" /></Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await deleteVariant.mutateAsync({ itemId, variantId: v.id! }); refetch(); }}>
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-xs text-muted-foreground">No variants yet.</p>}
+      <form onSubmit={onSubmit} className="space-y-2">
+        <div className="flex gap-2">
+          <div className="flex-1"><Input {...register("variantCode", { required: true })} placeholder="Code (e.g. RED-L)" className="h-8 text-xs" /></div>
+          <div className="flex-1"><Input {...register("name", { required: true })} placeholder="Name (e.g. Red, Large)" className="h-8 text-xs" /></div>
+          <div className="w-28"><Input {...register("sku")} placeholder="SKU" className="h-8 text-xs" /></div>
+          <Button type="submit" size="sm" className="h-8" disabled={createVariant.isPending || updateVariant.isPending}>
+            {editVariant ? <><Pencil className="h-3 w-3 mr-1" /> Update</> : <><Plus className="h-3 w-3 mr-1" /> Add</>}
+          </Button>
+          {editVariant && <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setEditVariant(undefined)}>Cancel</Button>}
+        </div>
+        {(errors.variantCode || errors.name) && <p className="text-xs text-destructive">Code and Name are required</p>}
+      </form>
+    </div>
+  );
+}
+
+// ─── Item Attributes Panel ────────────────────────────────────────────────────
+
+function ItemAttributesPanel({ itemId }: { itemId: number }) {
+  const { toast } = useToast();
+  const { data, refetch } = useGetItem(itemId);
+  const setAttrs = useSetItemAttributes();
+  const attributes = data?.attributes ?? [];
+
+  const [localAttrs, setLocalAttrs] = useState<{ attrKey: string; attrValue: string }[]>([]);
+  const [newKey, setNewKey] = useState("");
+  const [newVal, setNewVal] = useState("");
+
+  useEffect(() => {
+    setLocalAttrs(
+      (attributes as ItemAttribute[]).map((a) => ({ attrKey: a.attrKey ?? "", attrValue: a.attrValue ?? "" }))
+    );
+  }, [data]);
+
+  const save = async (updated: { attrKey: string; attrValue: string }[]) => {
+    try {
+      const payload: ItemAttributeInput[] = updated.map((a) => ({ attrKey: a.attrKey, attrValue: a.attrValue }));
+      await setAttrs.mutateAsync({ id: itemId, data: payload });
+      toast({ title: "Attributes saved" });
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+  };
+
+  const addAttr = () => {
+    if (!newKey.trim()) return;
+    const updated = [...localAttrs.filter((a) => a.attrKey !== newKey.trim()), { attrKey: newKey.trim(), attrValue: newVal }];
+    setLocalAttrs(updated);
+    setNewKey(""); setNewVal("");
+    save(updated);
+  };
+
+  const removeAttr = (key: string) => {
+    const updated = localAttrs.filter((a) => a.attrKey !== key);
+    setLocalAttrs(updated);
+    save(updated);
+  };
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <h4 className="text-sm font-semibold">Attributes</h4>
+      {localAttrs.length > 0 ? (
+        <div className="rounded border divide-y text-sm">
+          {localAttrs.map((a) => (
+            <div key={a.attrKey} className="flex items-center gap-2 px-3 py-1.5">
+              <span className="font-mono text-xs font-medium w-32 shrink-0">{a.attrKey}</span>
+              <span className="flex-1 text-xs">{a.attrValue}</span>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeAttr(a.attrKey)}>
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-xs text-muted-foreground">No attributes set.</p>}
+      <div className="flex gap-2">
+        <Input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="Key" className="h-8 text-xs w-32" />
+        <Input value={newVal} onChange={(e) => setNewVal(e.target.value)} placeholder="Value" className="h-8 text-xs flex-1" />
+        <Button size="sm" className="h-8" onClick={addAttr} disabled={setAttrs.isPending}>
+          <Plus className="h-3 w-3 mr-1" /> Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Item Cross-References Panel ──────────────────────────────────────────────
+
+function ItemCrossRefsPanel({ itemId }: { itemId: number }) {
+  const { toast } = useToast();
+  const { data, refetch } = useGetItem(itemId);
+  const setCrossRefs = useSetItemCrossReferences();
+  const crossRefs = (data?.crossRefs ?? []) as ItemCrossReference[];
+
+  const [localRefs, setLocalRefs] = useState<{ refType: string; refCode: string }[]>([]);
+  const [newType, setNewType] = useState("alternative");
+  const [newCode, setNewCode] = useState("");
+
+  useEffect(() => {
+    setLocalRefs(crossRefs.map((r) => ({ refType: r.refType ?? "alternative", refCode: r.refCode ?? "" })));
+  }, [data]);
+
+  const save = async (updated: { refType: string; refCode: string }[]) => {
+    try {
+      const payload: ItemCrossReferenceInput[] = updated.map((r) => ({ refType: r.refType as ItemCrossReferenceInput["refType"], refCode: r.refCode }));
+      await setCrossRefs.mutateAsync({ id: itemId, data: payload });
+      toast({ title: "Cross-references saved" });
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+  };
+
+  const addRef = () => {
+    if (!newCode.trim()) return;
+    const updated = [...localRefs, { refType: newType, refCode: newCode.trim() }];
+    setLocalRefs(updated);
+    setNewCode("");
+    save(updated);
+  };
+
+  const removeRef = (idx: number) => {
+    const updated = localRefs.filter((_, i) => i !== idx);
+    setLocalRefs(updated);
+    save(updated);
+  };
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <h4 className="text-sm font-semibold">Cross-References / Barcodes</h4>
+      {localRefs.length > 0 ? (
+        <div className="rounded border divide-y text-sm">
+          {localRefs.map((r, i) => (
+            <div key={i} className="flex items-center gap-2 px-3 py-1.5">
+              <Badge variant="outline" className="text-xs shrink-0">{r.refType}</Badge>
+              <span className="flex-1 font-mono text-xs">{r.refCode}</span>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeRef(i)}>
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-xs text-muted-foreground">No cross-references yet.</p>}
+      <div className="flex gap-2">
+        <Select value={newType} onValueChange={setNewType}>
+          <SelectTrigger className="h-8 text-xs w-32"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="alternative">Alternative</SelectItem>
+            <SelectItem value="cross">Cross</SelectItem>
+            <SelectItem value="competitor">Competitor</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="Code / number" className="h-8 text-xs flex-1" />
+        <Button size="sm" className="h-8" onClick={addRef} disabled={setCrossRefs.isPending}>
+          <Plus className="h-3 w-3 mr-1" /> Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Item Locations Panel ─────────────────────────────────────────────────────
+
+type MasterItemDetailLocation = {
+  id?: number;
+  warehouseId?: number;
+  locationId?: number | null;
+  reorderPoint?: string | null;
+  reorderQty?: string | null;
+  warehouseName?: string;
+};
+
+function ItemLocationsPanel({ itemId }: { itemId: number }) {
+  const { toast } = useToast();
+  const { data, refetch } = useGetItem(itemId);
+  const createLoc = useCreateItemLocation();
+  const updateLoc = useUpdateItemLocation();
+  const deleteLoc = useDeleteItemLocation();
+  const warehouseQuery = useListWarehouses({ limit: 200 });
+  const locations = (data?.locations ?? []) as MasterItemDetailLocation[];
+  const [editLoc, setEditLoc] = useState<MasterItemDetailLocation | null>(null);
+  const [whId, setWhId] = useState<string>("");
+  const [reorderPoint, setReorderPoint] = useState("");
+  const [reorderQty, setReorderQty] = useState("");
+
+  const warehouses = warehouseQuery.data?.warehouses ?? [];
+
+  const save = async () => {
+    if (!whId) return;
+    try {
+      if (editLoc?.id) {
+        await updateLoc.mutateAsync({ itemId, locId: editLoc.id, data: { warehouseId: Number(whId), reorderPoint: reorderPoint ? Number(reorderPoint) : undefined, reorderQty: reorderQty ? Number(reorderQty) : undefined } });
+        toast({ title: "Location updated" });
+      } else {
+        await createLoc.mutateAsync({ itemId, data: { warehouseId: Number(whId), reorderPoint: reorderPoint ? Number(reorderPoint) : undefined, reorderQty: reorderQty ? Number(reorderQty) : undefined } });
+        toast({ title: "Location added" });
+      }
+      setEditLoc(null); setWhId(""); setReorderPoint(""); setReorderQty("");
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+  };
+
+  useEffect(() => {
+    if (editLoc) {
+      setWhId(editLoc.warehouseId ? String(editLoc.warehouseId) : "");
+      setReorderPoint(editLoc.reorderPoint ?? "");
+      setReorderQty(editLoc.reorderQty ?? "");
+    }
+  }, [editLoc]);
+
+  const warehouseName = (id?: number) => warehouses.find((w) => w.id === id)?.name ?? `WH#${id}`;
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <h4 className="text-sm font-semibold">Item Locations</h4>
+      {locations.length > 0 ? (
+        <div className="rounded border divide-y text-sm">
+          {locations.map((l) => (
+            <div key={l.id} className="flex items-center gap-2 px-3 py-1.5">
+              <span className="flex-1 text-xs">{warehouseName(l.warehouseId)}</span>
+              <span className="text-muted-foreground text-xs">ROP: {l.reorderPoint ?? "—"}</span>
+              <span className="text-muted-foreground text-xs">ROQ: {l.reorderQty ?? "—"}</span>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditLoc(l)}><Pencil className="h-3 w-3" /></Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await deleteLoc.mutateAsync({ itemId, locId: l.id! }); refetch(); }}>
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-xs text-muted-foreground">No item locations yet.</p>}
+      <div className="flex gap-2 items-end flex-wrap">
+        <div className="flex-1 min-w-32">
+          <Label className="text-xs mb-1 block">Warehouse</Label>
+          <Select value={whId} onValueChange={setWhId}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select…" /></SelectTrigger>
+            <SelectContent>{warehouses.map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="w-24">
+          <Label className="text-xs mb-1 block">Reorder Point</Label>
+          <Input value={reorderPoint} onChange={(e) => setReorderPoint(e.target.value)} type="number" placeholder="0" className="h-8 text-xs" />
+        </div>
+        <div className="w-24">
+          <Label className="text-xs mb-1 block">Reorder Qty</Label>
+          <Input value={reorderQty} onChange={(e) => setReorderQty(e.target.value)} type="number" placeholder="0" className="h-8 text-xs" />
+        </div>
+        <Button size="sm" className="h-8" onClick={save} disabled={!whId || createLoc.isPending || updateLoc.isPending}>
+          {editLoc ? <><Pencil className="h-3 w-3 mr-1" /> Update</> : <><Plus className="h-3 w-3 mr-1" /> Add</>}
+        </Button>
+        {editLoc && <Button variant="ghost" size="sm" className="h-8" onClick={() => { setEditLoc(null); setWhId(""); setReorderPoint(""); setReorderQty(""); }}>Cancel</Button>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Contacts Panel (shared UI) ───────────────────────────────────────────────
+
+function ContactsPanelUI({
+  contacts,
+  refetch,
+  onSubmit,
+  onDelete,
+  isPending,
+}: {
+  contacts: MasterContact[];
+  refetch: () => void;
+  onSubmit: (d: CreateContactBody, editId?: number) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
+  isPending: boolean;
+}) {
+  const [editContact, setEditContact] = useState<MasterContact | null>(null);
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<CreateContactBody>({
+    defaultValues: { firstName: "", isPrimary: false },
+  });
+
+  useEffect(() => {
+    if (editContact) {
+      reset({ firstName: editContact.firstName ?? "", lastName: editContact.lastName ?? "", email: editContact.email ?? "", phone: editContact.phone ?? "", role: editContact.role ?? "", isPrimary: editContact.isPrimary ?? false });
+    } else {
+      reset({ firstName: "", lastName: "", email: "", phone: "", role: "", isPrimary: false });
+    }
+  }, [editContact, reset]);
+
+  const handleFormSubmit = handleSubmit(async (d) => {
+    await onSubmit(d, editContact?.id);
+    setEditContact(null);
+    reset({ firstName: "" });
+    refetch();
+  });
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <h4 className="text-sm font-semibold">Contacts</h4>
+      {contacts.length > 0 ? (
+        <div className="rounded border divide-y text-sm">
+          {contacts.map((c) => (
+            <div key={c.id} className="flex items-center gap-2 px-3 py-1.5">
+              <div className="flex-1">
+                <div className="font-medium text-xs">{c.firstName} {c.lastName ?? ""}</div>
+                <div className="text-muted-foreground text-xs">{c.email} {c.phone ? `· ${c.phone}` : ""} {c.role ? `· ${c.role}` : ""}</div>
+              </div>
+              {c.isPrimary && <Badge variant="outline" className="text-xs">Primary</Badge>}
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditContact(c)}><Pencil className="h-3 w-3" /></Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(c.id!).then(refetch)}>
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-xs text-muted-foreground">No contacts yet.</p>}
+      <form onSubmit={handleFormSubmit} className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs mb-1 block">First Name *</Label>
+            <Input {...register("firstName", { required: true })} className="h-8 text-xs" />
+            {errors.firstName && <p className="text-xs text-destructive">Required</p>}
+          </div>
+          <div>
+            <Label className="text-xs mb-1 block">Last Name</Label>
+            <Input {...register("lastName")} className="h-8 text-xs" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs mb-1 block">Email</Label>
+            <Input {...register("email")} type="email" className="h-8 text-xs" />
+          </div>
+          <div>
+            <Label className="text-xs mb-1 block">Phone</Label>
+            <Input {...register("phone")} className="h-8 text-xs" />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <Label className="text-xs mb-1 block">Role</Label>
+            <Input {...register("role")} placeholder="Accounts, Sales…" className="h-8 text-xs" />
+          </div>
+          <div className="flex items-center gap-1.5 pt-5">
+            <input type="checkbox" id="contact-primary" {...register("isPrimary")} className="h-4 w-4" />
+            <Label htmlFor="contact-primary" className="text-xs">Primary</Label>
+          </div>
+          <Button type="submit" size="sm" className="h-8 mt-5" disabled={isPending}>
+            {editContact ? <><Pencil className="h-3 w-3 mr-1" /> Update</> : <><Plus className="h-3 w-3 mr-1" /> Add</>}
+          </Button>
+          {editContact && <Button type="button" variant="ghost" size="sm" className="h-8 mt-5" onClick={() => { setEditContact(null); reset({ firstName: "" }); }}>Cancel</Button>}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function SupplierContactsPanel({ supplierId }: { supplierId: number }) {
+  const { toast } = useToast();
+  const { data, refetch } = useGetSupplier(supplierId);
+  const createCont = useCreateSupplierContact();
+  const updateCont = useUpdateSupplierContact();
+  const deleteCont = useDeleteSupplierContact();
+  const contacts = ((data as { contacts?: MasterContact[] })?.contacts ?? []) as MasterContact[];
+
+  const handleSubmit = async (d: CreateContactBody, editId?: number) => {
+    try {
+      if (editId) await updateCont.mutateAsync({ supplierId, contactId: editId, data: d });
+      else await createCont.mutateAsync({ id: supplierId, data: d });
+      toast({ title: editId ? "Contact updated" : "Contact added" });
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+  };
+
+  const handleDelete = async (contactId: number) => {
+    try { await deleteCont.mutateAsync({ supplierId, contactId }); }
+    catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+  };
+
+  return <ContactsPanelUI contacts={contacts} refetch={refetch} onSubmit={handleSubmit} onDelete={handleDelete} isPending={createCont.isPending || updateCont.isPending} />;
+}
+
+function CustomerContactsPanel({ customerId }: { customerId: number }) {
+  const { toast } = useToast();
+  const { data, refetch } = useGetCustomer(customerId);
+  const createCont = useCreateCustomerContact();
+  const updateCont = useUpdateCustomerContact();
+  const deleteCont = useDeleteCustomerContact();
+  const contacts = ((data as { contacts?: MasterContact[] })?.contacts ?? []) as MasterContact[];
+
+  const handleSubmit = async (d: CreateContactBody, editId?: number) => {
+    try {
+      if (editId) await updateCont.mutateAsync({ customerId, contactId: editId, data: d });
+      else await createCont.mutateAsync({ id: customerId, data: d });
+      toast({ title: editId ? "Contact updated" : "Contact added" });
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+  };
+
+  const handleDelete = async (contactId: number) => {
+    try { await deleteCont.mutateAsync({ customerId, contactId }); }
+    catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+  };
+
+  return <ContactsPanelUI contacts={contacts} refetch={refetch} onSubmit={handleSubmit} onDelete={handleDelete} isPending={createCont.isPending || updateCont.isPending} />;
+}
+
+// ─── Warehouse Locations Panel ────────────────────────────────────────────────
+
+function WarehouseLocationsPanel({ warehouseId }: { warehouseId: number }) {
+  const { toast } = useToast();
+  const { data, refetch } = useGetWarehouse(warehouseId);
+  const createLoc = useCreateWarehouseLocation();
+  const updateLoc = useUpdateWarehouseLocation();
+  const deleteLoc = useDeleteWarehouseLocation();
+  const locations = (data?.locations ?? []) as WarehouseLocation[];
+  const [editLoc, setEditLoc] = useState<WarehouseLocation | null>(null);
+
+  const { register, handleSubmit, reset, control } = useForm<CreateWarehouseLocationBody>({
+    defaultValues: { code: "", name: "", locationType: "zone" as CreateWarehouseLocationBodyLocationType, isActive: true },
+  });
+
+  useEffect(() => {
+    if (editLoc) {
+      reset({ code: editLoc.code ?? "", name: editLoc.name ?? "", locationType: (editLoc.locationType ?? "zone") as CreateWarehouseLocationBodyLocationType, description: editLoc.description ?? "", isActive: editLoc.isActive ?? true });
+    } else {
+      reset({ code: "", name: "", locationType: "zone" as CreateWarehouseLocationBodyLocationType, isActive: true });
+    }
+  }, [editLoc, reset]);
+
+  const onSubmit = handleSubmit(async (d) => {
+    try {
+      if (editLoc?.id) {
+        await updateLoc.mutateAsync({ warehouseId, locationId: editLoc.id, data: d });
+        toast({ title: "Location updated" });
+      } else {
+        await createLoc.mutateAsync({ id: warehouseId, data: d });
+        toast({ title: "Location added" });
+      }
+      setEditLoc(null);
+      reset({ code: "", name: "", locationType: "zone", isActive: true });
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+  });
+
+  const isPending = createLoc.isPending || updateLoc.isPending;
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <h4 className="text-sm font-semibold">Locations (Zones / Aisles / Bins)</h4>
+      {locations.length > 0 ? (
+        <div className="rounded border divide-y text-sm">
+          {locations.map((l) => (
+            <div key={l.id} className="flex items-center gap-2 px-3 py-1.5">
+              <span className="font-mono text-xs font-medium w-24 shrink-0">{l.code}</span>
+              <span className="flex-1 text-xs">{l.name}</span>
+              <Badge variant="outline" className="text-xs">{l.locationType}</Badge>
+              <Badge variant={l.isActive ? "default" : "secondary"} className="text-xs">{l.isActive ? "Active" : "Inactive"}</Badge>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditLoc(l)}><Pencil className="h-3 w-3" /></Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await deleteLoc.mutateAsync({ warehouseId, locationId: l.id! }); refetch(); }}>
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-xs text-muted-foreground">No locations defined yet.</p>}
+      <form onSubmit={onSubmit} className="space-y-2">
+        <div className="flex gap-2">
+          <div className="w-28">
+            <Label className="text-xs mb-1 block">Code *</Label>
+            <Input {...register("code", { required: true })} placeholder="A1, B2, BULK" className="h-8 text-xs" />
+          </div>
+          <div className="flex-1">
+            <Label className="text-xs mb-1 block">Name *</Label>
+            <Input {...register("name", { required: true })} placeholder="Zone A, Bin 1" className="h-8 text-xs" />
+          </div>
+          <div className="w-28">
+            <Label className="text-xs mb-1 block">Type</Label>
+            <Controller control={control} name="locationType" render={({ field }) => (
+              <Select value={field.value ?? "zone"} onValueChange={field.onChange}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="zone">Zone</SelectItem>
+                  <SelectItem value="aisle">Aisle</SelectItem>
+                  <SelectItem value="bin">Bin</SelectItem>
+                </SelectContent>
+              </Select>
+            )} />
+          </div>
+          <Button type="submit" size="sm" className="h-8 mt-5" disabled={isPending}>
+            {editLoc ? <><Pencil className="h-3 w-3 mr-1" /> Update</> : <><Plus className="h-3 w-3 mr-1" /> Add</>}
+          </Button>
+          {editLoc && <Button type="button" variant="ghost" size="sm" className="h-8 mt-5" onClick={() => { setEditLoc(null); reset(); }}>Cancel</Button>}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Warehouse Stock Summary Panel ────────────────────────────────────────────
+
+function WarehouseStockPanel({ warehouseId }: { warehouseId: number }) {
+  const { data, isLoading } = useGetWarehouseStockSummary(warehouseId);
+
+  if (isLoading) return <div className="pt-2 border-t"><Skeleton className="h-20 w-full" /></div>;
+  if (!data) return null;
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <h4 className="text-sm font-semibold">Stock Summary</h4>
+      <div className="grid grid-cols-3 gap-3 text-sm">
+        <Card className="p-3 text-center">
+          <div className="text-2xl font-bold">{data.locationCount ?? 0}</div>
+          <div className="text-xs text-muted-foreground">Total Locations</div>
+        </Card>
+        <Card className="p-3 text-center">
+          <div className="text-2xl font-bold text-green-600">{data.activeLocationCount ?? 0}</div>
+          <div className="text-xs text-muted-foreground">Active</div>
+        </Card>
+        <Card className="p-3 text-center">
+          <div className="text-2xl font-bold text-muted-foreground">{(data.locationCount ?? 0) - (data.activeLocationCount ?? 0)}</div>
+          <div className="text-xs text-muted-foreground">Inactive</div>
+        </Card>
+      </div>
+      {data.locationsByType && Object.keys(data.locationsByType).length > 0 && (
+        <div className="rounded border p-3">
+          <div className="text-xs font-medium mb-2 text-muted-foreground">By Type</div>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(data.locationsByType).map(([type, count]) => (
+              <Badge key={type} variant="outline" className="text-xs capitalize">{type}: {String(count)}</Badge>
+            ))}
+          </div>
+        </div>
+      )}
+      {data.locations && data.locations.length > 0 && (
+        <div className="rounded border text-sm">
+          <div className="px-3 py-1.5 bg-muted text-xs font-medium grid grid-cols-5 gap-2">
+            <span className="col-span-2">Location</span><span>Type</span><span className="text-right">On Hand</span><span className="text-right">Available</span>
+          </div>
+          {data.locations.map((l) => (
+            <div key={l.id} className="px-3 py-1.5 grid grid-cols-5 gap-2 border-t text-xs">
+              <span className="col-span-2 font-mono">{l.code}</span>
+              <span className="capitalize text-muted-foreground">{l.locationType}</span>
+              <span className="text-right">{l.qtyOnHand ?? 0}</span>
+              <span className="text-right">{l.qtyAvailable ?? 0}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ITEMS TAB ────────────────────────────────────────────────────────────────
 
 type ItemRow = NonNullable<ListItemsQueryResult["items"]>[number];
@@ -549,7 +1181,15 @@ function ItemModal({
             </Button>
           </DialogFooter>
         </form>
-        {isEdit && item?.id && <ItemUnitsPanel itemId={item.id} />}
+        {isEdit && item?.id && (
+          <div className="space-y-4 mt-2">
+            <ItemUnitsPanel itemId={item.id} />
+            <ItemVariantsPanel itemId={item.id} />
+            <ItemAttributesPanel itemId={item.id} />
+            <ItemCrossRefsPanel itemId={item.id} />
+            <ItemLocationsPanel itemId={item.id} />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -863,6 +1503,7 @@ function SupplierModal({
             <Button type="submit" disabled={isPending}>{isPending ? "Saving…" : isEdit ? "Save Changes" : "Create Supplier"}</Button>
           </DialogFooter>
         </form>
+        {isEdit && supplier?.id && <SupplierContactsPanel supplierId={supplier.id} />}
       </DialogContent>
     </Dialog>
   );
@@ -1089,6 +1730,7 @@ function CustomerModal({ open, onOpenChange, customer, onSuccess }: {
             <Button type="submit" disabled={isPending}>{isPending ? "Saving…" : isEdit ? "Save Changes" : "Create Customer"}</Button>
           </DialogFooter>
         </form>
+        {isEdit && customer?.id && <CustomerContactsPanel customerId={customer.id} />}
       </DialogContent>
     </Dialog>
   );
@@ -1287,6 +1929,12 @@ function WarehouseModal({ open, onOpenChange, warehouse, onSuccess }: {
             <Button type="submit" disabled={isPending}>{isPending ? "Saving…" : isEdit ? "Save Changes" : "Create Warehouse"}</Button>
           </DialogFooter>
         </form>
+        {isEdit && warehouse?.id && (
+          <div className="space-y-4 mt-2">
+            <WarehouseLocationsPanel warehouseId={warehouse.id} />
+            <WarehouseStockPanel warehouseId={warehouse.id} />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -87,6 +87,7 @@ import type {
   Tenant,
   TenantMember,
   UomConversionResult,
+  UpdateItemVariantBody,
   UpdateMemberBody,
   UpdateTenantBody,
   UpdateUserBody,
@@ -2808,6 +2809,102 @@ export const useCreateItemVariant = <
   TContext
 > => {
   return useMutation(getCreateItemVariantMutationOptions(options));
+};
+
+/**
+ * @summary Update an item variant
+ */
+export const getUpdateItemVariantUrl = (itemId: number, variantId: number) => {
+  return `/api/master-data/items/${itemId}/variants/${variantId}`;
+};
+
+export const updateItemVariant = async (
+  itemId: number,
+  variantId: number,
+  updateItemVariantBody: UpdateItemVariantBody,
+  options?: RequestInit,
+): Promise<ItemVariant> => {
+  return customFetch<ItemVariant>(getUpdateItemVariantUrl(itemId, variantId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateItemVariantBody),
+  });
+};
+
+export const getUpdateItemVariantMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateItemVariant>>,
+    TError,
+    {
+      itemId: number;
+      variantId: number;
+      data: BodyType<UpdateItemVariantBody>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateItemVariant>>,
+  TError,
+  { itemId: number; variantId: number; data: BodyType<UpdateItemVariantBody> },
+  TContext
+> => {
+  const mutationKey = ["updateItemVariant"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateItemVariant>>,
+    { itemId: number; variantId: number; data: BodyType<UpdateItemVariantBody> }
+  > = (props) => {
+    const { itemId, variantId, data } = props ?? {};
+
+    return updateItemVariant(itemId, variantId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateItemVariantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateItemVariant>>
+>;
+export type UpdateItemVariantMutationBody = BodyType<UpdateItemVariantBody>;
+export type UpdateItemVariantMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update an item variant
+ */
+export const useUpdateItemVariant = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateItemVariant>>,
+    TError,
+    {
+      itemId: number;
+      variantId: number;
+      data: BodyType<UpdateItemVariantBody>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateItemVariant>>,
+  TError,
+  { itemId: number; variantId: number; data: BodyType<UpdateItemVariantBody> },
+  TContext
+> => {
+  return useMutation(getUpdateItemVariantMutationOptions(options));
 };
 
 /**

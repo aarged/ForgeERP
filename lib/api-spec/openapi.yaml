@@ -1065,6 +1065,28 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   /master-data/items/{itemId}/variants/{variantId}:
+    patch:
+      operationId: updateItemVariant
+      tags: [master-data]
+      summary: Update an item variant
+      security:
+        - clerkAuth: []
+      parameters:
+        - { name: itemId, in: path, required: true, schema: { type: integer } }
+        - { name: variantId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateItemVariantBody"
+      responses:
+        "200":
+          description: Updated variant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemVariant"
     delete:
       operationId: deleteItemVariant
       tags: [master-data]
@@ -3078,6 +3100,17 @@ components:
         sku: { type: string }
         barcode: { type: string }
         attributes: { type: object }
+        costAdjustment: { type: number }
+        priceAdjustment: { type: number }
+        isActive: { type: boolean }
+
+    UpdateItemVariantBody:
+      type: object
+      properties:
+        variantCode: { type: string }
+        name: { type: string }
+        sku: { type: string }
+        barcode: { type: string }
         costAdjustment: { type: number }
         priceAdjustment: { type: number }
         isActive: { type: boolean }
