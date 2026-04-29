@@ -6273,7 +6273,7 @@ export const CreateInventoryAdjustmentHeader = zod.object({
 export const CreateInventoryAdjustmentBody = zod.object({
   adjustmentType: zod.enum(["increase", "decrease", "recount"]).optional(),
   reason: zod.string(),
-  glAccountId: zod.number().nullish(),
+  glAccountId: zod.number(),
   glAccountCode: zod.string().nullish(),
   warehouseId: zod.number().nullish(),
   notes: zod.string().nullish(),
@@ -6287,6 +6287,34 @@ export const CreateInventoryAdjustmentBody = zod.object({
       unitCost: zod.number().nullish(),
     }),
   ),
+});
+
+/**
+ * @summary Direct/manual inbound stock receipt (not from a purchase order)
+ */
+export const CreateDirectReceiveHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const createDirectReceiveBodyQuantityMin = 0.0001;
+
+export const createDirectReceiveBodyRefTypeDefault = `direct`;
+
+export const CreateDirectReceiveBody = zod.object({
+  itemId: zod.number(),
+  warehouseId: zod.number(),
+  locationId: zod.number().nullish(),
+  quantity: zod.number().min(createDirectReceiveBodyQuantityMin),
+  unitCost: zod.number().nullish(),
+  lotNumber: zod.string().nullish(),
+  serialNumber: zod.string().nullish(),
+  glAccountId: zod.number().describe("AP \/ clearing GL account (mandatory)"),
+  refCode: zod.string().nullish(),
+  refType: zod
+    .string()
+    .nullish()
+    .default(createDirectReceiveBodyRefTypeDefault),
+  notes: zod.string().nullish(),
 });
 
 /**
@@ -6749,10 +6777,18 @@ export const PostStocktakeRunHeader = zod.object({
   "x-tenant-id": zod.number(),
 });
 
+export const PostStocktakeRunBody = zod.object({
+  glAccountId: zod
+    .number()
+    .optional()
+    .describe("GL account for variance postings (optional)"),
+});
+
 export const PostStocktakeRunResponse = zod.object({
   id: zod.number().optional(),
   status: zod.string().optional(),
   movementsPosted: zod.number().optional(),
+  glPostingId: zod.number().nullish(),
 });
 
 /**

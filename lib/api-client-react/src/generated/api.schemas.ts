@@ -3266,7 +3266,7 @@ export type CreateInventoryAdjustmentBodyLinesItem = {
 export type CreateInventoryAdjustmentBody = {
   adjustmentType?: CreateInventoryAdjustmentBodyAdjustmentType;
   reason: string;
-  glAccountId?: number | null;
+  glAccountId: number;
   glAccountCode?: string | null;
   warehouseId?: number | null;
   notes?: string | null;
@@ -3277,6 +3277,27 @@ export type CreateInventoryAdjustment201 = {
   id?: number;
   code?: string;
   lines?: number;
+};
+
+export type CreateDirectReceiveBody = {
+  itemId: number;
+  warehouseId: number;
+  locationId?: number | null;
+  /** @minimum 0.0001 */
+  quantity: number;
+  unitCost?: number | null;
+  lotNumber?: string | null;
+  serialNumber?: string | null;
+  /** AP / clearing GL account (mandatory) */
+  glAccountId: number;
+  refCode?: string | null;
+  refType?: string | null;
+  notes?: string | null;
+};
+
+export type CreateDirectReceive201 = {
+  movementId?: number;
+  glPostingId?: number | null;
 };
 
 export type ListInventoryAdjustmentsParams = {
@@ -3459,10 +3480,16 @@ export type UpdateStocktakeLineBody = {
   countedQty: number;
 };
 
+export type PostStocktakeRunBody = {
+  /** GL account for variance postings (optional) */
+  glAccountId?: number;
+};
+
 export type PostStocktakeRun200 = {
   id?: number;
   status?: string;
   movementsPosted?: number;
+  glPostingId?: number | null;
 };
 
 export type ListCycleCountsParams = {

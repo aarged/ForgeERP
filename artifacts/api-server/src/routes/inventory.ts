@@ -119,9 +119,15 @@ async function updateStockLevel(
   }
 
   if (existing.length > 0) {
+    // Hard-fail on over-consumption: do not silently clamp to zero
+    if (quantity < 0 && Number(existing[0].qtyOnHand) + quantity < -0.0001) {
+      throw new Error(
+        `Insufficient stock for item ${itemId} in warehouse ${warehouseId}: available ${Number(existing[0].qtyOnHand).toFixed(4)}, requested ${Math.abs(quantity).toFixed(4)}`
+      );
+    }
     await db.update(inventoryStockTable)
       .set({
-        qtyOnHand: sql`GREATEST(0, ${inventoryStockTable.qtyOnHand} + ${qty}::numeric)`,
+        qtyOnHand: sql`${inventoryStockTable.qtyOnHand} + ${qty}::numeric`,
         ...(newAvgCost !== undefined ? { averageCost: newAvgCost } : {}),
         lastMovementAt: new Date(),
       })
@@ -182,7 +188,7 @@ async function updateStockLevel(
       .limit(1);
     if (existingLot.length > 0) {
       await db.update(lotNumbersTable)
-        .set({ qtyOnHand: sql`GREATEST(0, ${lotNumbersTable.qtyOnHand} + ${qty}::numeric)` })
+        .set({ qtyOnHand: sql`${lotNumbersTable.qtyOnHand} + ${qty}::numeric` })
         .where(eq(lotNumbersTable.id, existingLot[0].id));
     } else if (quantity > 0) {
       await db.insert(lotNumbersTable).values({
@@ -387,7 +393,7 @@ const adjustmentLineSchema = z.object({
 const createAdjustmentSchema = z.object({
   adjustmentType: z.enum(["increase", "decrease", "recount"]).default("increase"),
   reason: z.string().min(1),
-  glAccountId: z.number().int().optional(),
+  glAccountId: z.number().int({ message: "A GL account is required for stock adjustments" }),
   glAccountCode: z.string().optional(),
   glAccountName: z.string().optional(),
   warehouseId: z.number().int().optional(),
@@ -736,6 +742,77 @@ router.post("/inventory/transfers/:id/receive", ...tenantWriteMiddleware, async 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ── Direct / Manual Receive ───────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+const directReceiveSchema = z.object({
+  itemId: z.number().int().positive(),
+  warehouseId: z.number().int().positive(),
+  locationId: z.number().int().optional(),
+  quantity: z.number().positive(),
+  unitCost: z.number().optional(),
+  lotNumber: z.string().optional(),
+  serialNumber: z.string().optional(),
+  glAccountId: z.number().int({ message: "A GL clearing/AP account is required for direct receives" }),
+  refCode: z.string().optional(),
+  refType: z.string().optional().default("direct"),
+  notes: z.string().optional(),
+});
+
+/** POST /inventory/receive — Direct/manual inbound receipt (not from a PO) */
+router.post("/inventory/receive", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const parsed = directReceiveSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+  const d = parsed.data;
+
+  const [item] = await withTenantDb(tenantId, (db) =>
+    db.select({ code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+  if (!item) { res.status(404).json({ error: "Item not found" }); return; }
+  const costingMethod = (item.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
+
+  const [glAcc] = await withTenantDb(tenantId, (db) =>
+    db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(eq(glAccountsTable.id, d.glAccountId)).limit(1));
+  if (!glAcc) { res.status(404).json({ error: "GL account not found" }); return; }
+
+  const result = await withTenantDb(tenantId, async (db) => {
+    const [movement] = await db.insert(inventoryMovementsTable).values({
+      tenantId, itemId: d.itemId, itemCode: item.code, itemName: item.name,
+      warehouseId: d.warehouseId, locationId: d.locationId ?? undefined,
+      movementType: "receive",
+      quantity: String(d.quantity),
+      unitCost: d.unitCost != null ? String(d.unitCost) : undefined,
+      lotNumber: d.lotNumber ?? undefined,
+      serialNumber: d.serialNumber ?? undefined,
+      refType: d.refType, refCode: d.refCode ?? undefined,
+      postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined,
+      notes: d.notes ?? undefined,
+    } as typeof inventoryMovementsTable.$inferInsert).returning();
+
+    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, d.quantity, d.unitCost ?? null, d.lotNumber ?? null, movement.id, costingMethod);
+
+    // GL posting: Dr Inventory Asset, Cr AP/Clearing account
+    let glPostingId: number | null | undefined;
+    if (d.unitCost) {
+      const value = d.quantity * d.unitCost;
+      glPostingId = await createInventoryGlPosting(
+        db, tenantId, "inventory_receive", movement.id,
+        d.refCode ?? `RECV-${movement.id}`, clerkUserId, userEmail,
+        [
+          { accountCode: "1300", accountName: "Inventory Asset", debit: value, credit: 0, description: `${item.code} received ${d.quantity} × ${d.unitCost}` },
+          { accountCode: glAcc.code, accountName: glAcc.name, debit: 0, credit: value, description: `Direct receive clearing` },
+        ],
+      );
+    }
+
+    return { movementId: movement.id, glPostingId };
+  });
+
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "inventory.received", entityType: "inventory_movement", entityId: String(result.movementId) });
+  res.status(201).json(result);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ── Issue to GL Account / Project ─────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -842,7 +919,8 @@ router.post("/inventory/return", ...tenantWriteMiddleware, async (req: Request, 
   const d = parsed.data;
 
   const [item] = await withTenantDb(tenantId, (db) =>
-    db.select({ code: itemsTable.code, name: itemsTable.name, unitCost: itemsTable.unitCost }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+    db.select({ code: itemsTable.code, name: itemsTable.name, unitCost: itemsTable.unitCost, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+  const costingMethod = (item?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
 
   const result = await withTenantDb(tenantId, async (db) => {
     const [movement] = await db.insert(inventoryMovementsTable).values({
@@ -857,7 +935,7 @@ router.post("/inventory/return", ...tenantWriteMiddleware, async (req: Request, 
       notes: d.notes ?? undefined,
     } as typeof inventoryMovementsTable.$inferInsert).returning();
 
-    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, d.quantity, d.unitCost ?? Number(item?.unitCost ?? 0), d.lotNumber ?? null, movement.id);
+    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, d.quantity, d.unitCost ?? Number(item?.unitCost ?? 0), d.lotNumber ?? null, movement.id, costingMethod);
     return { movementId: movement.id };
   });
 
@@ -888,7 +966,8 @@ router.post("/inventory/repack", ...tenantWriteMiddleware, async (req: Request, 
   const d = parsed.data;
 
   const [item] = await withTenantDb(tenantId, (db) =>
-    db.select({ code: itemsTable.code, name: itemsTable.name }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+    db.select({ code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.itemId)).limit(1));
+  const costingMethod = (item?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
 
   const result = await withTenantDb(tenantId, async (db) => {
     // Out movement from original lot
@@ -902,7 +981,7 @@ router.post("/inventory/repack", ...tenantWriteMiddleware, async (req: Request, 
       postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined,
       notes: d.notes ?? undefined,
     } as typeof inventoryMovementsTable.$inferInsert).returning();
-    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, -d.qtyIn, null, d.fromLotNumber ?? null, outMovement.id);
+    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, -d.qtyIn, null, d.fromLotNumber ?? null, outMovement.id, costingMethod);
 
     // In movement to new lot
     const [inMovement] = await db.insert(inventoryMovementsTable).values({
@@ -915,7 +994,7 @@ router.post("/inventory/repack", ...tenantWriteMiddleware, async (req: Request, 
       postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined,
       notes: d.notes ?? undefined,
     } as typeof inventoryMovementsTable.$inferInsert).returning();
-    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, d.qtyOut, d.unitCost ?? null, d.toLotNumber ?? null, inMovement.id);
+    await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, d.qtyOut, d.unitCost ?? null, d.toLotNumber ?? null, inMovement.id, costingMethod);
     return { outMovementId: outMovement.id, inMovementId: inMovement.id };
   });
 
@@ -969,14 +1048,16 @@ router.post("/inventory/build", ...tenantWriteMiddleware, async (req: Request, r
   }
 
   const [finishedItem] = await withTenantDb(tenantId, (db) =>
-    db.select({ code: itemsTable.code, name: itemsTable.name, unitCost: itemsTable.unitCost }).from(itemsTable).where(eq(itemsTable.id, d.finishedItemId)).limit(1));
+    db.select({ code: itemsTable.code, name: itemsTable.name, unitCost: itemsTable.unitCost, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, d.finishedItemId)).limit(1));
+  const finishedCostingMethod = (finishedItem?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
 
   const result = await withTenantDb(tenantId, async (db) => {
     const movementIds: number[] = [];
 
-    // Consume each component
+    // Consume each component (resolve per-component costing method)
     for (const comp of d.components) {
-      const [compItem] = await db.select({ code: itemsTable.code, name: itemsTable.name }).from(itemsTable).where(eq(itemsTable.id, comp.itemId)).limit(1);
+      const [compItem] = await db.select({ code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod }).from(itemsTable).where(eq(itemsTable.id, comp.itemId)).limit(1);
+      const compCostingMethod = (compItem?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
       const [movement] = await db.insert(inventoryMovementsTable).values({
         tenantId, itemId: comp.itemId, itemCode: compItem?.code, itemName: compItem?.name,
         warehouseId: comp.warehouseId, locationId: comp.locationId ?? undefined,
@@ -987,7 +1068,7 @@ router.post("/inventory/build", ...tenantWriteMiddleware, async (req: Request, r
         postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined,
         notes: d.notes ?? undefined,
       } as typeof inventoryMovementsTable.$inferInsert).returning();
-      await updateStockLevel(db, tenantId, comp.itemId, comp.warehouseId, comp.locationId ?? null, -comp.qty, null, comp.lotNumber ?? null, movement.id);
+      await updateStockLevel(db, tenantId, comp.itemId, comp.warehouseId, comp.locationId ?? null, -comp.qty, null, comp.lotNumber ?? null, movement.id, compCostingMethod);
       movementIds.push(movement.id);
     }
 
@@ -1004,7 +1085,7 @@ router.post("/inventory/build", ...tenantWriteMiddleware, async (req: Request, r
       notes: d.notes ?? undefined,
     } as typeof inventoryMovementsTable.$inferInsert).returning();
 
-    await updateStockLevel(db, tenantId, d.finishedItemId, d.finishedWarehouseId, d.finishedLocationId ?? null, d.finishedQty, Number(finishedItem?.unitCost ?? 0), d.finishedLotNumber ?? null, finMovement.id);
+    await updateStockLevel(db, tenantId, d.finishedItemId, d.finishedWarehouseId, d.finishedLocationId ?? null, d.finishedQty, Number(finishedItem?.unitCost ?? 0), d.finishedLotNumber ?? null, finMovement.id, finishedCostingMethod);
     movementIds.push(finMovement.id);
 
     return { finishedMovementId: finMovement.id, componentMovementIds: movementIds.slice(0, -1) };
@@ -1450,6 +1531,7 @@ router.patch("/inventory/stocktakes/:id/lines/:lineId", ...tenantWriteMiddleware
 router.post("/inventory/stocktakes/:id/post", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
+  const { glAccountId } = req.body as { glAccountId?: number };
 
   const [run] = await withTenantDb(tenantId, (db) =>
     db.select().from(stocktakeRunsTable).where(and(eq(stocktakeRunsTable.id, id), eq(stocktakeRunsTable.tenantId, tenantId))).limit(1));
@@ -1461,10 +1543,26 @@ router.post("/inventory/stocktakes/:id/post", ...tenantWriteMiddleware, async (r
 
   const varianceLines = lines.filter((l) => l.countedQty !== null && Number(l.varianceQty ?? 0) !== 0);
   let movementsPosted = 0;
+  let glPostingId: number | undefined;
 
   await withTenantDb(tenantId, async (db) => {
+    // Resolve GL account for variance posting
+    const glAcc = glAccountId
+      ? (await db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(eq(glAccountsTable.id, glAccountId)).limit(1))[0]
+      : null;
+
+    // Build GL lines for all variances, create single GL posting
+    const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
+
     for (const line of varianceLines) {
       const varianceQty = Number(line.varianceQty ?? 0);
+      const unitCost = Number(line.unitCost ?? 0);
+
+      // Resolve item costing method
+      const [itemRow] = await db.select({ costingMethod: itemsTable.costingMethod })
+        .from(itemsTable).where(eq(itemsTable.id, line.itemId)).limit(1);
+      const costingMethod = (itemRow?.costingMethod ?? "avco") as "fifo" | "avco" | "standard";
+
       const [movement] = await db.insert(inventoryMovementsTable).values({
         tenantId, itemId: line.itemId, itemCode: line.itemCode ?? undefined, itemName: line.itemName ?? undefined,
         warehouseId: run.warehouseId,
@@ -1478,11 +1576,36 @@ router.post("/inventory/stocktakes/:id/post", ...tenantWriteMiddleware, async (r
         postedByClerkId: clerkUserId, postedByEmail: userEmail ?? undefined,
       } as typeof inventoryMovementsTable.$inferInsert).returning();
 
-      await updateStockLevel(db, tenantId, line.itemId, run.warehouseId, line.locationId ?? null, varianceQty, Number(line.unitCost ?? 0), line.lotNumber ?? null, movement.id);
+      await updateStockLevel(db, tenantId, line.itemId, run.warehouseId, line.locationId ?? null, varianceQty, unitCost, line.lotNumber ?? null, movement.id, costingMethod);
 
       await db.update(stocktakeLinesTable).set({ movementId: movement.id })
         .where(eq(stocktakeLinesTable.id, line.id));
       movementsPosted++;
+
+      // Accumulate GL lines for variance posting
+      if (glAcc && unitCost > 0) {
+        const value = Math.abs(varianceQty * unitCost);
+        const isIncrease = varianceQty > 0;
+        glLines.push({
+          accountCode: "1300", accountName: "Inventory Asset",
+          debit: isIncrease ? value : 0,
+          credit: isIncrease ? 0 : value,
+          description: `Stocktake ${run.code} – ${line.itemCode ?? ""} variance ${varianceQty > 0 ? "+" : ""}${varianceQty.toFixed(4)}`,
+        });
+        glLines.push({
+          accountCode: glAcc.code, accountName: glAcc.name,
+          debit: isIncrease ? 0 : value,
+          credit: isIncrease ? value : 0,
+          description: `Stocktake variance offset`,
+        });
+      }
+    }
+
+    // Create a single GL posting for the entire stocktake run
+    if (glLines.length > 0) {
+      glPostingId = await createInventoryGlPosting(
+        db, tenantId, "stocktake", id, run.code, clerkUserId, userEmail, glLines,
+      ) ?? undefined;
     }
 
     await db.update(stocktakeRunsTable)
@@ -1491,7 +1614,7 @@ router.post("/inventory/stocktakes/:id/post", ...tenantWriteMiddleware, async (r
   });
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "stocktake.posted", entityType: "stocktake_run", entityId: String(id), newValues: { movementsPosted } });
-  res.json({ id, status: "posted", movementsPosted });
+  res.json({ id, status: "posted", movementsPosted, glPostingId });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

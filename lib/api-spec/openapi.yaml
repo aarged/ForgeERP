@@ -4574,11 +4574,11 @@ paths:
           application/json:
             schema:
               type: object
-              required: [reason, lines]
+              required: [reason, lines, glAccountId]
               properties:
                 adjustmentType: { type: string, enum: [increase, decrease, recount] }
                 reason: { type: string }
-                glAccountId: { type: integer, nullable: true }
+                glAccountId: { type: integer }
                 glAccountCode: { type: string, nullable: true }
                 warehouseId: { type: integer, nullable: true }
                 notes: { type: string, nullable: true }
@@ -4605,6 +4605,44 @@ paths:
                   id: { type: integer }
                   code: { type: string }
                   lines: { type: integer }
+
+  /inventory/receive:
+    post:
+      operationId: createDirectReceive
+      summary: Direct/manual inbound stock receipt (not from a purchase order)
+      tags: [Inventory]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [itemId, warehouseId, quantity, glAccountId]
+              properties:
+                itemId: { type: integer }
+                warehouseId: { type: integer }
+                locationId: { type: integer, nullable: true }
+                quantity: { type: number, minimum: 0.0001 }
+                unitCost: { type: number, nullable: true }
+                lotNumber: { type: string, nullable: true }
+                serialNumber: { type: string, nullable: true }
+                glAccountId: { type: integer, description: "AP / clearing GL account (mandatory)" }
+                refCode: { type: string, nullable: true }
+                refType: { type: string, nullable: true, default: "direct" }
+                notes: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Direct receive posted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  movementId: { type: integer }
+                  glPostingId: { type: integer, nullable: true }
 
   /inventory/adjustments:
     get:
@@ -4986,6 +5024,14 @@ paths:
       parameters:
         - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
         - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                glAccountId: { type: integer, description: "GL account for variance postings (optional)" }
       responses:
         "200":
           description: Stocktake posted
@@ -4997,6 +5043,7 @@ paths:
                   id: { type: integer }
                   status: { type: string }
                   movementsPosted: { type: integer }
+                  glPostingId: { type: integer, nullable: true }
 
   /inventory/cycle-counts:
     get:

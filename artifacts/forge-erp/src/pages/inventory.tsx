@@ -37,10 +37,12 @@ import {
   useGetSerialNumber,
   useRegisterSerialNumber,
   useUpdateSerialNumber,
+  useCreateDirectReceive,
   getTraceLotNumberQueryKey,
   getListInventoryTransfersQueryKey,
   getListSerialNumbersQueryKey,
   getGetSerialNumberQueryKey,
+  getListInventoryMovementsQueryKey,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -88,6 +90,7 @@ import {
   Download,
   CheckCircle2,
   PackageCheck,
+  Truck,
 } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -341,7 +344,7 @@ function MovementLogTab() {
 // ── Adjustments Tab ───────────────────────────────────────────────────────────
 
 type AdjLine = { itemId: number; itemCode: string; warehouseId: number; locationId?: number; lotNumber?: string; qtyAdjusted: number; unitCost?: number; };
-type AdjForm = { adjustmentType: "increase" | "decrease" | "recount"; reason: string; notes?: string; lines: AdjLine[]; };
+type AdjForm = { adjustmentType: "increase" | "decrease" | "recount"; reason: string; glAccountId: number; notes?: string; lines: AdjLine[]; };
 
 function AdjustmentsTab() {
   const { toast } = useToast();
@@ -353,10 +356,11 @@ function AdjustmentsTab() {
   const { data: detail } = useGetInventoryAdjustment(detailId!, { query: { enabled: detailId !== null, queryKey: getGetInventoryAdjustmentQueryKey(detailId!) } });
   const { data: items } = useListItems({ limit: 500 });
   const { data: warehouses } = useListWarehouses({ limit: 100 });
+  const { data: glAccounts } = useListGlAccounts({ limit: 500 });
   const createMut = useCreateInventoryAdjustment();
 
   const form = useForm<AdjForm>({
-    defaultValues: { adjustmentType: "increase", reason: "", lines: [{ itemId: 0, itemCode: "", warehouseId: 0, qtyAdjusted: 0 }] },
+    defaultValues: { adjustmentType: "increase", reason: "", glAccountId: 0, lines: [{ itemId: 0, itemCode: "", warehouseId: 0, qtyAdjusted: 0 }] },
   });
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "lines" });
 
@@ -367,7 +371,7 @@ function AdjustmentsTab() {
       await createMut.mutateAsync({ data: { ...vals, lines: vals.lines.map((l) => ({ ...l, itemId: Number(l.itemId), warehouseId: Number(l.warehouseId) })) } });
       toast({ title: "Adjustment posted" });
       setShowCreate(false);
-      form.reset({ adjustmentType: "increase", reason: "", lines: [{ itemId: 0, itemCode: "", warehouseId: 0, qtyAdjusted: 0 }] });
+      form.reset({ adjustmentType: "increase", reason: "", glAccountId: 0, lines: [{ itemId: 0, itemCode: "", warehouseId: 0, qtyAdjusted: 0 }] });
       invalidate();
     } catch (e: unknown) {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
@@ -443,6 +447,13 @@ function AdjustmentsTab() {
                 <Label>Reason *</Label>
                 <Input {...form.register("reason", { required: true })} placeholder="e.g. Damaged goods, cycle count variance" />
               </div>
+            </div>
+            <div>
+              <Label>GL Account *</Label>
+              <Select value={form.watch("glAccountId") ? String(form.watch("glAccountId")) : ""} onValueChange={(v) => form.setValue("glAccountId", Number(v))}>
+                <SelectTrigger><SelectValue placeholder="Select GL account…" /></SelectTrigger>
+                <SelectContent>{(glAccounts?.accounts ?? []).map((a) => <SelectItem key={a.id} value={String(a.id)}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Notes</Label>
@@ -882,7 +893,7 @@ function StocktakeTab() {
   async function onPost() {
     if (detailId === null) return;
     try {
-      const res = await postMut.mutateAsync({ id: detailId });
+      const res = await postMut.mutateAsync({ id: detailId, data: {} });
       toast({ title: `Stocktake posted — ${(res as unknown as { movementsPosted: number }).movementsPosted} variances adjusted` });
       setDetailId(null);
       invalidate();
@@ -1613,6 +1624,135 @@ function SerialNumbersTab() {
   );
 }
 
+// ── Direct Receive Tab ────────────────────────────────────────────────────────
+
+type DirectReceiveForm = {
+  itemId: number;
+  warehouseId: number;
+  locationId?: number;
+  quantity: number;
+  unitCost?: number;
+  lotNumber?: string;
+  serialNumber?: string;
+  glAccountId: number;
+  refCode?: string;
+  notes?: string;
+};
+
+function DirectReceiveTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: items } = useListItems({ limit: 500 });
+  const { data: warehouses } = useListWarehouses({ limit: 200 });
+  const { data: glAccounts } = useListGlAccounts({ limit: 500 });
+  const receiveMut = useCreateDirectReceive();
+
+  const form = useForm<DirectReceiveForm>({ defaultValues: { quantity: 1, itemId: 0, warehouseId: 0, glAccountId: 0 } });
+
+  async function onSubmit(vals: DirectReceiveForm) {
+    await receiveMut.mutateAsync({
+      data: {
+        itemId: vals.itemId,
+        warehouseId: vals.warehouseId,
+        locationId: vals.locationId || undefined,
+        quantity: vals.quantity,
+        unitCost: vals.unitCost || undefined,
+        lotNumber: vals.lotNumber || undefined,
+        serialNumber: vals.serialNumber || undefined,
+        glAccountId: vals.glAccountId,
+        refCode: vals.refCode || undefined,
+        notes: vals.notes || undefined,
+      },
+    });
+    toast({ title: "Stock received successfully" });
+    qc.invalidateQueries({ queryKey: getListInventoryMovementsQueryKey() });
+    form.reset({ quantity: 1, itemId: 0, warehouseId: 0, glAccountId: 0 });
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Direct Stock Receipt</h3>
+          <p className="text-sm text-muted-foreground">Receive goods into stock directly (without a purchase order).</p>
+        </div>
+      </div>
+
+      <form onSubmit={form.handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl border rounded-lg p-6">
+        <div className="space-y-2">
+          <Label>Item *</Label>
+          <Select
+            value={form.watch("itemId") ? String(form.watch("itemId")) : ""}
+            onValueChange={(v) => form.setValue("itemId", Number(v))}
+          >
+            <SelectTrigger><SelectValue placeholder="Select item…" /></SelectTrigger>
+            <SelectContent>{(items?.items ?? []).map((it) => <SelectItem key={it.id} value={String(it.id)}>{it.code} — {it.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Warehouse *</Label>
+          <Select
+            value={form.watch("warehouseId") ? String(form.watch("warehouseId")) : ""}
+            onValueChange={(v) => form.setValue("warehouseId", Number(v))}
+          >
+            <SelectTrigger><SelectValue placeholder="Select warehouse…" /></SelectTrigger>
+            <SelectContent>{(warehouses?.warehouses ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Quantity *</Label>
+          <Input type="number" min="0.0001" step="any" {...form.register("quantity", { valueAsNumber: true })} />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Unit Cost</Label>
+          <Input type="number" min="0" step="any" placeholder="0.00" {...form.register("unitCost", { valueAsNumber: true })} />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Lot Number</Label>
+          <Input placeholder="LOT-001" {...form.register("lotNumber")} />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Serial Number</Label>
+          <Input placeholder="SN-001" {...form.register("serialNumber")} />
+        </div>
+
+        <div className="space-y-2">
+          <Label>GL Clearing / AP Account *</Label>
+          <Select
+            value={form.watch("glAccountId") ? String(form.watch("glAccountId")) : ""}
+            onValueChange={(v) => form.setValue("glAccountId", Number(v))}
+          >
+            <SelectTrigger><SelectValue placeholder="Select GL account…" /></SelectTrigger>
+            <SelectContent>{(glAccounts?.accounts ?? []).map((a) => <SelectItem key={a.id} value={String(a.id)}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Reference Code</Label>
+          <Input placeholder="RECV-001" {...form.register("refCode")} />
+        </div>
+
+        <div className="md:col-span-2 space-y-2">
+          <Label>Notes</Label>
+          <Textarea rows={2} {...form.register("notes")} />
+        </div>
+
+        <div className="md:col-span-2 flex justify-end">
+          <Button type="submit" disabled={receiveMut.isPending}>
+            <Truck className="h-4 w-4 mr-2" />
+            {receiveMut.isPending ? "Posting…" : "Post Receipt"}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 // ── Repack / Build Tab ────────────────────────────────────────────────────────
 
 type RepackForm = { itemId: number; fromWarehouseId: number; fromLot?: string; fromQty: number; toItemId: number; toWarehouseId: number; toLot?: string; toQty: number; notes?: string };
@@ -1634,10 +1774,14 @@ function RepackBuildTab() {
   async function onSubmit(vals: RepackForm) {
     try {
       const label = mode === "repack" ? "Repack" : "Build";
+      if (!inventoryGlId) {
+        toast({ title: "No inventory GL account found. Please add an inventory asset account in the Chart of Accounts.", variant: "destructive" });
+        return;
+      }
       await createAdjMut.mutateAsync({ data: {
         adjustmentType: "decrease" as const,
         reason: `${label}: ${vals.notes ?? ""}`.trim(),
-        glAccountId: inventoryGlId ?? undefined,
+        glAccountId: inventoryGlId,
         notes: vals.notes,
         lines: [
           { itemId: Number(vals.itemId), warehouseId: Number(vals.fromWarehouseId), lotNumber: vals.fromLot, qtyAdjusted: -Math.abs(vals.fromQty) },
@@ -1773,6 +1917,9 @@ export default function Inventory() {
           <TabsTrigger value="serials" className="gap-1.5">
             <Hash className="h-4 w-4" />Serials
           </TabsTrigger>
+          <TabsTrigger value="receive" className="gap-1.5">
+            <Truck className="h-4 w-4" />Receive
+          </TabsTrigger>
           <TabsTrigger value="repack" className="gap-1.5">
             <PackageCheck className="h-4 w-4" />Repack/Build
           </TabsTrigger>
@@ -1787,6 +1934,7 @@ export default function Inventory() {
         <TabsContent value="cycle-counts"><CycleCountsTab /></TabsContent>
         <TabsContent value="lots"><LotsTab /></TabsContent>
         <TabsContent value="serials"><SerialNumbersTab /></TabsContent>
+        <TabsContent value="receive"><DirectReceiveTab /></TabsContent>
         <TabsContent value="repack"><RepackBuildTab /></TabsContent>
       </Tabs>
     </div>

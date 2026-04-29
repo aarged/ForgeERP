@@ -41,6 +41,8 @@ import type {
   CreateCycleCount201,
   CreateCycleCountBody,
   CreateDespatchBody,
+  CreateDirectReceive201,
+  CreateDirectReceiveBody,
   CreateGlAccountBody,
   CreateInventoryAdjustment201,
   CreateInventoryAdjustmentBody,
@@ -192,6 +194,7 @@ import type {
   PoReturnDetail,
   PoSummaryRow,
   PostStocktakeRun200,
+  PostStocktakeRunBody,
   PurchaseOrder,
   PurchaseOrderDetail,
   PurchaseOrderList,
@@ -17193,6 +17196,92 @@ export const useCreateInventoryAdjustment = <
 };
 
 /**
+ * @summary Direct/manual inbound stock receipt (not from a purchase order)
+ */
+export const getCreateDirectReceiveUrl = () => {
+  return `/api/inventory/receive`;
+};
+
+export const createDirectReceive = async (
+  createDirectReceiveBody: CreateDirectReceiveBody,
+  options?: RequestInit,
+): Promise<CreateDirectReceive201> => {
+  return customFetch<CreateDirectReceive201>(getCreateDirectReceiveUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createDirectReceiveBody),
+  });
+};
+
+export const getCreateDirectReceiveMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDirectReceive>>,
+    TError,
+    { data: BodyType<CreateDirectReceiveBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createDirectReceive>>,
+  TError,
+  { data: BodyType<CreateDirectReceiveBody> },
+  TContext
+> => {
+  const mutationKey = ["createDirectReceive"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createDirectReceive>>,
+    { data: BodyType<CreateDirectReceiveBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createDirectReceive(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateDirectReceiveMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createDirectReceive>>
+>;
+export type CreateDirectReceiveMutationBody = BodyType<CreateDirectReceiveBody>;
+export type CreateDirectReceiveMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Direct/manual inbound stock receipt (not from a purchase order)
+ */
+export const useCreateDirectReceive = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDirectReceive>>,
+    TError,
+    { data: BodyType<CreateDirectReceiveBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createDirectReceive>>,
+  TError,
+  { data: BodyType<CreateDirectReceiveBody> },
+  TContext
+> => {
+  return useMutation(getCreateDirectReceiveMutationOptions(options));
+};
+
+/**
  * @summary List adjustment documents
  */
 export const getListInventoryAdjustmentsUrl = (
@@ -18401,11 +18490,14 @@ export const getPostStocktakeRunUrl = (id: number) => {
 
 export const postStocktakeRun = async (
   id: number,
+  postStocktakeRunBody?: PostStocktakeRunBody,
   options?: RequestInit,
 ): Promise<PostStocktakeRun200> => {
   return customFetch<PostStocktakeRun200>(getPostStocktakeRunUrl(id), {
     ...options,
     method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(postStocktakeRunBody),
   });
 };
 
@@ -18416,14 +18508,14 @@ export const getPostStocktakeRunMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof postStocktakeRun>>,
     TError,
-    { id: number },
+    { id: number; data: BodyType<PostStocktakeRunBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof postStocktakeRun>>,
   TError,
-  { id: number },
+  { id: number; data: BodyType<PostStocktakeRunBody> },
   TContext
 > => {
   const mutationKey = ["postStocktakeRun"];
@@ -18437,11 +18529,11 @@ export const getPostStocktakeRunMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof postStocktakeRun>>,
-    { id: number }
+    { id: number; data: BodyType<PostStocktakeRunBody> }
   > = (props) => {
-    const { id } = props ?? {};
+    const { id, data } = props ?? {};
 
-    return postStocktakeRun(id, requestOptions);
+    return postStocktakeRun(id, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -18450,7 +18542,7 @@ export const getPostStocktakeRunMutationOptions = <
 export type PostStocktakeRunMutationResult = NonNullable<
   Awaited<ReturnType<typeof postStocktakeRun>>
 >;
-
+export type PostStocktakeRunMutationBody = BodyType<PostStocktakeRunBody>;
 export type PostStocktakeRunMutationError = ErrorType<unknown>;
 
 /**
@@ -18463,14 +18555,14 @@ export const usePostStocktakeRun = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof postStocktakeRun>>,
     TError,
-    { id: number },
+    { id: number; data: BodyType<PostStocktakeRunBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof postStocktakeRun>>,
   TError,
-  { id: number },
+  { id: number; data: BodyType<PostStocktakeRunBody> },
   TContext
 > => {
   return useMutation(getPostStocktakeRunMutationOptions(options));
