@@ -28,7 +28,7 @@ const tenantWriteMiddleware = [requireAuth, tenantContext, requireRole("admin", 
  * GET /finance/gl-journal
  * List all GL postings across all source modules with filter + pagination.
  */
-router.get("/finance/gl-journal", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get("/finance/journals", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
   const {
     fromDate, toDate, entityType, status, accountCode,
@@ -89,7 +89,7 @@ router.get("/finance/gl-journal", ...tenantUserMiddleware, async (req: Request, 
  * GET /finance/gl-journal/:id
  * Get a single GL posting with full line detail.
  */
-router.get("/finance/gl-journal/:id", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get("/finance/journals/:id", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
   const id = Number(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -104,8 +104,8 @@ router.get("/finance/gl-journal/:id", ...tenantUserMiddleware, async (req: Reque
 // ── Manual Journal Entries ─────────────────────────────────────────────────────
 
 const manualJournalSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
-  description: z.string().min(1),
+  memo: z.string().min(1, "Memo is required"),
+  postingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD").optional(),
   lines: z.array(z.object({
     accountCode: z.string().min(1),
     accountName: z.string().min(1),
@@ -113,15 +113,13 @@ const manualJournalSchema = z.object({
     credit: z.number().min(0),
     description: z.string().optional(),
   })).min(2),
-  notes: z.string().optional(),
-  requiresApproval: z.boolean().optional(),
 });
 
 /**
  * POST /finance/gl-journal/manual
  * Create a balanced manual journal entry.
  */
-router.post("/finance/gl-journal/manual", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/finance/journals", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const parsed = manualJournalSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
@@ -134,6 +132,7 @@ router.post("/finance/gl-journal/manual", ...tenantWriteMiddleware, async (req: 
     return;
   }
 
+  const postingDate = d.postingDate ? new Date(d.postingDate) : new Date();
   const result = await withTenantDb(tenantId, async (db) => {
     const [posting] = await db.insert(glPostingsTable).values({
       tenantId,
@@ -143,8 +142,8 @@ router.post("/finance/gl-journal/manual", ...tenantWriteMiddleware, async (req: 
       status: "posted",
       postedByClerkId: clerkUserId,
       postedByEmail: userEmail ?? undefined,
-      postedAt: new Date(d.date),
-      notes: d.notes ?? undefined,
+      postedAt: postingDate,
+      notes: d.memo,
       lines: d.lines as unknown as typeof glPostingsTable.$inferInsert["lines"],
       totalDebit: String(totalDebit),
       totalCredit: String(totalCredit),
@@ -163,7 +162,7 @@ router.post("/finance/gl-journal/manual", ...tenantWriteMiddleware, async (req: 
  * POST /finance/gl-journal/:id/reverse
  * Reverse an existing posted GL posting.
  */
-router.post("/finance/gl-journal/:id/reverse", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post("/finance/journals/:id/reverse", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -373,7 +372,7 @@ router.get("/finance/trial-balance/pdf", ...tenantUserMiddleware, async (req: Re
  * GET /finance/account-movement
  * Returns all GL lines for a specific account code (for ledger drill-down).
  */
-router.get("/finance/account-movement", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get("/finance/account-movements", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
   const { accountCode, fromDate, toDate, page = "1", limit = "100" } = req.query as Record<string, string>;
   if (!accountCode) { res.status(400).json({ error: "accountCode is required" }); return; }
@@ -409,44 +408,61 @@ router.get("/finance/account-movement", ...tenantUserMiddleware, async (req: Req
     return { ...r, debit: Number(r.debit ?? 0), credit: Number(r.credit ?? 0), balance: runningBalance };
   });
 
-  res.json({ accountCode, fromDate: fromDate ?? null, toDate: toDate ?? null, movements: withBalance });
+  res.json({ accountCode, fromDate: fromDate ?? null, toDate: toDate ?? null, data: withBalance });
 });
 
 // ── GL Journal CSV Export ──────────────────────────────────────────────────────
 
 /**
- * GET /finance/gl-journal/export/csv
- * Export GL journal as CSV.
+ * GET /finance/trial-balance/export/csv
+ * Export trial balance as CSV.
  */
-router.get("/finance/gl-journal/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get("/finance/trial-balance/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
-  const { fromDate, toDate, entityType, status } = req.query as Record<string, string>;
+  const { fromDate, toDate } = req.query as Record<string, string>;
 
-  const rows = await withTenantDb(tenantId, (db) =>
-    db.select().from(glPostingsTable).where(
-      and(
-        eq(glPostingsTable.tenantId, tenantId),
-        fromDate ? gte(glPostingsTable.createdAt, new Date(fromDate)) : undefined,
-        toDate ? lte(glPostingsTable.createdAt, new Date(toDate)) : undefined,
-        entityType ? eq(glPostingsTable.entityType, entityType) : undefined,
-        status ? eq(glPostingsTable.status, status) : undefined,
-      )
-    ).orderBy(desc(glPostingsTable.createdAt)).limit(10000)
-  );
+  const [accounts, periodMovements] = await Promise.all([
+    withTenantDb(tenantId, (db) =>
+      db.select({ code: glAccountsTable.code, name: glAccountsTable.name, accountType: glAccountsTable.accountType })
+        .from(glAccountsTable)
+        .where(and(eq(glAccountsTable.tenantId, tenantId), isNull(glAccountsTable.deletedAt), eq(glAccountsTable.isActive, true)))
+        .orderBy(asc(glAccountsTable.code))
+    ),
+    withTenantDb(tenantId, async (db) => {
+      const rows = await db.execute(sql`
+        SELECT
+          line->>'accountCode' AS "accountCode",
+          SUM((line->>'debit')::numeric) AS "totalDebit",
+          SUM((line->>'credit')::numeric) AS "totalCredit"
+        FROM ${glPostingsTable}, jsonb_array_elements(lines) AS line
+        WHERE ${glPostingsTable}.tenant_id = ${tenantId}
+          AND ${glPostingsTable}.status = 'posted'
+          ${fromDate ? sql`AND ${glPostingsTable}.created_at >= ${new Date(fromDate)}` : sql``}
+          ${toDate ? sql`AND ${glPostingsTable}.created_at <= ${new Date(toDate)}` : sql``}
+        GROUP BY line->>'accountCode'
+      `) as unknown as Array<{ accountCode: string; totalDebit: string; totalCredit: string }>;
+      return rows;
+    }),
+  ]);
 
-  const csvLines: string[] = ["Code,Entity Type,Status,Total Debit,Total Credit,Posted At,Posted By,Notes"];
-  for (const row of rows) {
+  const movMap = new Map(periodMovements.map(m => [m.accountCode, m]));
+  const csvLines: string[] = ["Account Code,Account Name,Type,Period Debits,Period Credits,Net"];
+  for (const acct of accounts) {
+    const mv = movMap.get(acct.code);
+    const debits = Number(mv?.totalDebit ?? 0);
+    const credits = Number(mv?.totalCredit ?? 0);
     csvLines.push([
-      row.code, row.entityType, row.status,
-      row.totalDebit, row.totalCredit,
-      row.postedAt?.toISOString() ?? "",
-      row.postedByEmail ?? "",
-      (row.notes ?? "").replace(/,/g, " "),
+      acct.code,
+      `"${(acct.name ?? "").replace(/"/g, '""')}"`,
+      acct.accountType ?? "",
+      debits.toFixed(2),
+      credits.toFixed(2),
+      (debits - credits).toFixed(2),
     ].join(","));
   }
 
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", "attachment; filename=\"gl-journal.csv\"");
+  res.setHeader("Content-Disposition", `attachment; filename="trial-balance.csv"`);
   res.send(csvLines.join("\n"));
 });
 

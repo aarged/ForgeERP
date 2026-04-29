@@ -140,7 +140,7 @@ function JournalTab() {
   }
 
   const rows = data?.data || [];
-  const filtered = rows.filter(r => !search || r.code?.toLowerCase().includes(search.toLowerCase()) || (r as any).memo?.toLowerCase().includes(search.toLowerCase()));
+  const filtered = rows.filter(r => !search || r.code?.toLowerCase().includes(search.toLowerCase()) || (r as any).notes?.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="space-y-4">
@@ -194,7 +194,7 @@ function JournalTab() {
                   </TableCell>
                   <TableCell className="font-mono font-medium">{r.code}</TableCell>
                   <TableCell>{fmtDate(r.postedAt || r.createdAt)}</TableCell>
-                  <TableCell>{r.memo}</TableCell>
+                  <TableCell>{(r as any).notes}</TableCell>
                   <TableCell className="capitalize text-muted-foreground">{r.entityType?.replace("_", " ") || "Manual"}</TableCell>
                   <TableCell className="text-right font-medium">{fmt(r.totalDebit)}</TableCell>
                   <TableCell><StatusBadge status={r.status} /></TableCell>

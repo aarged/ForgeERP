@@ -44,7 +44,7 @@ function WidgetRecentPOs() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {(data as any[])?.slice(0, 5).map((po: any) => (
+          {(data?.data as any[])?.slice(0, 5).map((po: any) => (
             <div key={po.id} className="flex items-center justify-between">
               <div className="space-y-1">
                 <p className="text-sm font-medium leading-none">{po.code}</p>
@@ -56,7 +56,7 @@ function WidgetRecentPOs() {
               </div>
             </div>
           ))}
-          {!(data as any[])?.length && <p className="text-sm text-muted-foreground text-center py-4">No recent POs</p>}
+          {!(data?.data as any[])?.length && <p className="text-sm text-muted-foreground text-center py-4">No recent POs</p>}
         </div>
       </CardContent>
     </Card>
@@ -76,7 +76,7 @@ function WidgetRecentOrders() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {(data as any[])?.slice(0, 5).map((so: any) => (
+          {(data?.data as any[])?.slice(0, 5).map((so: any) => (
             <div key={so.id} className="flex items-center justify-between">
               <div className="space-y-1">
                 <p className="text-sm font-medium leading-none">{so.code}</p>
@@ -88,7 +88,7 @@ function WidgetRecentOrders() {
               </div>
             </div>
           ))}
-          {!(data as any[])?.length && <p className="text-sm text-muted-foreground text-center py-4">No recent orders</p>}
+          {!(data?.data as any[])?.length && <p className="text-sm text-muted-foreground text-center py-4">No recent orders</p>}
         </div>
       </CardContent>
     </Card>
@@ -111,7 +111,7 @@ function WidgetStockAlerts() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {(data as any[])?.slice(0, 5).map((item: any, i) => (
+          {(data?.data as any[])?.slice(0, 5).map((item: any, i) => (
             <div key={i} className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0">
               <div className="space-y-1">
                 <p className="text-sm font-medium leading-none">{item.itemCode}</p>
@@ -123,7 +123,7 @@ function WidgetStockAlerts() {
               </div>
             </div>
           ))}
-          {!(data as any[])?.length && <p className="text-sm text-muted-foreground text-center py-4">No stock alerts</p>}
+          {!(data?.data as any[])?.length && <p className="text-sm text-muted-foreground text-center py-4">No stock alerts</p>}
         </div>
       </CardContent>
     </Card>
@@ -154,7 +154,7 @@ function WidgetPendingApprovals() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(data as any[])?.slice(0, 5).map((app: any, i) => (
+            {(data?.data as any[])?.slice(0, 5).map((app: any, i) => (
               <TableRow key={i}>
                 <TableCell><Badge variant="secondary" className="capitalize">{app.type}</Badge></TableCell>
                 <TableCell className="font-medium">{app.code}</TableCell>
@@ -162,7 +162,7 @@ function WidgetPendingApprovals() {
                 <TableCell className="text-right font-medium">{fmt(app.amount, true)}</TableCell>
               </TableRow>
             ))}
-            {!(data as any[])?.length && (
+            {!(data?.data as any[])?.length && (
               <TableRow><TableCell colSpan={4} className="text-center py-6 text-muted-foreground">All caught up!</TableCell></TableRow>
             )}
           </TableBody>
@@ -196,15 +196,15 @@ function WidgetGlActivity() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(data as any[])?.slice(0, 5).map((gl: any, i) => (
+            {(data?.data as any[])?.slice(0, 5).map((gl: any, i) => (
               <TableRow key={i}>
                 <TableCell className="font-medium">{gl.code}</TableCell>
                 <TableCell>{fmtDate(gl.postedAt)}</TableCell>
-                <TableCell className="truncate max-w-[200px]">{gl.memo}</TableCell>
+                <TableCell className="truncate max-w-[200px]">{gl.notes}</TableCell>
                 <TableCell className="text-right font-medium">{fmt(gl.totalDebit, true)}</TableCell>
               </TableRow>
             ))}
-            {!(data as any[])?.length && (
+            {!(data?.data as any[])?.length && (
               <TableRow><TableCell colSpan={4} className="text-center py-6 text-muted-foreground">No recent postings</TableCell></TableRow>
             )}
           </TableBody>
@@ -291,7 +291,7 @@ export default function Dashboard() {
     return (
       <>
         <KpiCard title="Open POs" value={kpis.openPOs} icon={ShoppingCart} color="text-blue-500" />
-        <KpiCard title="Sales MTD" value={fmt(kpis.salesMtd, true)} icon={TrendingUp} color="text-emerald-500" />
+        <KpiCard title="Sales MTD" value={fmt(kpis.salesMtdValue, true)} icon={TrendingUp} color="text-emerald-500" />
         <KpiCard title="Low Stock" value={kpis.lowStockAlerts} icon={AlertTriangle} color="text-red-500" />
         <KpiCard title="Postings (Week)" value={kpis.glPostingsThisWeek} icon={Calculator} color="text-indigo-500" />
       </>

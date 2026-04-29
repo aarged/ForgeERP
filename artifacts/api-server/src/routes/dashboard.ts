@@ -39,8 +39,7 @@ const daysAgo = (n: number) => {
 // ── Role-Based Dashboard KPIs ─────────────────────────────────────────────────
 
 router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId } = req as TenantRequest;
-  const { role = "viewer" } = req.query as Record<string, string>;
+  const { tenantId, userRole: role } = req as TenantRequest;
 
   if (role === "purchaser" || role === "admin" || role === "manager") {
     const [openPos, awaitingApproval, toReceive, spendMtd] = await Promise.all([
@@ -195,11 +194,14 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
   res.json({
     role,
     kpis: {
-      openPOs: { count: Number(openPos[0]?.count ?? 0), total: Number(openPos[0]?.total ?? 0) },
-      salesMtd: { count: Number(salesMtd[0]?.count ?? 0), total: Number(salesMtd[0]?.total ?? 0) },
+      openPOs: Number(openPos[0]?.count ?? 0),
+      openPOsValue: Number(openPos[0]?.total ?? 0),
+      salesMtdCount: Number(salesMtd[0]?.count ?? 0),
+      salesMtdValue: Number(salesMtd[0]?.total ?? 0),
       lowStockAlerts: Number((lowStockRows as Array<{ count: string }>)[0]?.count ?? 0),
       pendingApprovals: Number(pendingApprovals[0]?.count ?? 0),
-      outstandingInvoices: { count: Number(invoicesDue[0]?.count ?? 0), total: Number(invoicesDue[0]?.total ?? 0) },
+      outstandingInvoicesCount: Number(invoicesDue[0]?.count ?? 0),
+      outstandingReceivables: Number(invoicesDue[0]?.total ?? 0),
       glPostingsThisWeek: Number(glPostingsWeek[0]?.count ?? 0),
     },
   });
