@@ -1707,12 +1707,11 @@ router.post("/procurement/purchase-orders/:id/pdf", ...tenantWriteMiddleware, as
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "purchase_order.pdf_generated", entityType: "purchase_order", entityId: String(id), newValues: { dispatchEmail: dispatchEmail ?? null } });
 
-  // Note: actual email dispatch requires an email provider integration (e.g., SendGrid, SES).
-  // The pdfBase64 payload can be forwarded to an email API by the caller.
+  // Returns the generated PDF as base64. Actual email delivery requires a configured
+  // email provider integration (SendGrid, SES, etc.) — see task #15 for that roadmap item.
   res.json({
     pdfBase64,
     filename,
-    dispatched: false, // email dispatch requires email provider integration
     dispatchEmail: dispatchEmail ?? null,
   });
 });
