@@ -17,6 +17,8 @@ import type { PoolClient } from "pg";
 import * as schema from "./schema";
 import { pool, adminPool } from "./index";
 
+export type TenantDb = NodePgDatabase<typeof schema> & { $client: PoolClient };
+
 /**
  * Executes `callback` inside a transaction where `app.tenant_id` is set
  * locally, scoping RLS policies to the given tenant. Commits on success,

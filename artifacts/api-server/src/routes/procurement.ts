@@ -21,7 +21,7 @@ import {
   glAccountsTable,
   notificationsTable,
 } from "@workspace/db";
-import { withTenantDb } from "@workspace/db/rls";
+import { withTenantDb, type TenantDb } from "@workspace/db/rls";
 import { requireAuth } from "../middlewares/requireAuth";
 import {
   tenantContext,
@@ -232,6 +232,112 @@ async function postInventoryReceipt(tenantId: number, receiptId: number, postedB
         .where(and(eq(poLinesTable.id, line.poLineId), eq(poLinesTable.tenantId, tenantId))),
     );
   }
+}
+
+/** DB-transactional variant: posts inventory/movements for a receipt inside an already-open TenantDb transaction. */
+async function postInventoryReceiptInTx(db: TenantDb, tenantId: number, receiptId: number, postedByClerkId: string) {
+  const receiptLines = await db.select().from(receiptLinesTable)
+    .where(and(eq(receiptLinesTable.receiptId, receiptId), eq(receiptLinesTable.tenantId, tenantId)));
+  const receipt = (await db.select().from(poReceiptsTable)
+    .where(and(eq(poReceiptsTable.id, receiptId), eq(poReceiptsTable.tenantId, tenantId))).limit(1))[0];
+  if (!receipt?.warehouseId) return;
+
+  for (const line of receiptLines) {
+    if (!line.itemId || Number(line.receivedQty) <= 0) continue;
+    const warehouseId = receipt.warehouseId;
+    const locationId = line.locationId ?? receipt.locationId;
+    const qty = Number(line.receivedQty);
+
+    const existing = (await db.select().from(inventoryStockTable)
+      .where(and(
+        eq(inventoryStockTable.tenantId, tenantId),
+        eq(inventoryStockTable.itemId, line.itemId!),
+        eq(inventoryStockTable.warehouseId, warehouseId),
+        locationId ? eq(inventoryStockTable.locationId, locationId) : isNull(inventoryStockTable.locationId),
+        line.lotNumber ? eq(inventoryStockTable.lotNumber, line.lotNumber) : isNull(inventoryStockTable.lotNumber),
+        line.batchNumber ? eq(inventoryStockTable.batchNumber, line.batchNumber) : isNull(inventoryStockTable.batchNumber),
+      )).limit(1))[0];
+
+    if (existing) {
+      const newQty = Number(existing.qtyOnHand) + qty;
+      const curCost = Number(existing.averageCost ?? 0);
+      const newAvgCost = Number(existing.qtyOnHand) === 0
+        ? Number(line.unitCost ?? 0)
+        : (Number(existing.qtyOnHand) * curCost + qty * Number(line.unitCost ?? 0)) / newQty;
+      await db.update(inventoryStockTable).set({ qtyOnHand: newQty.toFixed(4), averageCost: newAvgCost.toFixed(4), lastMovementAt: new Date() })
+        .where(and(eq(inventoryStockTable.id, existing.id), eq(inventoryStockTable.tenantId, tenantId)));
+    } else {
+      await db.insert(inventoryStockTable).values({
+        tenantId, itemId: line.itemId!, warehouseId,
+        locationId: locationId ?? undefined,
+        lotNumber: line.lotNumber ?? undefined, batchNumber: line.batchNumber ?? undefined,
+        serialNumber: line.serialNumber ?? undefined, expiryDate: line.expiryDate ?? undefined,
+        qtyOnHand: qty.toFixed(4), averageCost: line.unitCost ?? undefined, lastMovementAt: new Date(),
+      } as typeof inventoryStockTable.$inferInsert);
+    }
+
+    await db.insert(inventoryMovementsTable).values({
+      tenantId, itemId: line.itemId!, warehouseId,
+      locationId: locationId ?? undefined,
+      movementType: "receipt", quantity: qty.toFixed(4), unitCost: line.unitCost ?? undefined,
+      refType: "po_receipt", refId: receiptId,
+      lotNumber: line.lotNumber ?? undefined, batchNumber: line.batchNumber ?? undefined,
+      serialNumber: line.serialNumber ?? undefined, postedByClerkId,
+    } as typeof inventoryMovementsTable.$inferInsert);
+
+    await db.update(poLinesTable)
+      .set({ receivedQty: sql`${poLinesTable.receivedQty} + ${qty.toFixed(4)}` })
+      .where(and(eq(poLinesTable.id, line.poLineId), eq(poLinesTable.tenantId, tenantId)));
+  }
+}
+
+/** DB-transactional variant: creates a GL posting for a receipt inside an already-open TenantDb transaction. */
+async function createGlPostingInTx(db: TenantDb, tenantId: number, receiptId: number, postedByClerkId: string, postedByEmail?: string) {
+  const receipt = (await db.select().from(poReceiptsTable)
+    .where(and(eq(poReceiptsTable.id, receiptId), eq(poReceiptsTable.tenantId, tenantId))).limit(1))[0];
+  if (!receipt) return null;
+  const po = (await db.select().from(purchaseOrdersTable)
+    .where(and(eq(purchaseOrdersTable.id, receipt.poId), eq(purchaseOrdersTable.tenantId, tenantId))).limit(1))[0];
+  if (!po) return null;
+  const lines = await db.select().from(receiptLinesTable)
+    .where(and(eq(receiptLinesTable.receiptId, receiptId), eq(receiptLinesTable.tenantId, tenantId)));
+
+  const poLineIds = lines.map((l) => l.poLineId).filter(Boolean) as number[];
+  const poLineRows = poLineIds.length > 0
+    ? await db.select({ id: poLinesTable.id, glAccountId: poLinesTable.glAccountId })
+        .from(poLinesTable).where(inArray(poLinesTable.id, poLineIds))
+    : [];
+  const poLineGlMap = new Map(poLineRows.map((pl) => [pl.id, pl.glAccountId]));
+
+  // Resolve AP account
+  async function resolveGlInTx(glAccountId: number | null | undefined, fallbackCode: string, fallbackName: string) {
+    if (glAccountId) {
+      const [acct] = await db.select({ code: glAccountsTable.code, name: glAccountsTable.name })
+        .from(glAccountsTable).where(and(eq(glAccountsTable.id, glAccountId), eq(glAccountsTable.tenantId, tenantId))).limit(1);
+      if (acct) return { accountCode: acct.code, accountName: acct.name };
+    }
+    const [byCode] = await db.select({ code: glAccountsTable.code, name: glAccountsTable.name })
+      .from(glAccountsTable).where(and(eq(glAccountsTable.code, fallbackCode), eq(glAccountsTable.tenantId, tenantId))).limit(1);
+    return { accountCode: byCode?.code ?? fallbackCode, accountName: byCode?.name ?? fallbackName };
+  }
+
+  const apAccount = await resolveGlInTx(null, "2100", "Accounts Payable");
+  const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
+  let totalValue = 0;
+  for (const rl of lines) {
+    const lineVal = Number(rl.receivedQty) * Number(rl.unitCost ?? 0);
+    totalValue += lineVal;
+    const invAccount = await resolveGlInTx(poLineGlMap.get(rl.poLineId) ?? null, "1300", "Inventory");
+    glLines.push({ ...invAccount, debit: lineVal, credit: 0, description: `Receipt of ${rl.itemCode ?? rl.itemName ?? "item"}` });
+  }
+  glLines.push({ ...apAccount, debit: 0, credit: totalValue, description: `AP for PO ${po.code}` });
+
+  const [posting] = await db.insert(glPostingsTable).values({
+    tenantId, code: `GL-${Date.now()}`, entityType: "po_receipt", entityId: receiptId,
+    status: "posted", postedByClerkId, postedByEmail: postedByEmail ?? undefined,
+    postedAt: new Date(), lines: glLines, totalDebit: totalValue.toFixed(2), totalCredit: totalValue.toFixed(2),
+  } as typeof glPostingsTable.$inferInsert).returning();
+  return posting;
 }
 
 /**
@@ -1813,55 +1919,69 @@ router.delete("/procurement/receipts/:id", ...tenantWriteMiddleware, async (req:
 router.post("/procurement/receipts/:id/confirm", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
+
+  // Pre-flight checks — read-only, outside the main transaction so we can return early cleanly
   const [receipt] = await withTenantDb(tenantId, (db) =>
     db.select().from(poReceiptsTable).where(and(eq(poReceiptsTable.id, id), eq(poReceiptsTable.tenantId, tenantId))).limit(1));
   if (!receipt) { res.status(404).json({ error: "Receipt not found" }); return; }
   if (receipt.status !== "draft") { res.status(400).json({ error: "Receipt is already confirmed" }); return; }
 
-  // Post inventory movements
-  await postInventoryReceipt(tenantId, id, clerkUserId);
+  // Run the entire confirmation atomically in a single database transaction
+  const result = await withTenantDb(tenantId, async (db) => {
+    // 1. Post inventory movements and update received quantities
+    await postInventoryReceiptInTx(db, tenantId, id, clerkUserId);
 
-  // Create GL posting
-  const posting = await createGlPosting(tenantId, id, clerkUserId, userEmail);
+    // 2. Create GL posting
+    const posting = await createGlPostingInTx(db, tenantId, id, clerkUserId, userEmail);
 
-  // Update receipt status
-  const [updated] = await withTenantDb(tenantId, (db) =>
-    db.update(poReceiptsTable).set({
+    // 3. Confirm the receipt (stamp status, timestamp, GL reference)
+    const [confirmed] = await db.update(poReceiptsTable).set({
       status: "confirmed",
       receivedAt: new Date(),
       glPostingId: posting?.id ?? undefined,
-    }).where(and(eq(poReceiptsTable.id, id), eq(poReceiptsTable.tenantId, tenantId))).returning());
+    }).where(and(eq(poReceiptsTable.id, id), eq(poReceiptsTable.tenantId, tenantId))).returning();
 
-  // Update PO status and create backorder receipt for partially-received lines
-  const po = (await withTenantDb(tenantId, (db) =>
-    db.select().from(purchaseOrdersTable).where(and(eq(purchaseOrdersTable.id, receipt.poId), eq(purchaseOrdersTable.tenantId, tenantId))).limit(1)))[0];
-  if (po) {
-    const poLines = await withTenantDb(tenantId, (db) =>
-      db.select().from(poLinesTable).where(and(eq(poLinesTable.poId, po.id), eq(poLinesTable.tenantId, tenantId))));
-    const allReceived = poLines.every((l) => Number(l.receivedQty) >= Number(l.quantity));
-    const anyReceived = poLines.some((l) => Number(l.receivedQty) > 0);
-    const newPoStatus = allReceived ? "received" : anyReceived ? "partially_received" : "approved";
-    await withTenantDb(tenantId, (db) =>
-      db.update(purchaseOrdersTable).set({ status: newPoStatus }).where(eq(purchaseOrdersTable.id, po.id)));
+    // 4. Recalculate PO fulfillment status and conditionally create a backorder receipt
+    const po = (await db.select().from(purchaseOrdersTable)
+      .where(and(eq(purchaseOrdersTable.id, receipt.poId), eq(purchaseOrdersTable.tenantId, tenantId))).limit(1))[0];
 
-    // Create a backorder draft receipt for lines with remaining quantity
-    if (!allReceived && anyReceived) {
-      const backorderLines = poLines.filter((l) => Number(l.receivedQty) < Number(l.quantity));
-      if (backorderLines.length > 0) {
-        const [backorderReceipt] = await withTenantDb(tenantId, (db) =>
-          db.insert(poReceiptsTable).values({
+    let backorderId: number | undefined;
+    if (po) {
+      // Re-fetch PO lines AFTER receivedQty has been updated by postInventoryReceiptInTx
+      const poLines = await db.select().from(poLinesTable)
+        .where(and(eq(poLinesTable.poId, po.id), eq(poLinesTable.tenantId, tenantId)));
+
+      const allReceived = poLines.every((l) => Number(l.receivedQty) >= Number(l.quantity));
+      const anyReceived = poLines.some((l) => Number(l.receivedQty) > 0);
+      const newPoStatus = allReceived ? "received" : anyReceived ? "partially_received" : "approved";
+
+      await db.update(purchaseOrdersTable).set({ status: newPoStatus })
+        .where(and(eq(purchaseOrdersTable.id, po.id), eq(purchaseOrdersTable.tenantId, tenantId)));
+
+      // Auto-create a draft backorder receipt for lines with remaining open quantity
+      if (!allReceived && anyReceived) {
+        const backorderLines = poLines.filter((l) => Number(l.receivedQty) < Number(l.quantity));
+        if (backorderLines.length > 0) {
+          // Two-step insert: create with placeholder code, then stamp the real generated code
+          const [backorderReceipt] = await db.insert(poReceiptsTable).values({
             tenantId,
             poId: po.id,
+            code: "BACKORDER-PENDING",
             warehouseId: receipt.warehouseId ?? undefined,
             locationId: receipt.locationId ?? undefined,
             status: "draft",
             receivedByClerkId: clerkUserId,
             receivedByEmail: userEmail,
-            notes: `Backorder from receipt #${id}`,
-          } as typeof poReceiptsTable.$inferInsert).returning());
-        if (backorderReceipt) {
-          await withTenantDb(tenantId, (db) =>
-            db.insert(receiptLinesTable).values(backorderLines.map((l) => ({
+            notes: `Backorder from receipt ${receipt.code ?? `#${id}`}`,
+          } as typeof poReceiptsTable.$inferInsert).returning();
+
+          if (backorderReceipt) {
+            // Stamp real code based on auto-generated ID
+            await db.update(poReceiptsTable)
+              .set({ code: genCode("RCT", backorderReceipt.id) })
+              .where(eq(poReceiptsTable.id, backorderReceipt.id));
+
+            await db.insert(receiptLinesTable).values(backorderLines.map((l) => ({
               tenantId,
               receiptId: backorderReceipt.id,
               poLineId: l.id,
@@ -1871,15 +1991,24 @@ router.post("/procurement/receipts/:id/confirm", ...tenantWriteMiddleware, async
               orderedQty: (Number(l.quantity) - Number(l.receivedQty)).toFixed(4),
               receivedQty: "0",
               unitCost: l.unitPrice,
-            }) as typeof receiptLinesTable.$inferInsert)));
-          await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_receipt.backorder_created", entityType: "po_receipt", entityId: String(backorderReceipt.id), newValues: { parentReceiptId: id, backorderLines: backorderLines.length } });
+            }) as typeof receiptLinesTable.$inferInsert));
+
+            backorderId = backorderReceipt.id;
+          }
         }
       }
     }
+
+    return { confirmed, backorderId };
+  });
+
+  // Audit logs outside the transaction (non-blocking; failure won't corrupt business state)
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_receipt.confirmed", entityType: "po_receipt", entityId: String(id) });
+  if (result.backorderId) {
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_receipt.backorder_created", entityType: "po_receipt", entityId: String(result.backorderId), newValues: { parentReceiptId: id } });
   }
 
-  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_receipt.confirmed", entityType: "po_receipt", entityId: String(id) });
-  res.json(updated);
+  res.json(result.confirmed);
 });
 
 // ── Returns to Vendor ─────────────────────────────────────────────────────────
