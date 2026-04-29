@@ -27,6 +27,7 @@ import type {
   ApprovalWorkflow,
   AuditLog,
   AuditTrailResponse,
+  Backorder,
   BulkImportResult,
   CompleteOnboardingInput,
   ConvertItemUomParams,
@@ -91,6 +92,8 @@ import type {
   ItemListResponse,
   ItemUnit,
   ItemVariant,
+  ListBackorders200,
+  ListBackordersParams,
   ListCreditNotesParams,
   ListCustomerInvoicesParams,
   ListCustomersParams,
@@ -155,6 +158,7 @@ import type {
   QuotationListResponse,
   ReceiptList,
   ReceiveRmaBody,
+  ReleaseBackorderBody,
   ReportBackorders200Item,
   ReportGoodsInTransit200Item,
   ReportGoodsInTransitParams,
@@ -14878,6 +14882,358 @@ export const useProcessRma = <
   TContext
 > => {
   return useMutation(getProcessRmaMutationOptions(options));
+};
+
+/**
+ * @summary List open backorders
+ */
+export const getListBackordersUrl = (params?: ListBackordersParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/sales/backorders?${stringifiedParams}`
+    : `/api/sales/backorders`;
+};
+
+export const listBackorders = async (
+  params?: ListBackordersParams,
+  options?: RequestInit,
+): Promise<ListBackorders200> => {
+  return customFetch<ListBackorders200>(getListBackordersUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListBackordersQueryKey = (params?: ListBackordersParams) => {
+  return [`/api/sales/backorders`, ...(params ? [params] : [])] as const;
+};
+
+export const getListBackordersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listBackorders>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListBackordersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listBackorders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListBackordersQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listBackorders>>> = ({
+    signal,
+  }) => listBackorders(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listBackorders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListBackordersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listBackorders>>
+>;
+export type ListBackordersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List open backorders
+ */
+
+export function useListBackorders<
+  TData = Awaited<ReturnType<typeof listBackorders>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListBackordersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listBackorders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListBackordersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get backorder by ID
+ */
+export const getGetBackorderUrl = (id: number) => {
+  return `/api/sales/backorders/${id}`;
+};
+
+export const getBackorder = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Backorder> => {
+  return customFetch<Backorder>(getGetBackorderUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetBackorderQueryKey = (id: number) => {
+  return [`/api/sales/backorders/${id}`] as const;
+};
+
+export const getGetBackorderQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBackorder>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBackorder>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetBackorderQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getBackorder>>> = ({
+    signal,
+  }) => getBackorder(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBackorder>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBackorderQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBackorder>>
+>;
+export type GetBackorderQueryError = ErrorType<void>;
+
+/**
+ * @summary Get backorder by ID
+ */
+
+export function useGetBackorder<
+  TData = Awaited<ReturnType<typeof getBackorder>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBackorder>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBackorderQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Release (fully or partially fulfil) a backorder
+ */
+export const getReleaseBackorderUrl = (id: number) => {
+  return `/api/sales/backorders/${id}/release`;
+};
+
+export const releaseBackorder = async (
+  id: number,
+  releaseBackorderBody: ReleaseBackorderBody,
+  options?: RequestInit,
+): Promise<Backorder> => {
+  return customFetch<Backorder>(getReleaseBackorderUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(releaseBackorderBody),
+  });
+};
+
+export const getReleaseBackorderMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof releaseBackorder>>,
+    TError,
+    { id: number; data: BodyType<ReleaseBackorderBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof releaseBackorder>>,
+  TError,
+  { id: number; data: BodyType<ReleaseBackorderBody> },
+  TContext
+> => {
+  const mutationKey = ["releaseBackorder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof releaseBackorder>>,
+    { id: number; data: BodyType<ReleaseBackorderBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return releaseBackorder(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReleaseBackorderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof releaseBackorder>>
+>;
+export type ReleaseBackorderMutationBody = BodyType<ReleaseBackorderBody>;
+export type ReleaseBackorderMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Release (fully or partially fulfil) a backorder
+ */
+export const useReleaseBackorder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof releaseBackorder>>,
+    TError,
+    { id: number; data: BodyType<ReleaseBackorderBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof releaseBackorder>>,
+  TError,
+  { id: number; data: BodyType<ReleaseBackorderBody> },
+  TContext
+> => {
+  return useMutation(getReleaseBackorderMutationOptions(options));
+};
+
+/**
+ * @summary Cancel an open backorder
+ */
+export const getCancelBackorderUrl = (id: number) => {
+  return `/api/sales/backorders/${id}/cancel`;
+};
+
+export const cancelBackorder = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Backorder> => {
+  return customFetch<Backorder>(getCancelBackorderUrl(id), {
+    ...options,
+    method: "PATCH",
+  });
+};
+
+export const getCancelBackorderMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelBackorder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cancelBackorder>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["cancelBackorder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cancelBackorder>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return cancelBackorder(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CancelBackorderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof cancelBackorder>>
+>;
+
+export type CancelBackorderMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Cancel an open backorder
+ */
+export const useCancelBackorder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelBackorder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cancelBackorder>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getCancelBackorderMutationOptions(options));
 };
 
 /**

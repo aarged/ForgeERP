@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useForm, Controller, useFieldArray } from "react-hook-form";
+import { useForm, Controller, useFieldArray, Control } from "react-hook-form";
 import {
   useListQuotations,
   useGetQuotation,
@@ -46,6 +46,10 @@ import {
   useReportSalesSummary,
   useReportBackorders,
   useReportOutstandingInvoices,
+  useListBackorders,
+  useReleaseBackorder,
+  useCancelBackorder,
+  ListBackordersStatus,
   useListCustomers,
   useListWarehouses,
   useListItems,
@@ -121,6 +125,7 @@ import {
   ClipboardList,
   BadgeDollarSign,
   AlertCircle,
+  Printer,
 } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -182,19 +187,20 @@ type LineField = {
   taxPct: number;
 };
 
+/** Minimal form shape accepted by LineItemEditor — both QuotForm and SoForm satisfy this. */
+type LineEditorFormBase = { lines: LineField[] };
+
 type ItemOption = { id: number; code: string; name: string };
 
 function LineItemEditor({
   fields,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   control,
   onAdd,
   onRemove,
   items,
 }: {
   fields: LineField[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  control: any;
+  control: Control<LineEditorFormBase>;
   onAdd: () => void;
   onRemove: (idx: number) => void;
   items: ItemOption[];
@@ -805,7 +811,7 @@ function QuotationsTab() {
             </div>
             <LineItemEditor
               fields={fields as LineField[]}
-              control={form.control}
+              control={form.control as unknown as Control<LineEditorFormBase>}
               items={itemsList}
               onAdd={() =>
                 append({ quantity: 1, unitPrice: 0, discountPct: 0, taxPct: 10 })
@@ -1313,7 +1319,7 @@ function SalesOrdersTab() {
             </div>
             <LineItemEditor
               fields={fields as LineField[]}
-              control={form.control}
+              control={form.control as unknown as Control<LineEditorFormBase>}
               items={itemsList}
               onAdd={() => append({ quantity: 1, unitPrice: 0, discountPct: 0, taxPct: 10 })}
               onRemove={remove}
@@ -2176,11 +2182,20 @@ function InvoicesTab() {
               </Table>
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium">Total: ${fmt(det.total)}</span>
-                {["draft", "sent"].includes(det.status ?? "") && (
-                  <Button size="sm" onClick={() => handleSend(detailId!)}>
-                    <Send className="w-3 h-3 mr-1" /> Send Invoice
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.open(`/forge-erp-api/api/sales/invoices/${detailId}/pdf`, "_blank")}
+                  >
+                    <Printer className="w-3 h-3 mr-1" /> Print Invoice
                   </Button>
-                )}
+                  {["draft", "sent"].includes(det.status ?? "") && (
+                    <Button size="sm" onClick={() => handleSend(detailId!)}>
+                      <Send className="w-3 h-3 mr-1" /> Send Invoice
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -3137,6 +3152,118 @@ function PickSlipsTab() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ── Backorders Tab ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function BackordersTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState("open");
+  const { data: list, isLoading } = useListBackorders({ status: statusFilter !== "all" ? (statusFilter as ListBackordersStatus) : undefined, limit: 100 });
+  const releaseMut = useReleaseBackorder();
+  const cancelMut = useCancelBackorder();
+  const backorders = (list as { data?: unknown[] } | null)?.data ?? (Array.isArray(list) ? (list as unknown[]) : []);
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["listBackorders"] });
+
+  async function handleRelease(id: number) {
+    try {
+      await releaseMut.mutateAsync({ id, data: {} });
+      toast({ title: "Backorder released" });
+      invalidate();
+    } catch { toast({ title: "Failed to release", variant: "destructive" }); }
+  }
+
+  async function handleCancel(id: number) {
+    try {
+      await cancelMut.mutateAsync({ id });
+      toast({ title: "Backorder cancelled" });
+      invalidate();
+    } catch { toast({ title: "Failed to cancel", variant: "destructive" }); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <h3 className="text-lg font-semibold">Backorders</h3>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-36">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="open">Open</SelectItem>
+            <SelectItem value="released">Released</SelectItem>
+            <SelectItem value="cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="sm" onClick={invalidate}>
+          <RefreshCw className="w-3 h-3 mr-1" /> Refresh
+        </Button>
+      </div>
+      {isLoading ? (
+        <div className="text-center py-8 text-muted-foreground">Loading...</div>
+      ) : (backorders as BackorderRow[]).length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground">No backorders found.</div>
+      ) : (
+        <div className="border rounded-md overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Code</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Item</TableHead>
+                <TableHead className="text-right">Ordered Qty</TableHead>
+                <TableHead className="text-right">Backorder Qty</TableHead>
+                <TableHead className="text-right">Released Qty</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(backorders as BackorderRow[]).map((bo) => (
+                <TableRow key={bo.id}>
+                  <TableCell className="font-mono text-sm">{bo.code}</TableCell>
+                  <TableCell>{bo.customerName ?? "—"}</TableCell>
+                  <TableCell>{bo.itemCode ? `${bo.itemCode} ${bo.itemName ?? ""}` : bo.itemName ?? "—"}</TableCell>
+                  <TableCell className="text-right">{fmt(bo.orderedQty, 0)}</TableCell>
+                  <TableCell className="text-right font-semibold text-orange-600">{fmt(bo.backorderQty, 0)}</TableCell>
+                  <TableCell className="text-right">{fmt(bo.releasedQty, 0)}</TableCell>
+                  <TableCell><StatusBadge status={bo.status} /></TableCell>
+                  <TableCell>
+                    {bo.status === "open" && (
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" onClick={() => handleRelease(bo.id ?? 0)}>
+                          <CheckCircle2 className="w-3 h-3 mr-1" /> Release
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleCancel(bo.id ?? 0)}>
+                          <XCircle className="w-3 h-3 mr-1" /> Cancel
+                        </Button>
+                      </div>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type BackorderRow = {
+  id?: number;
+  code?: string;
+  customerName?: string;
+  itemCode?: string;
+  itemName?: string;
+  orderedQty?: string | number;
+  backorderQty?: string | number;
+  releasedQty?: string | number;
+  status?: string;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ── Main Sales Page ───────────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -3176,6 +3303,9 @@ export default function Sales() {
           <TabsTrigger value="rma" className="gap-1.5">
             <RotateCcw className="w-4 h-4" /> RMA
           </TabsTrigger>
+          <TabsTrigger value="backorders" className="gap-1.5">
+            <AlertCircle className="w-4 h-4" /> Backorders
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard" className="mt-4">
@@ -3201,6 +3331,9 @@ export default function Sales() {
         </TabsContent>
         <TabsContent value="rma" className="mt-4">
           <RmaTab />
+        </TabsContent>
+        <TabsContent value="backorders" className="mt-4">
+          <BackordersTab />
         </TabsContent>
       </Tabs>
     </div>

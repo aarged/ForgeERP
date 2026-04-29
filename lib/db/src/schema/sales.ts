@@ -423,6 +423,39 @@ export const rmaLinesTable = pgTable("rma_lines", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
+// ── Backorders ────────────────────────────────────────────────────────────────
+// Auto-created when a despatch partially fulfils an SO line; released when stock arrives
+export const backordersTable = pgTable("backorders", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  soId: integer("so_id").notNull().references(() => salesOrdersTable.id),
+  soLineId: integer("so_line_id").references(() => soLinesTable.id),
+  customerId: integer("customer_id").references(() => customersTable.id),
+  customerName: text("customer_name"),
+  itemId: integer("item_id").references(() => itemsTable.id),
+  itemCode: text("item_code"),
+  itemName: text("item_name"),
+  /** Original ordered quantity for this backorder */
+  orderedQty: numeric("ordered_qty", { precision: 18, scale: 4 }).notNull().default("0"),
+  /** Quantity still outstanding (not yet despatched via subsequent deliveries) */
+  backorderQty: numeric("backorder_qty", { precision: 18, scale: 4 }).notNull().default("0"),
+  /** Quantity released/fulfilled against this backorder */
+  releasedQty: numeric("released_qty", { precision: 18, scale: 4 }).notNull().default("0"),
+  unitPrice: numeric("unit_price", { precision: 18, scale: 4 }),
+  /** open | released | cancelled */
+  status: text("status").notNull().default("open"),
+  requestedDate: date("requested_date"),
+  releasedAt: timestamp("released_at", { withTimezone: true }),
+  releasedByClerkId: text("released_by_clerk_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
 // ── Type exports ──────────────────────────────────────────────────────────────
 export type Quotation = typeof quotationsTable.$inferSelect;
 export type QuotationLine = typeof quotationLinesTable.$inferSelect;
@@ -439,3 +472,4 @@ export type CreditNote = typeof creditNotesTable.$inferSelect;
 export type CreditNoteLine = typeof creditNoteLinesTable.$inferSelect;
 export type RmaOrder = typeof rmaOrdersTable.$inferSelect;
 export type RmaLine = typeof rmaLinesTable.$inferSelect;
+export type Backorder = typeof backordersTable.$inferSelect;

@@ -2460,6 +2460,38 @@ export interface SalesSummaryReport {
   pendingRma?: number;
 }
 
+export type BackorderStatus =
+  (typeof BackorderStatus)[keyof typeof BackorderStatus];
+
+export const BackorderStatus = {
+  open: "open",
+  released: "released",
+  cancelled: "cancelled",
+} as const;
+
+export interface Backorder {
+  id?: number;
+  tenantId?: number;
+  code?: string;
+  soId?: number;
+  soLineId?: number | null;
+  customerId?: number | null;
+  customerName?: string | null;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  orderedQty?: string;
+  backorderQty?: string;
+  releasedQty?: string;
+  unitPrice?: string | null;
+  status?: BackorderStatus;
+  requestedDate?: string | null;
+  releasedAt?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export type UploadOnboardingCsvBodyCsvType =
   (typeof UploadOnboardingCsvBodyCsvType)[keyof typeof UploadOnboardingCsvBodyCsvType];
 
@@ -2814,6 +2846,34 @@ export type ReceiveRmaBodyLinesItem = {
 
 export type ReceiveRmaBody = {
   lines?: ReceiveRmaBodyLinesItem[];
+};
+
+export type ListBackordersParams = {
+  status?: ListBackordersStatus;
+  soId?: number;
+  customerId?: number;
+  limit?: number;
+  page?: number;
+};
+
+export type ListBackordersStatus =
+  (typeof ListBackordersStatus)[keyof typeof ListBackordersStatus];
+
+export const ListBackordersStatus = {
+  open: "open",
+  released: "released",
+  cancelled: "cancelled",
+} as const;
+
+export type ListBackorders200 = {
+  data?: Backorder[];
+  hasMore?: boolean;
+  page?: number;
+};
+
+export type ReleaseBackorderBody = {
+  releaseQty?: number;
+  notes?: string;
 };
 
 export type ReportSalesSummaryParams = {

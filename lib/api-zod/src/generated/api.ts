@@ -5609,6 +5609,159 @@ export const ProcessRmaResponse = zod.object({
 });
 
 /**
+ * @summary List open backorders
+ */
+export const ListBackordersQueryParams = zod.object({
+  status: zod.enum(["open", "released", "cancelled"]).optional(),
+  soId: zod.coerce.number().optional(),
+  customerId: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+  page: zod.coerce.number().optional(),
+});
+
+export const ListBackordersHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListBackordersResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        tenantId: zod.number().optional(),
+        code: zod.string().optional(),
+        soId: zod.number().optional(),
+        soLineId: zod.number().nullish(),
+        customerId: zod.number().nullish(),
+        customerName: zod.string().nullish(),
+        itemId: zod.number().nullish(),
+        itemCode: zod.string().nullish(),
+        itemName: zod.string().nullish(),
+        orderedQty: zod.string().optional(),
+        backorderQty: zod.string().optional(),
+        releasedQty: zod.string().optional(),
+        unitPrice: zod.string().nullish(),
+        status: zod.enum(["open", "released", "cancelled"]).optional(),
+        requestedDate: zod.string().nullish(),
+        releasedAt: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.string().optional(),
+        updatedAt: zod.string().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Get backorder by ID
+ */
+export const GetBackorderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetBackorderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetBackorderResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  soId: zod.number().optional(),
+  soLineId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  itemId: zod.number().nullish(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  orderedQty: zod.string().optional(),
+  backorderQty: zod.string().optional(),
+  releasedQty: zod.string().optional(),
+  unitPrice: zod.string().nullish(),
+  status: zod.enum(["open", "released", "cancelled"]).optional(),
+  requestedDate: zod.string().nullish(),
+  releasedAt: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string().optional(),
+  updatedAt: zod.string().optional(),
+});
+
+/**
+ * @summary Release (fully or partially fulfil) a backorder
+ */
+export const ReleaseBackorderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ReleaseBackorderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReleaseBackorderBody = zod.object({
+  releaseQty: zod.number().optional(),
+  notes: zod.string().optional(),
+});
+
+export const ReleaseBackorderResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  soId: zod.number().optional(),
+  soLineId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  itemId: zod.number().nullish(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  orderedQty: zod.string().optional(),
+  backorderQty: zod.string().optional(),
+  releasedQty: zod.string().optional(),
+  unitPrice: zod.string().nullish(),
+  status: zod.enum(["open", "released", "cancelled"]).optional(),
+  requestedDate: zod.string().nullish(),
+  releasedAt: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string().optional(),
+  updatedAt: zod.string().optional(),
+});
+
+/**
+ * @summary Cancel an open backorder
+ */
+export const CancelBackorderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CancelBackorderHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CancelBackorderResponse = zod.object({
+  id: zod.number().optional(),
+  tenantId: zod.number().optional(),
+  code: zod.string().optional(),
+  soId: zod.number().optional(),
+  soLineId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string().nullish(),
+  itemId: zod.number().nullish(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  orderedQty: zod.string().optional(),
+  backorderQty: zod.string().optional(),
+  releasedQty: zod.string().optional(),
+  unitPrice: zod.string().nullish(),
+  status: zod.enum(["open", "released", "cancelled"]).optional(),
+  requestedDate: zod.string().nullish(),
+  releasedAt: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string().optional(),
+  updatedAt: zod.string().optional(),
+});
+
+/**
  * @summary Sales summary report
  */
 export const ReportSalesSummaryQueryParams = zod.object({

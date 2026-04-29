@@ -4042,6 +4042,91 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RmaOrder" }
 
+
+  /sales/backorders:
+    get:
+      operationId: listBackorders
+      summary: List open backorders
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string, enum: [open, released, cancelled] } }
+        - { in: query, name: soId, schema: { type: integer } }
+        - { in: query, name: customerId, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+        - { in: query, name: page, schema: { type: integer } }
+      responses:
+        "200":
+          description: List of backorders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Backorder" }
+                  hasMore: { type: boolean }
+                  page: { type: integer }
+
+  /sales/backorders/{id}:
+    get:
+      operationId: getBackorder
+      summary: Get backorder by ID
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Backorder detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Backorder" }
+        "404":
+          description: Not found
+
+  /sales/backorders/{id}/release:
+    post:
+      operationId: releaseBackorder
+      summary: Release (fully or partially fulfil) a backorder
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                releaseQty: { type: number }
+                notes: { type: string }
+      responses:
+        "200":
+          description: Updated backorder
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Backorder" }
+
+  /sales/backorders/{id}/cancel:
+    patch:
+      operationId: cancelBackorder
+      summary: Cancel an open backorder
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Cancelled backorder
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Backorder" }
   /sales/reports/summary:
     get:
       operationId: reportSalesSummary
@@ -6888,3 +6973,27 @@ components:
             total: { type: number }
         openQuotations: { type: integer }
         pendingRma: { type: integer }
+
+    Backorder:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        code: { type: string }
+        soId: { type: integer }
+        soLineId: { type: integer, nullable: true }
+        customerId: { type: integer, nullable: true }
+        customerName: { type: string, nullable: true }
+        itemId: { type: integer, nullable: true }
+        itemCode: { type: string, nullable: true }
+        itemName: { type: string, nullable: true }
+        orderedQty: { type: string }
+        backorderQty: { type: string }
+        releasedQty: { type: string }
+        unitPrice: { type: string, nullable: true }
+        status: { type: string, enum: [open, released, cancelled] }
+        requestedDate: { type: string, nullable: true }
+        releasedAt: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string }
+        updatedAt: { type: string }

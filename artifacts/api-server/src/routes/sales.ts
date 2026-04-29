@@ -16,6 +16,7 @@ import {
   creditNoteLinesTable,
   rmaOrdersTable,
   rmaLinesTable,
+  backordersTable,
   glPostingsTable,
   inventoryStockTable,
   inventoryMovementsTable,
@@ -547,11 +548,52 @@ router.post("/sales/orders", ...tenantWriteMiddleware, async (req: Request, res:
   let resolvedCustomerEmail = header.customerEmail;
   let creditCheckPassed = true;
   if (header.customerId) {
-    const [cust] = await withTenantDb(tenantId, (db) => db.select({ name: customersTable.name, email: customersTable.email, creditLimit: customersTable.creditLimit }).from(customersTable).where(and(eq(customersTable.id, header.customerId!), eq(customersTable.tenantId, tenantId))).limit(1));
+    const [cust] = await withTenantDb(tenantId, (db) =>
+      db.select({ name: customersTable.name, email: customersTable.email, creditLimit: customersTable.creditLimit })
+        .from(customersTable)
+        .where(and(eq(customersTable.id, header.customerId!), eq(customersTable.tenantId, tenantId)))
+        .limit(1));
     resolvedCustomerName = resolvedCustomerName ?? cust?.name;
     resolvedCustomerEmail = resolvedCustomerEmail ?? cust?.email ?? undefined;
-    // Simple credit check: if creditLimit set, warn (still allow order)
-    if (cust?.creditLimit && Number(cust.creditLimit) > 0) creditCheckPassed = true;
+
+    // Hard credit limit enforcement: block SO if customer would exceed their credit limit
+    const creditLimit = cust?.creditLimit ? Number(cust.creditLimit) : 0;
+    if (creditLimit > 0) {
+      // Sum outstanding invoices (total - paid) for non-cancelled/paid statuses
+      const [invoiceBalance] = await withTenantDb(tenantId, (db) =>
+        db.select({ outstanding: sql<string>`coalesce(sum(total - paid_amount), 0)` })
+          .from(customerInvoicesTable)
+          .where(and(
+            eq(customerInvoicesTable.tenantId, tenantId),
+            eq(customerInvoicesTable.customerId, header.customerId!),
+            isNull(customerInvoicesTable.deletedAt),
+            sql`status NOT IN ('paid','cancelled','void')`,
+          )));
+      // Sum confirmed/in-progress SO totals (exclude drafts and cancelled)
+      const [soBalance] = await withTenantDb(tenantId, (db) =>
+        db.select({ outstanding: sql<string>`coalesce(sum(total), 0)` })
+          .from(salesOrdersTable)
+          .where(and(
+            eq(salesOrdersTable.tenantId, tenantId),
+            eq(salesOrdersTable.customerId, header.customerId!),
+            isNull(salesOrdersTable.deletedAt),
+            sql`status NOT IN ('draft','cancelled')`,
+          )));
+      // Estimate new SO value from lines
+      const newSoValue = lines.reduce((acc, l) => acc + (l.quantity * l.unitPrice * (1 - (l.discountPct ?? 0) / 100)), 0);
+      const totalExposure = Number(invoiceBalance?.outstanding ?? 0) + Number(soBalance?.outstanding ?? 0) + newSoValue;
+      if (totalExposure > creditLimit) {
+        creditCheckPassed = false;
+        res.status(422).json({
+          error: "Credit limit exceeded",
+          detail: `Customer credit limit is ${creditLimit.toFixed(2)}. Current exposure including this order would be ${totalExposure.toFixed(2)}.`,
+          creditLimit,
+          currentExposure: Number(invoiceBalance?.outstanding ?? 0) + Number(soBalance?.outstanding ?? 0),
+          newOrderValue: newSoValue,
+        });
+        return;
+      }
+    }
   }
 
   const [so] = await withTenantDb(tenantId, (db) =>
@@ -907,6 +949,41 @@ router.post("/sales/despatches/:id/confirm", ...tenantWriteMiddleware, async (re
     // 4. Recalculate SO status
     await recalcSoStatus(db, tenantId, despatch.soId);
 
+    // 5. Auto-create backorder records for SO lines still partially unfulfilled
+    const soLines = await db.select().from(soLinesTable)
+      .where(and(eq(soLinesTable.soId, despatch.soId), eq(soLinesTable.tenantId, tenantId)));
+    const [so] = await db.select({ customerId: salesOrdersTable.customerId, customerName: salesOrdersTable.customerName })
+      .from(salesOrdersTable).where(eq(salesOrdersTable.id, despatch.soId)).limit(1);
+    for (const soLine of soLines) {
+      if (soLine.lineType !== "stock") continue;
+      const ordered = Number(soLine.quantity);
+      const despatched = Number(soLine.despatched_qty ?? 0);
+      const remainingQty = ordered - despatched;
+      if (remainingQty <= 0.0001) continue;
+      // Check if an open backorder already exists for this SO line to avoid duplicates
+      const [existingBo] = await db.select({ id: backordersTable.id, backorderQty: backordersTable.backorderQty })
+        .from(backordersTable)
+        .where(and(eq(backordersTable.soLineId, soLine.id), eq(backordersTable.tenantId, tenantId), eq(backordersTable.status, "open")))
+        .limit(1);
+      if (existingBo) {
+        // Update existing backorder quantity to reflect new remaining amount
+        await db.update(backordersTable)
+          .set({ backorderQty: remainingQty.toFixed(4), updatedAt: new Date() })
+          .where(and(eq(backordersTable.id, existingBo.id), eq(backordersTable.tenantId, tenantId)));
+      } else {
+        const [maxBo] = await db.select({ maxId: sql<number>`coalesce(max(id),0)` }).from(backordersTable);
+        const boSeq = (maxBo?.maxId ?? 0) + 1;
+        await db.insert(backordersTable).values({
+          tenantId, code: `BO-${String(boSeq).padStart(5, "0")}`,
+          soId: despatch.soId, soLineId: soLine.id,
+          customerId: so?.customerId ?? undefined, customerName: so?.customerName ?? undefined,
+          itemId: soLine.itemId ?? undefined, itemCode: soLine.itemCode ?? undefined, itemName: soLine.itemName ?? undefined,
+          orderedQty: ordered.toFixed(4), backorderQty: remainingQty.toFixed(4), releasedQty: despatched.toFixed(4),
+          unitPrice: soLine.unitPrice ?? undefined, status: "open",
+        } as typeof backordersTable.$inferInsert);
+      }
+    }
+
     return confirmed;
   });
 
@@ -941,6 +1018,82 @@ router.get("/sales/invoices/:id", ...tenantUserMiddleware, async (req: Request, 
   ]);
   if (!invoice[0]) { res.status(404).json({ error: "Invoice not found" }); return; }
   res.json({ ...invoice[0], lines });
+});
+
+router.get("/sales/invoices/:id/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [[invoice], lines] = await Promise.all([
+    withTenantDb(tenantId, (db) => db.select().from(customerInvoicesTable).where(and(eq(customerInvoicesTable.id, id), eq(customerInvoicesTable.tenantId, tenantId))).limit(1)),
+    withTenantDb(tenantId, (db) => db.select().from(customerInvoiceLinesTable).where(and(eq(customerInvoiceLinesTable.invoiceId, id), eq(customerInvoiceLinesTable.tenantId, tenantId)))),
+  ]);
+  if (!invoice) { res.status(404).json({ error: "Invoice not found" }); return; }
+  const linesHtml = lines.map((l) => `
+    <tr>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${l.itemCode ?? ""}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${l.description ?? l.itemName ?? ""}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right">${Number(l.quantity).toFixed(2)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right">${Number(l.unitPrice).toFixed(2)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right">${Number(l.discountPct ?? 0).toFixed(1)}%</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right">${Number(l.taxPct ?? 0).toFixed(1)}%</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:500">${Number(l.lineTotal ?? 0).toFixed(2)}</td>
+    </tr>`).join("");
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Invoice ${invoice.code ?? id}</title>
+  <style>
+    body{font-family:Arial,sans-serif;color:#111;margin:0;padding:32px;font-size:14px}
+    .header{display:flex;justify-content:space-between;margin-bottom:32px}
+    .title{font-size:28px;font-weight:700;color:#1e40af;letter-spacing:-1px}
+    .badge{display:inline-block;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600;background:#dbeafe;color:#1d4ed8}
+    table{width:100%;border-collapse:collapse;margin-top:24px}
+    th{background:#f8fafc;padding:8px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;border-bottom:2px solid #e5e7eb}
+    th:not(:first-child){text-align:right}
+    .totals td{padding:6px 8px;border-bottom:1px solid #f3f4f6}
+    .grand{font-size:16px;font-weight:700}
+    @media print{body{padding:16px}}
+  </style></head><body>
+  <div class="header">
+    <div>
+      <div class="title">TAX INVOICE</div>
+      <div style="margin-top:8px;font-size:20px;font-weight:600">${invoice.code ?? "INV-" + id}</div>
+      <div style="margin-top:4px;color:#6b7280">Date: ${invoice.invoiceDate ?? invoice.createdAt?.toString().slice(0, 10) ?? ""}</div>
+      ${invoice.dueDate ? `<div style="color:#6b7280">Due: ${invoice.dueDate}</div>` : ""}
+    </div>
+    <div style="text-align:right">
+      <span class="badge">${invoice.status?.toUpperCase() ?? "ISSUED"}</span>
+      ${invoice.soId ? `<div style="margin-top:8px;color:#6b7280">Sales Order: SO-${invoice.soId}</div>` : ""}
+    </div>
+  </div>
+  <div style="display:flex;gap:48px;margin-bottom:24px">
+    <div>
+      <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Bill To</div>
+      <div style="font-weight:600">${invoice.customerName ?? ""}</div>
+      ${invoice.billingAddress ? `<div style="color:#374151;white-space:pre-line">${invoice.billingAddress}</div>` : ""}
+    </div>
+  </div>
+  <table>
+    <thead><tr>
+      <th>Code</th><th>Description</th>
+      <th style="text-align:right">Qty</th><th style="text-align:right">Unit Price</th>
+      <th style="text-align:right">Disc%</th><th style="text-align:right">Tax%</th>
+      <th style="text-align:right">Line Total</th>
+    </tr></thead>
+    <tbody>${linesHtml}</tbody>
+  </table>
+  <div style="margin-top:24px;display:flex;justify-content:flex-end">
+    <table style="width:280px" class="totals">
+      <tr><td>Subtotal</td><td style="text-align:right">${invoice.currencyCode ?? "AUD"} ${Number(invoice.subtotal ?? 0).toFixed(2)}</td></tr>
+      <tr><td>Tax</td><td style="text-align:right">${invoice.currencyCode ?? "AUD"} ${Number(invoice.taxAmount ?? 0).toFixed(2)}</td></tr>
+      <tr class="grand"><td>Total</td><td style="text-align:right">${invoice.currencyCode ?? "AUD"} ${Number(invoice.total ?? 0).toFixed(2)}</td></tr>
+      ${Number(invoice.paidAmount ?? 0) > 0 ? `<tr><td>Paid</td><td style="text-align:right">${invoice.currencyCode ?? "AUD"} ${Number(invoice.paidAmount).toFixed(2)}</td></tr>
+      <tr class="grand" style="color:#dc2626"><td>Balance Due</td><td style="text-align:right">${invoice.currencyCode ?? "AUD"} ${(Number(invoice.total ?? 0) - Number(invoice.paidAmount ?? 0)).toFixed(2)}</td></tr>` : ""}
+    </table>
+  </div>
+  ${invoice.notes ? `<div style="margin-top:32px;padding:16px;background:#f8fafc;border-radius:8px"><strong>Notes:</strong> ${invoice.notes}</div>` : ""}
+  <div style="margin-top:40px;text-align:center;font-size:11px;color:#9ca3af">Generated by Forge ERP</div>
+  <script>window.onload = () => window.print();</script>
+</body></html>`;
+  res.setHeader("Content-Type", "text/html");
+  res.send(html);
 });
 
 router.post("/sales/invoices", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
@@ -1234,6 +1387,79 @@ router.post("/sales/rma/:id/process", ...tenantWriteMiddleware, async (req: Requ
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ─── Backorders ──────────────────────────────────────────────────────────────
+
+router.get("/sales/backorders", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { status, soId, customerId, limit = "50", page = "1" } = req.query as Record<string, string>;
+  const lim = Math.min(Number(limit), 200);
+  const pg = Math.max(Number(page), 1);
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select().from(backordersTable)
+      .where(and(
+        eq(backordersTable.tenantId, tenantId),
+        isNull(backordersTable.deletedAt),
+        status ? eq(backordersTable.status, status) : undefined,
+        soId ? eq(backordersTable.soId, Number(soId)) : undefined,
+        customerId ? eq(backordersTable.customerId, Number(customerId)) : undefined,
+      ))
+      .orderBy(desc(backordersTable.createdAt))
+      .limit(lim + 1).offset((pg - 1) * lim));
+  const hasMore = rows.length > lim;
+  res.json({ data: rows.slice(0, lim), hasMore, page: pg });
+});
+
+router.get("/sales/backorders/:id", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [bo] = await withTenantDb(tenantId, (db) =>
+    db.select().from(backordersTable).where(and(eq(backordersTable.id, id), eq(backordersTable.tenantId, tenantId))).limit(1));
+  if (!bo) { res.status(404).json({ error: "Backorder not found" }); return; }
+  res.json(bo);
+});
+
+router.post("/sales/backorders/:id/release", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const schema = z.object({ releaseQty: z.number().positive().optional(), notes: z.string().optional() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+  const [bo] = await withTenantDb(tenantId, (db) =>
+    db.select().from(backordersTable).where(and(eq(backordersTable.id, id), eq(backordersTable.tenantId, tenantId))).limit(1));
+  if (!bo) { res.status(404).json({ error: "Backorder not found" }); return; }
+  if (bo.status !== "open") { res.status(400).json({ error: `Backorder is already ${bo.status}` }); return; }
+  const currentBackorder = Number(bo.backorderQty);
+  const releaseQty = parsed.data.releaseQty ?? currentBackorder;
+  if (releaseQty > currentBackorder) { res.status(400).json({ error: `Release qty (${releaseQty}) exceeds outstanding backorder qty (${currentBackorder})` }); return; }
+  const newBackorderQty = currentBackorder - releaseQty;
+  const newStatus = newBackorderQty <= 0.0001 ? "released" : "open";
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(backordersTable).set({
+      backorderQty: newBackorderQty.toFixed(4),
+      releasedQty: sql`${backordersTable.releasedQty} + ${releaseQty.toFixed(4)}`,
+      status: newStatus,
+      releasedAt: newStatus === "released" ? new Date() : undefined,
+      releasedByClerkId: newStatus === "released" ? clerkUserId : undefined,
+      notes: parsed.data.notes ?? bo.notes ?? undefined,
+    }).where(and(eq(backordersTable.id, id), eq(backordersTable.tenantId, tenantId))).returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "backorder.released", entityType: "backorder", entityId: String(id), newValues: { releaseQty, newStatus } });
+  res.json(updated);
+});
+
+router.patch("/sales/backorders/:id/cancel", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [bo] = await withTenantDb(tenantId, (db) =>
+    db.select().from(backordersTable).where(and(eq(backordersTable.id, id), eq(backordersTable.tenantId, tenantId))).limit(1));
+  if (!bo) { res.status(404).json({ error: "Backorder not found" }); return; }
+  if (!["open"].includes(bo.status)) { res.status(400).json({ error: `Cannot cancel backorder in status: ${bo.status}` }); return; }
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(backordersTable).set({ status: "cancelled", updatedAt: new Date() })
+      .where(and(eq(backordersTable.id, id), eq(backordersTable.tenantId, tenantId))).returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "backorder.cancelled", entityType: "backorder", entityId: String(id) });
+  res.json(updated);
+});
+
 // ── Reports ───────────────────────────────────────────────────════════════════
 // ═══════════════════════════════════════════════════════════════════════════════
 
