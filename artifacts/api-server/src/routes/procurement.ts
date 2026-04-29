@@ -20,6 +20,7 @@ import {
   itemsTable,
   glAccountsTable,
   notificationsTable,
+  tenantMembershipsTable,
 } from "@workspace/db";
 import { withTenantDb, type TenantDb } from "@workspace/db/rls";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -547,6 +548,33 @@ async function createReturnGlPosting(tenantId: number, returnId: number, postedB
   return posting;
 }
 
+/**
+ * Resolve the full set of Clerk user IDs that are eligible approvers for a step.
+ * Merges explicit approverUserIds with members whose role matches approverRoles.
+ */
+async function resolveApproverClerkIds(
+  tenantId: number,
+  step: typeof approvalStepsTable.$inferSelect,
+): Promise<string[]> {
+  const explicit: string[] = (step.approverUserIds as string[] | null) ?? [];
+  const roles: string[] = (step.approverRoles as string[] | null) ?? [];
+
+  let fromRoles: string[] = [];
+  if (roles.length > 0) {
+    const members = await withTenantDb(tenantId, (db) =>
+      db.select({ clerkId: tenantMembershipsTable.clerkId })
+        .from(tenantMembershipsTable)
+        .where(and(
+          eq(tenantMembershipsTable.tenantId, tenantId),
+          inArray(tenantMembershipsTable.role, roles as ("super_admin" | "tenant_admin" | "purchaser" | "warehouse" | "approver" | "accountant" | "viewer")[]),
+        )));
+    fromRoles = members.map((m) => m.clerkId);
+  }
+
+  // Deduplicate
+  return [...new Set([...explicit, ...fromRoles])];
+}
+
 /** DB-transactional variant: posts GL credit-note for a return inside an already-open TenantDb transaction. */
 async function createReturnGlPostingInTx(db: TenantDb, tenantId: number, returnId: number, postedByClerkId: string, postedByEmail?: string) {
   const [ret] = await db.select().from(poReturnsTable).where(and(eq(poReturnsTable.id, returnId), eq(poReturnsTable.tenantId, tenantId))).limit(1);
@@ -703,7 +731,8 @@ async function executeApprovalDecision(opts: {
         .limit(1));
 
     if (step && step.approvalMode === "all") {
-      const requiredUserIds = (step.approverUserIds as string[]) ?? [];
+      // Resolve all required approvers (explicit user IDs + role-based members)
+      const requiredUserIds = await resolveApproverClerkIds(tenantId, step);
       if (requiredUserIds.length > 0) {
         // Fetch all distinct approvals at this step (including the one just recorded)
         const existingApprovals = await withTenantDb(tenantId, (db) =>
@@ -723,7 +752,6 @@ async function executeApprovalDecision(opts: {
           return { newStatus: "pending_approval", newStepNum: currentStepNum };
         }
       }
-      // Role-only "all" mode: best-effort — treat as "any" (can't enumerate all users with a role)
     }
   }
 
@@ -1093,7 +1121,7 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
         .where(and(eq(approvalStepsTable.workflowId, workflow.id), eq(approvalStepsTable.stepNumber, 1), eq(approvalStepsTable.tenantId, tenantId)))
         .limit(1));
     if (step1[0]) {
-      const approverIds: string[] = (step1[0].approverUserIds ?? []) as string[];
+      const approverIds = await resolveApproverClerkIds(tenantId, step1[0]);
       await Promise.all(approverIds.map((uid) =>
         createNotification(tenantId, uid, "approval_required",
           "Requisition requires your approval",
@@ -1179,7 +1207,7 @@ router.post("/procurement/requisitions/:id/decision", ...approverMiddleware, asy
         .where(and(eq(approvalStepsTable.workflowId, req_.approvalWorkflowId!), eq(approvalStepsTable.stepNumber, result.newStepNum), eq(approvalStepsTable.tenantId, tenantId)))
         .limit(1));
     if (nextStep[0]) {
-      const approverIds: string[] = (nextStep[0].approverUserIds ?? []) as string[];
+      const approverIds = await resolveApproverClerkIds(tenantId, nextStep[0]);
       await Promise.all(approverIds.map((uid) =>
         createNotification(tenantId, uid, "approval_required",
           "Requisition requires your approval",
@@ -1555,7 +1583,7 @@ router.post("/procurement/purchase-orders/:id/submit", ...tenantWriteMiddleware,
         .where(and(eq(approvalStepsTable.workflowId, workflow.id), eq(approvalStepsTable.stepNumber, 1), eq(approvalStepsTable.tenantId, tenantId)))
         .limit(1));
     if (step1[0]) {
-      const approverIds: string[] = (step1[0].approverUserIds ?? []) as string[];
+      const approverIds = await resolveApproverClerkIds(tenantId, step1[0]);
       await Promise.all(approverIds.map((uid) =>
         createNotification(tenantId, uid, "approval_required",
           "Purchase Order requires your approval",
@@ -1636,7 +1664,7 @@ router.post("/procurement/purchase-orders/:id/decision", ...approverMiddleware, 
         .where(and(eq(approvalStepsTable.workflowId, po.approvalWorkflowId!), eq(approvalStepsTable.stepNumber, result.newStepNum), eq(approvalStepsTable.tenantId, tenantId)))
         .limit(1));
     if (nextStep[0]) {
-      const approverIds: string[] = (nextStep[0].approverUserIds ?? []) as string[];
+      const approverIds = await resolveApproverClerkIds(tenantId, nextStep[0]);
       await Promise.all(approverIds.map((uid) =>
         createNotification(tenantId, uid, "approval_required",
           "Purchase Order requires your approval",
@@ -2114,7 +2142,7 @@ router.post("/procurement/receipts/:id/confirm", ...tenantWriteMiddleware, async
           if (backorderReceipt) {
             // Stamp real code based on auto-generated ID
             await db.update(poReceiptsTable)
-              .set({ code: genCode("RCT", backorderReceipt.id) })
+              .set({ code: genCode("RCV", backorderReceipt.id) })
               .where(eq(poReceiptsTable.id, backorderReceipt.id));
 
             await db.insert(receiptLinesTable).values(backorderLines.map((l) => ({
