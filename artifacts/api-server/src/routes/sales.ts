@@ -631,17 +631,19 @@ router.post("/sales/orders", ...tenantWriteMiddleware, async (req: Request, res:
     // Hard credit limit enforcement: block SO if customer would exceed their credit limit
     const creditLimit = cust?.creditLimit ? Number(cust.creditLimit) : 0;
     if (creditLimit > 0) {
-      // Sum outstanding invoices (total - paid) for non-cancelled/paid statuses
+      // Sum outstanding invoices (total - paid_amount) — exclude settled and voided invoices
+      // Use 'voided' (schema) and 'void' (legacy) to cover both naming patterns
       const [invoiceBalance] = await withTenantDb(tenantId, (db) =>
-        db.select({ outstanding: sql<string>`coalesce(sum(total - paid_amount), 0)` })
+        db.select({ outstanding: sql<string>`coalesce(sum(GREATEST(0, total - paid_amount)), 0)` })
           .from(customerInvoicesTable)
           .where(and(
             eq(customerInvoicesTable.tenantId, tenantId),
             eq(customerInvoicesTable.customerId, header.customerId!),
             isNull(customerInvoicesTable.deletedAt),
-            sql`status NOT IN ('paid','cancelled','void')`,
+            sql`status NOT IN ('paid','cancelled','voided','void')`,
           )));
-      // Sum confirmed/in-progress SO totals (exclude drafts and cancelled)
+      // Sum active SO totals (confirmed and in-progress only, not yet fully invoiced)
+      // Exclude draft, cancelled, and fully invoiced SOs to avoid double-counting with invoice balance
       const [soBalance] = await withTenantDb(tenantId, (db) =>
         db.select({ outstanding: sql<string>`coalesce(sum(total), 0)` })
           .from(salesOrdersTable)
@@ -649,7 +651,7 @@ router.post("/sales/orders", ...tenantWriteMiddleware, async (req: Request, res:
             eq(salesOrdersTable.tenantId, tenantId),
             eq(salesOrdersTable.customerId, header.customerId!),
             isNull(salesOrdersTable.deletedAt),
-            sql`status NOT IN ('draft','cancelled')`,
+            sql`status NOT IN ('draft','cancelled','invoiced')`,
           )));
       // Estimate new SO value from lines
       const newSoValue = lines.reduce((acc, l) => acc + (l.quantity * l.unitPrice * (1 - (l.discountPct ?? 0) / 100)), 0);
