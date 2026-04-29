@@ -2611,9 +2611,19 @@ export const CreateApprovalStepBody = zod.object({
   approverType: zod.enum(["role", "user"]).optional(),
   approverRoles: zod.array(zod.string()).optional(),
   approverUserIds: zod.array(zod.string()).optional(),
-  approvalMode: zod.enum(["any", "all"]).optional(),
+  approvalMode: zod
+    .enum(["any", "all"])
+    .optional()
+    .describe(
+      "Within a single step: 'any' means one eligible approver is sufficient to advance the workflow; 'all' means every designated approver must act. Steps execute serially (step 1 → step 2 → …). Parallel path branching (fork\/join graph) is not supported — configure multiple sequential steps to model multi-stage approval chains.\n",
+    ),
   valueLimit: zod.number().optional(),
-  escalationDays: zod.number().optional(),
+  escalationDays: zod
+    .number()
+    .optional()
+    .describe(
+      "Days before the step triggers an escalation notification if no decision is made.",
+    ),
 });
 
 /**

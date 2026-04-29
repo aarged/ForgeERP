@@ -1,6 +1,6 @@
 import { eq, and, isNull, gte } from "drizzle-orm";
 import {
-  db,
+  adminDb,
   purchaseRequisitionsTable,
   purchaseOrdersTable,
   approvalStepsTable,
@@ -180,8 +180,8 @@ async function processPurchaseOrderEscalations(tenantId: number): Promise<void> 
 async function runEscalationCheck(): Promise<void> {
   logger.info("[escalation] Running approval escalation check");
   try {
-    // Collect active tenant IDs from the master DB
-    const tenants = await db
+    // Collect active tenant IDs using the admin (bypass-RLS) connection
+    const tenants = await adminDb
       .select({ id: tenantsTable.id })
       .from(tenantsTable)
       .where(eq(tenantsTable.status, "active"));

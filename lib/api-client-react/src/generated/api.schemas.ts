@@ -1404,6 +1404,10 @@ export const CreateApprovalStepBodyApproverType = {
   user: "user",
 } as const;
 
+/**
+ * Within a single step: 'any' means one eligible approver is sufficient to advance the workflow; 'all' means every designated approver must act. Steps execute serially (step 1 → step 2 → …). Parallel path branching (fork/join graph) is not supported — configure multiple sequential steps to model multi-stage approval chains.
+
+ */
 export type CreateApprovalStepBodyApprovalMode =
   (typeof CreateApprovalStepBodyApprovalMode)[keyof typeof CreateApprovalStepBodyApprovalMode];
 
@@ -1418,8 +1422,11 @@ export interface CreateApprovalStepBody {
   approverType?: CreateApprovalStepBodyApproverType;
   approverRoles?: string[];
   approverUserIds?: string[];
+  /** Within a single step: 'any' means one eligible approver is sufficient to advance the workflow; 'all' means every designated approver must act. Steps execute serially (step 1 → step 2 → …). Parallel path branching (fork/join graph) is not supported — configure multiple sequential steps to model multi-stage approval chains.
+   */
   approvalMode?: CreateApprovalStepBodyApprovalMode;
   valueLimit?: number;
+  /** Days before the step triggers an escalation notification if no decision is made. */
   escalationDays?: number;
 }
 

@@ -33,6 +33,13 @@ export const pool = new Pool({ connectionString: appDbUrl });
 export const adminPool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle(pool, { schema });
 
+/**
+ * adminDb uses the superuser (DATABASE_URL) connection — bypasses RLS.
+ * Use ONLY for system/bootstrap operations (e.g. tenant enumeration in the
+ * escalation worker) that must run outside a tenant transaction context.
+ */
+export const adminDb = drizzle(adminPool, { schema });
+
 /** Creates a new Pool using the app-user connection string (RLS enforced). */
 export function createAppPool() {
   return new Pool({ connectionString: appDbUrl });

@@ -4962,9 +4962,17 @@ components:
         approverType: { type: string, enum: [role, user] }
         approverRoles: { type: array, items: { type: string } }
         approverUserIds: { type: array, items: { type: string } }
-        approvalMode: { type: string, enum: [any, all] }
+        approvalMode:
+          type: string
+          enum: [any, all]
+          description: >
+            Within a single step: 'any' means one eligible approver is sufficient
+            to advance the workflow; 'all' means every designated approver must act.
+            Steps execute serially (step 1 → step 2 → …). Parallel path branching
+            (fork/join graph) is not supported — configure multiple sequential steps
+            to model multi-stage approval chains.
         valueLimit: { type: number }
-        escalationDays: { type: integer }
+        escalationDays: { type: integer, description: "Days before the step triggers an escalation notification if no decision is made." }
 
     ApprovalDecisionBody:
       type: object
