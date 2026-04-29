@@ -162,15 +162,27 @@ async function allocateStockForSo(db: TenantDb, tenantId: number, soId: number) 
   }
 }
 
-/** Release all non-released allocations for an SO */
+/** Release all non-released allocations for an SO.
+ *  Each allocation is released against the exact stock bucket
+ *  (tenant + warehouse + item + location) so multi-bin setups cannot
+ *  over-release a wrong bucket.
+ */
 async function releaseAllocations(db: TenantDb, tenantId: number, soId: number) {
   const allocs = await db.select().from(soAllocationsTable)
     .where(and(eq(soAllocationsTable.soId, soId), eq(soAllocationsTable.tenantId, tenantId), eq(soAllocationsTable.isReleased, false)));
   for (const alloc of allocs) {
     const qty = Number(alloc.allocatedQty);
+    const locationPredicate = alloc.locationId != null
+      ? eq(inventoryStockTable.locationId, alloc.locationId)
+      : isNull(inventoryStockTable.locationId);
     await db.update(inventoryStockTable)
       .set({ qtyReserved: sql`GREATEST(0, ${inventoryStockTable.qtyReserved} - ${qty.toFixed(4)})` })
-      .where(and(eq(inventoryStockTable.warehouseId, alloc.warehouseId), eq(inventoryStockTable.itemId, alloc.itemId), eq(inventoryStockTable.tenantId, tenantId)));
+      .where(and(
+        eq(inventoryStockTable.tenantId, tenantId),
+        eq(inventoryStockTable.warehouseId, alloc.warehouseId),
+        eq(inventoryStockTable.itemId, alloc.itemId),
+        locationPredicate,
+      ));
     await db.update(soAllocationsTable).set({ isReleased: true, releasedAt: new Date() })
       .where(and(eq(soAllocationsTable.id, alloc.id), eq(soAllocationsTable.tenantId, tenantId)));
   }
@@ -929,26 +941,33 @@ router.post("/sales/despatches/:id/confirm", ...tenantWriteMiddleware, async (re
           locationId ? eq(inventoryStockTable.locationId, locationId) : isNull(inventoryStockTable.locationId)))
         .limit(1);
 
-      if (stock) {
-        const currentQty = Number(stock.qtyOnHand ?? 0);
-        if (currentQty < qty - 0.0001) {
-          throw new Error(`Insufficient stock for item ${resolvedItemId}: on-hand ${currentQty.toFixed(4)}, required ${qty.toFixed(4)}. Adjust stock or reduce despatch quantity.`);
-        }
-        const unitCostForMovement = line.unitCost ?? stock.averageCost ?? undefined;
-        await db.update(inventoryStockTable)
-          .set({ qtyOnHand: sql`${inventoryStockTable.qtyOnHand} - ${qty.toFixed(4)}`, qtyReserved: sql`GREATEST(0, ${inventoryStockTable.qtyReserved} - ${qty.toFixed(4)})`, lastMovementAt: new Date() })
-          .where(and(eq(inventoryStockTable.id, stock.id), eq(inventoryStockTable.tenantId, tenantId)));
-        // Update despatch line unit cost from average cost if missing
-        if (!line.unitCost && stock.averageCost) {
-          await db.update(despatchLinesTable).set({ unitCost: stock.averageCost }).where(and(eq(despatchLinesTable.id, line.id), eq(despatchLinesTable.tenantId, tenantId)));
-        }
-        await db.insert(inventoryMovementsTable).values({
-          tenantId, itemId: resolvedItemId, warehouseId, locationId: locationId ?? undefined,
-          movementType: "issue", quantity: (-qty).toFixed(4), unitCost: unitCostForMovement ?? undefined,
-          refType: "so_despatch", refId: id, lotNumber: line.lotNumber ?? undefined,
-          serialNumber: line.serialNumber ?? undefined, batchNumber: line.batchNumber ?? undefined, postedByClerkId: clerkUserId,
-        } as typeof inventoryMovementsTable.$inferInsert);
+      if (!stock) {
+        // No matching stock bucket — fail the transaction to prevent phantom inventory movement
+        throw new Error(
+          `No stock record found for item ${resolvedItemId} in warehouse ${warehouseId}` +
+          (locationId ? ` / location ${locationId}` : "") +
+          `. Receive the item into inventory before despatching.`,
+        );
       }
+
+      const currentQty = Number(stock.qtyOnHand ?? 0);
+      if (currentQty < qty - 0.0001) {
+        throw new Error(`Insufficient stock for item ${resolvedItemId}: on-hand ${currentQty.toFixed(4)}, required ${qty.toFixed(4)}. Adjust stock or reduce despatch quantity.`);
+      }
+      const unitCostForMovement = line.unitCost ?? stock.averageCost ?? undefined;
+      await db.update(inventoryStockTable)
+        .set({ qtyOnHand: sql`${inventoryStockTable.qtyOnHand} - ${qty.toFixed(4)}`, qtyReserved: sql`GREATEST(0, ${inventoryStockTable.qtyReserved} - ${qty.toFixed(4)})`, lastMovementAt: new Date() })
+        .where(and(eq(inventoryStockTable.id, stock.id), eq(inventoryStockTable.tenantId, tenantId)));
+      // Update despatch line unit cost from average cost if missing
+      if (!line.unitCost && stock.averageCost) {
+        await db.update(despatchLinesTable).set({ unitCost: stock.averageCost }).where(and(eq(despatchLinesTable.id, line.id), eq(despatchLinesTable.tenantId, tenantId)));
+      }
+      await db.insert(inventoryMovementsTable).values({
+        tenantId, itemId: resolvedItemId, warehouseId, locationId: locationId ?? undefined,
+        movementType: "issue", quantity: (-qty).toFixed(4), unitCost: unitCostForMovement ?? undefined,
+        refType: "so_despatch", refId: id, lotNumber: line.lotNumber ?? undefined,
+        serialNumber: line.serialNumber ?? undefined, batchNumber: line.batchNumber ?? undefined, postedByClerkId: clerkUserId,
+      } as typeof inventoryMovementsTable.$inferInsert);
 
       // Update SO line despatched_qty
       await db.update(soLinesTable).set({ despatched_qty: sql`${soLinesTable.despatched_qty} + ${qty.toFixed(4)}` })
