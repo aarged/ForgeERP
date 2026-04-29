@@ -230,7 +230,10 @@ router.post("/finance/journals/:id/reverse", ...tenantWriteMiddleware, async (re
     db.select().from(glPostingsTable).where(and(eq(glPostingsTable.id, id), eq(glPostingsTable.tenantId, tenantId))).limit(1)
   );
   if (!original) { res.status(404).json({ error: "GL posting not found" }); return; }
-  if (original.status === "reversed") { res.status(400).json({ error: "Already reversed" }); return; }
+  if (original.status !== "posted") {
+    res.status(400).json({ error: original.status === "reversed" ? "Already reversed" : "Only posted journals can be reversed" });
+    return;
+  }
 
   const reversalLines = (original.lines as Array<{ accountCode: string; accountName: string; debit: number; credit: number; description?: string }>).map(l => ({
     ...l, debit: l.credit, credit: l.debit, description: `Reversal: ${l.description ?? ""}`,

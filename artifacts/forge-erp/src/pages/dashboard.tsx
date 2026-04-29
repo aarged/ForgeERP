@@ -271,7 +271,7 @@ function WidgetGlActivity() {
 
 // ── Widget Library ─────────────────────────────────────────────────────────────
 
-type UserRole = "admin" | "super_admin" | "tenant_admin" | "purchaser" | "warehouse" | "approver" | "accountant" | "viewer";
+type UserRole = "super_admin" | "tenant_admin" | "purchaser" | "warehouse" | "approver" | "accountant" | "viewer";
 
 interface WidgetDef {
   id: string;
@@ -281,22 +281,21 @@ interface WidgetDef {
 }
 
 const WIDGET_LIBRARY: WidgetDef[] = [
-  { id: "recent-pos",        label: "Recent Purchase Orders", availableRoles: ["admin","super_admin","tenant_admin","purchaser","warehouse"],       Component: WidgetRecentPOs },
-  { id: "recent-orders",     label: "Recent Sales Orders",    availableRoles: ["admin","super_admin","tenant_admin","accountant","warehouse"],       Component: WidgetRecentOrders },
-  { id: "stock-alerts",      label: "Stock Alerts",           availableRoles: ["admin","super_admin","tenant_admin","warehouse","purchaser"],        Component: WidgetStockAlerts },
-  { id: "pending-approvals", label: "Pending Approvals",      availableRoles: ["admin","super_admin","tenant_admin","approver","purchaser"],         Component: WidgetPendingApprovals },
-  { id: "gl-activity",       label: "GL Activity",            availableRoles: ["admin","super_admin","tenant_admin","accountant"],                   Component: WidgetGlActivity },
+  { id: "recent-pos",        label: "Recent Purchase Orders", availableRoles: ["super_admin","tenant_admin","purchaser","approver"],            Component: WidgetRecentPOs },
+  { id: "recent-orders",     label: "Recent Sales Orders",    availableRoles: ["super_admin","tenant_admin","accountant"],                      Component: WidgetRecentOrders },
+  { id: "stock-alerts",      label: "Stock Alerts",           availableRoles: ["super_admin","tenant_admin","warehouse","accountant"],           Component: WidgetStockAlerts },
+  { id: "pending-approvals", label: "Pending Approvals",      availableRoles: ["super_admin","tenant_admin","approver"],                        Component: WidgetPendingApprovals },
+  { id: "gl-activity",       label: "GL Activity",            availableRoles: ["super_admin","tenant_admin","accountant"],                      Component: WidgetGlActivity },
 ];
 
 const DEFAULT_WIDGETS: Record<string, string[]> = {
-  admin:       ["recent-orders","recent-pos","stock-alerts","gl-activity"],
   super_admin: ["recent-orders","recent-pos","stock-alerts","gl-activity"],
   tenant_admin:["recent-orders","recent-pos","stock-alerts","gl-activity"],
-  purchaser:   ["recent-pos","pending-approvals"],
-  warehouse:   ["stock-alerts","recent-pos","recent-orders"],
-  approver:    ["pending-approvals"],
-  accountant:  ["gl-activity","recent-orders"],
-  viewer:      ["recent-orders"],
+  purchaser:   ["recent-pos"],
+  warehouse:   ["stock-alerts"],
+  approver:    ["pending-approvals","recent-pos"],
+  accountant:  ["gl-activity","recent-orders","stock-alerts"],
+  viewer:      [],
 };
 
 function useWidgetPrefs(role: UserRole) {
@@ -364,7 +363,7 @@ export default function Dashboard() {
 
   const rawRole = currentUser?.role ?? "viewer";
   const role = rawRole as UserRole;
-  const kpiRole = ((role === "super_admin" || role === "tenant_admin") ? "admin" : role) as GetDashboardKpiRole;
+  const kpiRole = role as GetDashboardKpiRole;
 
   const { data: kpiData, isLoading: kpiLoading } = useGetDashboardKpi(
     { role: kpiRole },
