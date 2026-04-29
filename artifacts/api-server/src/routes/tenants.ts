@@ -2,12 +2,12 @@ import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { tenantsTable, tenantMembershipsTable } from "@workspace/db";
 import { withTenantDb } from "@workspace/db/rls";
-import { tenantContext, type TenantRequest } from "../middlewares/tenantContext";
+import { tenantContext, requireRole, type TenantRequest } from "../middlewares/tenantContext";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
 
-router.get("/tenants/current", tenantContext, async (req: Request, res: Response): Promise<void> => {
+router.get("/tenants/current", tenantContext, requireRole("viewer", "purchaser", "warehouse", "approver", "accountant", "tenant_admin", "super_admin"), async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
 
   const tenant = await withTenantDb(tenantId, (txDb) =>
@@ -39,7 +39,7 @@ router.get("/tenants/current", tenantContext, async (req: Request, res: Response
   });
 });
 
-router.get("/tenants/current/members", tenantContext, async (req: Request, res: Response): Promise<void> => {
+router.get("/tenants/current/members", tenantContext, requireRole("tenant_admin", "super_admin"), async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
 
   const members = await withTenantDb(tenantId, (txDb) =>
