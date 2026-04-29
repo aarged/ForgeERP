@@ -864,20 +864,37 @@ router.post("/procurement/requisitions/:id/decision", ...approverMiddleware, asy
       .where(and(eq(purchaseRequisitionsTable.id, id), eq(purchaseRequisitionsTable.tenantId, tenantId)))
       .returning());
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: `requisition.${parsed.data.decision}`, entityType: "purchase_requisition", entityId: String(id), newValues: { decision: parsed.data.decision, comment: parsed.data.comment, newStatus: result.newStatus } });
-  res.json(updated);
+
+  // Auto-convert to a draft PO when the requisition reaches final "approved" state
+  let autoPo: { id: number } | undefined;
+  if (result.newStatus === "approved") {
+    const poId = await createPoFromRequisition(tenantId, id, clerkUserId, userEmail);
+    if (poId) {
+      await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "requisition.auto_converted_to_po", entityType: "purchase_requisition", entityId: String(id), newValues: { poId } });
+      autoPo = { id: poId };
+    }
+  }
+
+  res.json({ ...updated, autoPo });
 });
 
-// Convert requisition to PO
-router.post("/procurement/requisitions/:id/convert-to-po", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
-  const id = Number(req.params.id);
+/** Shared helper: create a draft PO from an approved requisition.
+ *  Returns the new PO id, or null if the requisition is not approved or already converted. */
+async function createPoFromRequisition(
+  tenantId: number,
+  requisitionId: number,
+  createdByClerkId: string,
+  createdByEmail: string,
+): Promise<number | null> {
   const [req_] = await withTenantDb(tenantId, (db) =>
-    db.select().from(purchaseRequisitionsTable).where(and(eq(purchaseRequisitionsTable.id, id), eq(purchaseRequisitionsTable.tenantId, tenantId))).limit(1));
-  if (!req_) { res.status(404).json({ error: "Requisition not found" }); return; }
-  if (req_.status !== "approved") { res.status(400).json({ error: "Requisition must be approved before converting to PO" }); return; }
+    db.select().from(purchaseRequisitionsTable)
+      .where(and(eq(purchaseRequisitionsTable.id, requisitionId), eq(purchaseRequisitionsTable.tenantId, tenantId)))
+      .limit(1));
+  if (!req_ || !["approved"].includes(req_.status)) return null;
 
   const lines = await withTenantDb(tenantId, (db) =>
-    db.select().from(requisitionLinesTable).where(and(eq(requisitionLinesTable.requisitionId, id), eq(requisitionLinesTable.tenantId, tenantId))));
+    db.select().from(requisitionLinesTable)
+      .where(and(eq(requisitionLinesTable.requisitionId, requisitionId), eq(requisitionLinesTable.tenantId, tenantId))));
 
   const [po] = await withTenantDb(tenantId, (db) =>
     db.insert(purchaseOrdersTable).values({
@@ -886,14 +903,14 @@ router.post("/procurement/requisitions/:id/convert-to-po", ...tenantWriteMiddlew
       supplierId: req_.preferredSupplierId ?? undefined,
       deliverToWarehouseId: req_.deliverToWarehouseId ?? undefined,
       currencyCode: req_.currencyCode,
-      requisitionId: id,
+      requisitionId,
       status: "draft",
-      createdByClerkId: clerkUserId,
-      createdByEmail: userEmail,
-    } as typeof purchaseOrdersTable.$inferInsert).returning(),
-  );
+      createdByClerkId,
+      createdByEmail,
+    } as typeof purchaseOrdersTable.$inferInsert).returning());
   const poId = po!.id;
-  await withTenantDb(tenantId, (db) => db.update(purchaseOrdersTable).set({ code: genCode("PO", poId) }).where(eq(purchaseOrdersTable.id, poId)));
+  await withTenantDb(tenantId, (db) =>
+    db.update(purchaseOrdersTable).set({ code: genCode("PO", poId) }).where(eq(purchaseOrdersTable.id, poId)));
 
   if (lines.length > 0) {
     await withTenantDb(tenantId, (db) =>
@@ -913,13 +930,29 @@ router.post("/procurement/requisitions/:id/convert-to-po", ...tenantWriteMiddlew
         glAccountId: l.glAccountId ?? undefined,
         requisitionLineId: l.id,
         notes: l.notes ?? undefined,
-      }) as typeof poLinesTable.$inferInsert)),
-    );
+      }) as typeof poLinesTable.$inferInsert)));
   }
 
   await updatePoTotals(tenantId, poId);
   await withTenantDb(tenantId, (db) =>
-    db.update(purchaseRequisitionsTable).set({ status: "converted", convertedPoId: poId }).where(eq(purchaseRequisitionsTable.id, id)));
+    db.update(purchaseRequisitionsTable)
+      .set({ status: "converted", convertedPoId: poId })
+      .where(eq(purchaseRequisitionsTable.id, requisitionId)));
+
+  return poId;
+}
+
+// Convert requisition to PO (manual trigger — auto-conversion also fires on final approval)
+router.post("/procurement/requisitions/:id/convert-to-po", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [req_] = await withTenantDb(tenantId, (db) =>
+    db.select().from(purchaseRequisitionsTable).where(and(eq(purchaseRequisitionsTable.id, id), eq(purchaseRequisitionsTable.tenantId, tenantId))).limit(1));
+  if (!req_) { res.status(404).json({ error: "Requisition not found" }); return; }
+  if (req_.status !== "approved") { res.status(400).json({ error: "Requisition must be approved before converting to PO" }); return; }
+
+  const poId = await createPoFromRequisition(tenantId, id, clerkUserId, userEmail);
+  if (!poId) { res.status(400).json({ error: "Could not create PO from requisition" }); return; }
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "requisition.converted_to_po", entityType: "purchase_requisition", entityId: String(id), newValues: { poId } });
 
   const fullPo = (await withTenantDb(tenantId, (db) => db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, poId)).limit(1)))[0];
@@ -1012,7 +1045,7 @@ router.post("/procurement/purchase-orders", ...tenantWriteMiddleware, async (req
   // Denormalize supplier name
   let supplierName: string | undefined;
   if (header.supplierId) {
-    const sup = (await withTenantDb(tenantId, (db) => db.select({ name: suppliersTable.name }).from(suppliersTable).where(eq(suppliersTable.id, header.supplierId!)).limit(1)))[0];
+    const sup = (await withTenantDb(tenantId, (db) => db.select({ name: suppliersTable.name }).from(suppliersTable).where(and(eq(suppliersTable.id, header.supplierId!), eq(suppliersTable.tenantId, tenantId))).limit(1)))[0];
     supplierName = sup?.name ?? undefined;
   }
 
@@ -1222,6 +1255,16 @@ router.post("/procurement/purchase-orders/:id/decision", ...approverMiddleware, 
 router.post("/procurement/purchase-orders/:id/send", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
+  // Enforce state machine: PO must be in "approved" status before it can be sent
+  const [po] = await withTenantDb(tenantId, (db) =>
+    db.select({ status: purchaseOrdersTable.status }).from(purchaseOrdersTable)
+      .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt)))
+      .limit(1));
+  if (!po) { res.status(404).json({ error: "PO not found" }); return; }
+  if (po.status !== "approved") {
+    res.status(400).json({ error: `PO cannot be sent in status: ${po.status}. Only approved POs can be sent to suppliers.` });
+    return;
+  }
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(purchaseOrdersTable).set({ status: "sent", sentAt: new Date() })
       .where(and(eq(purchaseOrdersTable.id, id), eq(purchaseOrdersTable.tenantId, tenantId))).returning());
@@ -1327,7 +1370,39 @@ router.post("/procurement/receipts", ...tenantWriteMiddleware, async (req: Reque
   res.status(201).json(full);
 });
 
-// Confirm receipt — posts inventory and GL
+// GL preview: return what would be posted for a receipt WITHOUT committing
+router.get("/procurement/receipts/:id/gl-preview", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [receipt] = await withTenantDb(tenantId, (db) =>
+    db.select().from(poReceiptsTable).where(and(eq(poReceiptsTable.id, id), eq(poReceiptsTable.tenantId, tenantId))).limit(1));
+  if (!receipt) { res.status(404).json({ error: "Receipt not found" }); return; }
+
+  const lines = await withTenantDb(tenantId, (db) =>
+    db.select().from(receiptLinesTable)
+      .where(and(eq(receiptLinesTable.receiptId, id), eq(receiptLinesTable.tenantId, tenantId))));
+
+  const poLineIds = lines.map((l) => l.poLineId).filter(Boolean) as number[];
+  const poLineRows = poLineIds.length > 0
+    ? await withTenantDb(tenantId, (db) =>
+        db.select({ id: poLinesTable.id, glAccountId: poLinesTable.glAccountId })
+          .from(poLinesTable).where(inArray(poLinesTable.id, poLineIds)))
+    : [];
+  const poLineGlMap = new Map(poLineRows.map((pl) => [pl.id, pl.glAccountId]));
+  const apAccount = await resolveGlAccount(tenantId, null, "2100", "Accounts Payable");
+
+  const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
+  let totalValue = 0;
+  for (const rl of lines) {
+    const lineVal = Number(rl.receivedQty) * Number(rl.unitCost ?? 0);
+    totalValue += lineVal;
+    const invAccount = await resolveGlAccount(tenantId, poLineGlMap.get(rl.poLineId) ?? null, "1300", "Inventory");
+    glLines.push({ ...invAccount, debit: lineVal, credit: 0, description: `Receipt of ${rl.itemCode ?? rl.itemName ?? "item"}` });
+  }
+  glLines.push({ ...apAccount, debit: 0, credit: totalValue, description: `AP for PO receipt ${id}` });
+  res.json({ lines: glLines, totalDebit: totalValue.toFixed(2), totalCredit: totalValue.toFixed(2) });
+});
+
 router.post("/procurement/receipts/:id/confirm", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
@@ -1350,7 +1425,7 @@ router.post("/procurement/receipts/:id/confirm", ...tenantWriteMiddleware, async
       glPostingId: posting?.id ?? undefined,
     }).where(and(eq(poReceiptsTable.id, id), eq(poReceiptsTable.tenantId, tenantId))).returning());
 
-  // Update PO status
+  // Update PO status and create backorder receipt for partially-received lines
   const po = (await withTenantDb(tenantId, (db) =>
     db.select().from(purchaseOrdersTable).where(and(eq(purchaseOrdersTable.id, receipt.poId), eq(purchaseOrdersTable.tenantId, tenantId))).limit(1)))[0];
   if (po) {
@@ -1361,6 +1436,39 @@ router.post("/procurement/receipts/:id/confirm", ...tenantWriteMiddleware, async
     const newPoStatus = allReceived ? "received" : anyReceived ? "partially_received" : "approved";
     await withTenantDb(tenantId, (db) =>
       db.update(purchaseOrdersTable).set({ status: newPoStatus }).where(eq(purchaseOrdersTable.id, po.id)));
+
+    // Create a backorder draft receipt for lines with remaining quantity
+    if (!allReceived && anyReceived) {
+      const backorderLines = poLines.filter((l) => Number(l.receivedQty) < Number(l.quantity));
+      if (backorderLines.length > 0) {
+        const [backorderReceipt] = await withTenantDb(tenantId, (db) =>
+          db.insert(poReceiptsTable).values({
+            tenantId,
+            poId: po.id,
+            warehouseId: receipt.warehouseId ?? undefined,
+            locationId: receipt.locationId ?? undefined,
+            status: "draft",
+            receivedByClerkId: clerkUserId,
+            receivedByEmail: userEmail,
+            notes: `Backorder from receipt #${id}`,
+          } as typeof poReceiptsTable.$inferInsert).returning());
+        if (backorderReceipt) {
+          await withTenantDb(tenantId, (db) =>
+            db.insert(receiptLinesTable).values(backorderLines.map((l) => ({
+              tenantId,
+              receiptId: backorderReceipt.id,
+              poLineId: l.id,
+              itemId: l.itemId ?? undefined,
+              itemCode: l.itemCode ?? undefined,
+              itemName: l.itemName ?? undefined,
+              orderedQty: (Number(l.quantity) - Number(l.receivedQty)).toFixed(4),
+              receivedQty: "0",
+              unitCost: l.unitPrice,
+            }) as typeof receiptLinesTable.$inferInsert)));
+          await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_receipt.backorder_created", entityType: "po_receipt", entityId: String(backorderReceipt.id), newValues: { parentReceiptId: id, backorderLines: backorderLines.length } });
+        }
+      }
+    }
   }
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "po_receipt.confirmed", entityType: "po_receipt", entityId: String(id) });
