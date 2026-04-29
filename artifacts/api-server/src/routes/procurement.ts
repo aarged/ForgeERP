@@ -149,8 +149,8 @@ async function postInventoryReceipt(tenantId: number, receiptId: number, postedB
   );
   const rcpt = receipt[0];
   if (!rcpt) return;
-  // A valid warehouse is required for inventory posting; skip posting if missing
-  if (!rcpt.warehouseId) return;
+  // Warehouse is mandatory — receipt creation now enforces this, but guard defensively
+  if (!rcpt.warehouseId) throw new Error(`Receipt ${receiptId} has no warehouseId; cannot post inventory. Set a warehouse on the receipt or PO before confirming.`);
 
   for (const line of receiptLines) {
     if (!line.itemId || Number(line.receivedQty) <= 0) continue;
@@ -242,7 +242,8 @@ async function postInventoryReceiptInTx(db: TenantDb, tenantId: number, receiptI
     .where(and(eq(receiptLinesTable.receiptId, receiptId), eq(receiptLinesTable.tenantId, tenantId)));
   const receipt = (await db.select().from(poReceiptsTable)
     .where(and(eq(poReceiptsTable.id, receiptId), eq(poReceiptsTable.tenantId, tenantId))).limit(1))[0];
-  if (!receipt?.warehouseId) return;
+  if (!receipt) return;
+  if (!receipt.warehouseId) throw new Error(`Receipt ${receiptId} has no warehouseId; cannot post inventory. Set a warehouse on the receipt or PO before confirming.`);
 
   for (const line of receiptLines) {
     if (!line.itemId || Number(line.receivedQty) <= 0) continue;
@@ -766,11 +767,12 @@ router.post("/procurement/approval-workflows/:id/steps", ...tenantAdminMiddlewar
     stepNumber: z.number().int().positive(),
     stepName: z.string().min(1),
     approverType: z.enum(["role", "user"]).default("role"),
-    approverRoles: z.array(z.string()).default([]),
+    // Only roles that are authorised to reach /decision endpoints
+    approverRoles: z.array(z.enum(["approver", "tenant_admin", "super_admin"])).default([]),
     approverUserIds: z.array(z.string()).default([]),
     approvalMode: z.enum(["any", "all"]).default("any"),
-    valueLimit: z.number().optional(),
-    escalationDays: z.number().int().default(3),
+    valueLimit: z.number().nonnegative().optional(),
+    escalationDays: z.number().int().positive().default(3),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
@@ -1863,13 +1865,20 @@ router.post("/procurement/receipts", ...tenantWriteMiddleware, async (req: Reque
 
   // Ensure the PO is in a receivable state before creating any records
   const [receivingPo] = await withTenantDb(tenantId, (db) =>
-    db.select({ id: purchaseOrdersTable.id, status: purchaseOrdersTable.status })
+    db.select({ id: purchaseOrdersTable.id, status: purchaseOrdersTable.status, deliverToWarehouseId: purchaseOrdersTable.deliverToWarehouseId })
       .from(purchaseOrdersTable)
       .where(and(eq(purchaseOrdersTable.id, parsed.data.poId), eq(purchaseOrdersTable.tenantId, tenantId)))
       .limit(1));
   if (!receivingPo) { res.status(404).json({ error: "Purchase order not found" }); return; }
   if (!["approved", "sent", "partially_received"].includes(receivingPo.status)) {
     res.status(400).json({ error: `Cannot receive goods against a PO with status: ${receivingPo.status}` });
+    return;
+  }
+
+  // Warehouse is required for inventory posting; default from PO's deliver-to warehouse
+  const resolvedWarehouseId = parsed.data.warehouseId ?? receivingPo.deliverToWarehouseId ?? null;
+  if (!resolvedWarehouseId) {
+    res.status(400).json({ error: "warehouseId is required for goods receipt. Provide it in the request or set a deliver-to warehouse on the PO." });
     return;
   }
 
@@ -1893,6 +1902,7 @@ router.post("/procurement/receipts", ...tenantWriteMiddleware, async (req: Reque
   const [receipt] = await withTenantDb(tenantId, (db) =>
     db.insert(poReceiptsTable).values({
       ...header,
+      warehouseId: resolvedWarehouseId, // resolved: body param or PO default
       tenantId,
       code: `RCV-TEMP`,
       status: "draft",
