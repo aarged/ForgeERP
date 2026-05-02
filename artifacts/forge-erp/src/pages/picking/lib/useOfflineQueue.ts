@@ -3,17 +3,31 @@
  * trigger. Re-flushes automatically whenever the browser fires `online` or
  * the page becomes visible again.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { flushQueue, listQueue, type QueuedRequest } from "./pickerQueue";
 
 export interface OfflineQueueState {
   online: boolean;
   items: QueuedRequest[];
+  /** Number of queued mutations that still carry an un-uploaded photo. */
+  pendingPhotos: number;
   flushing: boolean;
   lastFlushAt: number | null;
   lastFlushError: string | null;
   refresh: () => Promise<void>;
   flush: () => Promise<void>;
+}
+
+/**
+ * Extracts the `lineId` segment from a queued URL such as
+ * `/api/sales/pick-slips/12/lines/34/confirm` so the slip page can decorate
+ * the matching line with a "photo pending sync" badge. Returns `null` if the
+ * URL doesn't follow the expected shape.
+ */
+export function pendingPhotoLineIdFor(req: QueuedRequest): number | null {
+  if (!req.photo || req.photo.objectPath) return null;
+  const m = /\/lines\/(\d+)\//.exec(req.url);
+  return m ? Number(m[1]) : null;
 }
 
 export function useOfflineQueue(): OfflineQueueState {
@@ -72,5 +86,10 @@ export function useOfflineQueue(): OfflineQueueState {
     };
   }, [refresh, flush]);
 
-  return { online, items, flushing, lastFlushAt, lastFlushError, refresh, flush };
+  const pendingPhotos = useMemo(
+    () => items.filter((it) => it.photo && !it.photo.objectPath).length,
+    [items],
+  );
+
+  return { online, items, pendingPhotos, flushing, lastFlushAt, lastFlushError, refresh, flush };
 }

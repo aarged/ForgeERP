@@ -16,9 +16,10 @@ import { useRoute } from "wouter";
 import { PickerLayout } from "./PickerLayout";
 import { BarcodeScanner } from "./components/BarcodeScanner";
 import { PhotoCapture } from "./components/PhotoCapture";
-import { pickerGet, pickerMutate, pickerUploadPhoto } from "./lib/api";
+import { pickerGet, pickerMutate } from "./lib/api";
 import type { PickSlip, PickSlipLine } from "./lib/types";
 import { speak } from "./lib/voice";
+import { pendingPhotoLineIdFor, useOfflineQueue } from "./lib/useOfflineQueue";
 import { useToast } from "@/hooks/use-toast";
 
 const SHORT_REASONS = [
@@ -57,6 +58,22 @@ export default function PickerSlipPage() {
         .then(() => slipQuery.refetch());
     }
   }, [slip, slipQuery]);
+
+  // Surface pending photo uploads per-line so the picker can see which lines
+  // are still waiting on a photo to sync. Hooks must run unconditionally on
+  // every render — keep this above the early returns below.
+  const { items: queuedItems } = useOfflineQueue();
+  const pendingPhotoLineIds = useMemo(() => {
+    const set = new Set<number>();
+    if (!slip) return set;
+    const prefix = `/sales/pick-slips/${slip.id}/lines/`;
+    for (const item of queuedItems) {
+      if (!item.url.includes(prefix)) continue;
+      const lineId = pendingPhotoLineIdFor(item);
+      if (lineId != null) set.add(lineId);
+    }
+    return set;
+  }, [queuedItems, slip]);
 
   if (!Number.isFinite(slipId)) {
     return (
@@ -118,6 +135,7 @@ export default function PickerSlipPage() {
           lines={lines}
           activeIdx={activeIdx}
           onPick={(idx) => setActiveIdx(idx)}
+          pendingPhotoLineIds={pendingPhotoLineIds}
         />
       </div>
     </PickerLayout>
@@ -182,10 +200,12 @@ function LineList({
   lines,
   activeIdx,
   onPick,
+  pendingPhotoLineIds,
 }: {
   lines: PickSlipLine[];
   activeIdx: number;
   onPick: (idx: number) => void;
+  pendingPhotoLineIds: Set<number>;
 }) {
   return (
     <details className="rounded-lg border bg-white">
@@ -205,6 +225,15 @@ function LineList({
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {pendingPhotoLineIds.has(line.id) ? (
+                <span
+                  className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+                  title="Photo pending sync"
+                  data-testid={`badge-photo-pending-${line.id}`}
+                >
+                  📷 pending
+                </span>
+              ) : null}
               <LineStatus status={line.confirmStatus ?? "pending"} />
               <button
                 type="button"
@@ -269,9 +298,10 @@ function LineCard({ slipId, line, onConfirmed }: LineCardProps) {
     }
   }
 
-  async function uploadPhotoIfPresent(): Promise<string | null> {
-    if (!photo) return null;
-    return pickerUploadPhoto(photo.blob, `pick-slip-${slipId}-line-${line.id}.jpg`);
+  function photoArg() {
+    return photo
+      ? { blob: photo.blob, name: `pick-slip-${slipId}-line-${line.id}.jpg` }
+      : undefined;
   }
 
   async function confirmPick() {
@@ -289,7 +319,6 @@ function LineCard({ slipId, line, onConfirmed }: LineCardProps) {
       return;
     }
     setBusy(true);
-    const photoObjectPath = await uploadPhotoIfPresent();
     const result = await pickerMutate<PickSlipLine>({
       path: `/sales/pick-slips/${slipId}/lines/${line.id}/confirm`,
       method: "POST",
@@ -298,14 +327,17 @@ function LineCard({ slipId, line, onConfirmed }: LineCardProps) {
         lotNumber: lot || undefined,
         serialNumber: serial || undefined,
         batchNumber: batch || undefined,
-        photoObjectPath: photoObjectPath ?? undefined,
         scannedBarcode: scannedBarcode || undefined,
       },
       label: `Confirm ${line.itemCode ?? line.itemId} on slip ${slipId}`,
+      photo: photoArg(),
     });
     setBusy(false);
     if (result.offline) {
-      toast({ title: "Queued offline", description: "Pick will sync when back online" });
+      const desc = result.photoQueued
+        ? "Pick + photo will sync when back online"
+        : "Pick will sync when back online";
+      toast({ title: "Queued offline", description: desc });
     }
     onConfirmed();
   }
@@ -316,7 +348,6 @@ function LineCard({ slipId, line, onConfirmed }: LineCardProps) {
       return;
     }
     setBusy(true);
-    const photoObjectPath = await uploadPhotoIfPresent();
     const qty = Number(pickedQty);
     const result = await pickerMutate<PickSlipLine>({
       path: `/sales/pick-slips/${slipId}/lines/${line.id}/short-pick`,
@@ -325,13 +356,16 @@ function LineCard({ slipId, line, onConfirmed }: LineCardProps) {
         reason: shortReason,
         pickedQty: Number.isFinite(qty) ? qty : 0,
         note: shortNote || undefined,
-        photoObjectPath: photoObjectPath ?? undefined,
       },
       label: `Short-pick ${line.itemCode ?? line.itemId} on slip ${slipId}`,
+      photo: photoArg(),
     });
     setBusy(false);
     if (result.offline) {
-      toast({ title: "Queued offline", description: "Short-pick will sync when back online" });
+      const desc = result.photoQueued
+        ? "Short-pick + photo will sync when back online"
+        : "Short-pick will sync when back online";
+      toast({ title: "Queued offline", description: desc });
     }
     onConfirmed();
   }

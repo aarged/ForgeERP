@@ -17,7 +17,7 @@ export interface PickerLayoutProps {
  * picker is a focused PWA experience.
  */
 export function PickerLayout({ title, back, right, children }: PickerLayoutProps) {
-  const { online, items, flushing, flush } = useOfflineQueue();
+  const { online, items, pendingPhotos, flushing, flush } = useOfflineQueue();
   const { user } = useUser();
   const queued = items.length;
 
@@ -59,6 +59,15 @@ export function PickerLayout({ title, back, right, children }: PickerLayoutProps
           </span>
           <span className="flex items-center gap-2">
             <span data-testid="text-queue-count">Queue: {queued}</span>
+            {pendingPhotos > 0 ? (
+              <span
+                className="rounded bg-white/20 px-2 py-0.5"
+                title="Photos waiting to upload"
+                data-testid="text-pending-photos"
+              >
+                📷 {pendingPhotos} pending sync
+              </span>
+            ) : null}
             <button
               type="button"
               className="rounded bg-white/20 px-2 py-0.5 disabled:opacity-50"
