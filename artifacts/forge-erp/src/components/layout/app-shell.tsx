@@ -57,6 +57,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useChangelogUnread } from "@/hooks/use-changelog-unread";
 
 type NotifItem = { id: number; title: string; message: string; isRead: boolean; createdAt?: string; entityType?: string | null; entityCode?: string | null };
 
@@ -217,6 +218,8 @@ function AppSidebar({
     query: { queryKey: getGetCurrentUserQueryKey() },
   });
 
+  const { unreadCount: docsUnreadCount } = useChangelogUnread();
+
   const role = currentUser?.role || "viewer";
   const tenantName = currentUser?.tenantName || "Unknown Tenant";
 
@@ -259,6 +262,8 @@ function AppSidebar({
             <SidebarMenu>
               {filteredNavigation.map((item) => {
                 const isActive = location.startsWith(item.href);
+                const showDocsBadge =
+                  item.href === "/docs" && docsUnreadCount > 0;
                 return (
                   <SidebarMenuItem key={item.name}>
                     <SidebarMenuButton
@@ -269,6 +274,15 @@ function AppSidebar({
                       <Link href={item.href} data-testid={`nav-${item.name.toLowerCase()}`}>
                         <item.icon />
                         <span>{item.name}</span>
+                        {showDocsBadge && (
+                          <Badge
+                            className="ml-auto h-5 min-w-5 px-1.5 flex items-center justify-center text-[10px] font-semibold rounded-full"
+                            data-testid="docs-unread-badge"
+                            aria-label={`${docsUnreadCount} new changelog ${docsUnreadCount === 1 ? "entry" : "entries"}`}
+                          >
+                            {docsUnreadCount > 9 ? "9+" : docsUnreadCount}
+                          </Badge>
+                        )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

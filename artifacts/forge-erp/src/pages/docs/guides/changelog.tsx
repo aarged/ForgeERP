@@ -1,57 +1,8 @@
-import { ReactNode } from "react";
+import { useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { DocPage, DocSection, P, Callout } from "../components";
-
-type ChangelogEntry = {
-  date: string;
-  modules: string[];
-  description: ReactNode;
-};
-
-type ChangelogMonth = {
-  label: string;
-  entries: ChangelogEntry[];
-};
-
-const CHANGELOG: ChangelogMonth[] = [
-  {
-    label: "May 2026",
-    entries: [
-      {
-        date: "2026-05-02",
-        modules: ["Docs"],
-        description:
-          "Initial documentation release. Added the in-app Help & Docs section with a product overview, per-module user guides for every module, the Mobile Picking PWA and Administration, and this Changelog.",
-      },
-      {
-        date: "2026-05-02",
-        modules: [
-          "Dashboard",
-          "Master Data",
-          "Procurement",
-          "Sales",
-          "Inventory",
-          "Finance",
-          "Reports",
-          "Mobile",
-          "Administration",
-        ],
-        description: (
-          <>
-            Documentation backfill: captured the current shipped state of every
-            module — role-based dashboard, master data with bulk
-            import/export, requisition-to-receipt procurement workflow,
-            quotation-to-invoice sales workflow with ATP, multi-warehouse
-            inventory with lot/serial tracking, finance with automatic GL
-            postings, the full reports catalogue, the offline-friendly
-            picking PWA, and the role-based administration tools (members,
-            audit log, onboarding wizard).
-          </>
-        ),
-      },
-    ],
-  },
-];
+import { CHANGELOG } from "@/lib/changelog-data";
+import { useChangelogUnread } from "@/hooks/use-changelog-unread";
 
 const moduleColors: Record<string, string> = {
   Dashboard: "bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-200",
@@ -97,6 +48,21 @@ function formatDate(iso: string): string {
 }
 
 export default function ChangelogGuide() {
+  const { lastSeen, markChangelogSeen } = useChangelogUnread();
+  // Snapshot lastSeen at mount so the "New" highlights persist for this
+  // visit even after we mark the changelog as seen.
+  const snapshotRef = useRef<string | null | undefined>(undefined);
+  if (snapshotRef.current === undefined) {
+    snapshotRef.current = lastSeen;
+  }
+  const snapshotLastSeen = snapshotRef.current;
+
+  // After capturing the snapshot, mark the changelog as seen so the sidebar
+  // badge clears and future visits compare against today's latest entry.
+  useEffect(() => {
+    markChangelogSeen();
+  }, [markChangelogSeen]);
+
   return (
     <DocPage
       title="Changelog"
@@ -112,23 +78,36 @@ export default function ChangelogGuide() {
       {CHANGELOG.map((month) => (
         <DocSection key={month.label} title={month.label}>
           <ul className="space-y-4">
-            {month.entries.map((entry, idx) => (
-              <li
-                key={`${entry.date}-${idx}`}
-                className="rounded-md border bg-card p-4"
-                data-testid={`changelog-entry-${entry.date}-${idx}`}
-              >
-                <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <Badge variant="outline" className="font-mono text-[11px]">
-                    {formatDate(entry.date)}
-                  </Badge>
-                  {entry.modules.map((m) => (
-                    <ModuleTag key={m} name={m} />
-                  ))}
-                </div>
-                <P>{entry.description}</P>
-              </li>
-            ))}
+            {month.entries.map((entry, idx) => {
+              const isNew =
+                snapshotLastSeen === null || entry.date > snapshotLastSeen;
+              return (
+                <li
+                  key={`${entry.date}-${idx}`}
+                  className="rounded-md border bg-card p-4"
+                  data-testid={`changelog-entry-${entry.date}-${idx}`}
+                  data-new={isNew ? "true" : undefined}
+                >
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <Badge variant="outline" className="font-mono text-[11px]">
+                      {formatDate(entry.date)}
+                    </Badge>
+                    {entry.modules.map((m) => (
+                      <ModuleTag key={m} name={m} />
+                    ))}
+                    {isNew && (
+                      <Badge
+                        className="bg-primary text-primary-foreground text-[10px] uppercase tracking-wider px-1.5 py-0"
+                        data-testid={`changelog-new-badge-${entry.date}-${idx}`}
+                      >
+                        New
+                      </Badge>
+                    )}
+                  </div>
+                  <P>{entry.description}</P>
+                </li>
+              );
+            })}
           </ul>
         </DocSection>
       ))}
