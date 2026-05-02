@@ -35,6 +35,14 @@ export function DocPage({
   );
 }
 
+export function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export function DocSection({
   id,
   title,
@@ -44,8 +52,9 @@ export function DocSection({
   title: string;
   children: ReactNode;
 }) {
+  const sectionId = id ?? slugify(title);
   return (
-    <section id={id} className="space-y-3 scroll-mt-20">
+    <section id={sectionId} className="space-y-3 scroll-mt-20">
       <h2 className="text-xl font-semibold tracking-tight border-b pb-2">
         {title}
       </h2>

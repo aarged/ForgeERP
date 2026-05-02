@@ -1,4 +1,11 @@
-import { lazy, Suspense, useMemo, type ComponentType, type LazyExoticComponent } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  type ComponentType,
+  type LazyExoticComponent,
+} from "react";
 import { Link, useRoute, useLocation, Redirect } from "wouter";
 import {
   BookOpen,
@@ -17,6 +24,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { DocsSearch, scrollToDocsSection } from "./DocsSearch";
 
 const OverviewGuide = lazy(() => import("./guides/overview"));
 const DashboardGuide = lazy(() => import("./guides/dashboard"));
@@ -229,6 +237,22 @@ export default function DocsPage() {
 
   const guide = GUIDES.find((g) => g.slug === slug);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash.slice(1);
+    if (hash) {
+      scrollToDocsSection(hash);
+    } else {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
+    function onHashChange() {
+      const h = window.location.hash.slice(1);
+      if (h) scrollToDocsSection(h);
+    }
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [slug]);
+
   if (!guide) {
     return <Redirect to="/docs/overview" />;
   }
@@ -237,16 +261,26 @@ export default function DocsPage() {
 
   return (
     <div
-      className="-mx-4 sm:-mx-6 lg:-mx-8 -my-4 sm:-my-6 lg:-my-8 flex min-h-[calc(100dvh-3.5rem)]"
+      className="-mx-4 sm:-mx-6 lg:-mx-8 -my-4 sm:-my-6 lg:-my-8 flex flex-col min-h-[calc(100dvh-3.5rem)]"
       data-testid="docs-shell"
     >
-      <DocsTOC activeSlug={slug} />
-      <div className="flex-1 min-w-0">
-        <MobileTOC activeSlug={slug} />
-        <div className="px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
-          <Suspense fallback={<GuideSkeleton />}>
-            <ActiveGuide />
-          </Suspense>
+      <div
+        className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30"
+        data-testid="docs-header"
+      >
+        <div className="flex items-center gap-3 px-4 sm:px-6 lg:px-8 py-2.5">
+          <DocsSearch />
+        </div>
+      </div>
+      <div className="flex flex-1 min-h-0">
+        <DocsTOC activeSlug={slug} />
+        <div className="flex-1 min-w-0">
+          <MobileTOC activeSlug={slug} />
+          <div className="px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
+            <Suspense fallback={<GuideSkeleton />}>
+              <ActiveGuide />
+            </Suspense>
+          </div>
         </div>
       </div>
     </div>
