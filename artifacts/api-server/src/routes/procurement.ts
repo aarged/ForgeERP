@@ -1160,10 +1160,13 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
     if (step1.length === 0) workflow = null;
   }
 
+  // Always advance to pending_approval on submit. The status only moves to "approved"
+  // after an approver explicitly acts via the /decision endpoint — even when no workflow
+  // matches, an eligible approver (approver | tenant_admin | super_admin) must take action.
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(purchaseRequisitionsTable)
       .set({
-        status: workflow ? "pending_approval" : "approved",
+        status: "pending_approval",
         approvalWorkflowId: workflow?.id ?? undefined,
         currentApprovalStep: workflow ? 1 : 0,
       })
@@ -1172,28 +1175,31 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
   );
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "requisition.submitted", entityType: "purchase_requisition", entityId: String(id) });
 
-  // Notify: if a workflow was assigned, tell step-1 approvers; otherwise confirm auto-approval to submitter
-  if (workflow) {
-    // step1 was already fetched above (and is guaranteed non-empty at this point)
-    if (step1[0]) {
-      const approverIds = await resolveApproverClerkIds(tenantId, step1[0]);
-      await Promise.all(approverIds.map((uid) =>
-        createNotification(tenantId, uid, "approval_required",
-          "Requisition requires your approval",
-          `Purchase Requisition ${genCode("REQ", id)} has been submitted and is awaiting your approval.`,
-          { entityType: "purchase_requisition", entityId: id, entityCode: genCode("REQ", id) }),
-      ));
-    }
+  // Notify eligible approvers that the requisition is awaiting their decision.
+  // With a workflow: notify step-1 approvers. Without: notify all baseline approvers in the tenant.
+  if (workflow && step1[0]) {
+    const approverIds = await resolveApproverClerkIds(tenantId, step1[0]);
+    await Promise.all(approverIds.map((uid) =>
+      createNotification(tenantId, uid, "approval_required",
+        "Requisition requires your approval",
+        `Purchase Requisition ${genCode("REQ", id)} has been submitted and is awaiting your approval.`,
+        { entityType: "purchase_requisition", entityId: id, entityCode: genCode("REQ", id) }),
+    ));
   } else {
-    // Auto-approved on submit — immediately convert to a draft PO
-    const poId = await createPoFromRequisition(tenantId, id, clerkUserId, userEmail);
-    if (poId) {
-      await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "requisition.auto_converted_to_po", entityType: "purchase_requisition", entityId: String(id), newValues: { poId } });
-    }
-    await createNotification(tenantId, clerkUserId, "decision_made",
-      "Requisition auto-approved",
-      `Purchase Requisition ${genCode("REQ", id)} was auto-approved and converted to a Purchase Order.`,
-      { entityType: "purchase_requisition", entityId: id, entityCode: genCode("REQ", id) });
+    const baselineApprovers = await withTenantDb(tenantId, (db) =>
+      db.select({ clerkId: tenantMembershipsTable.clerkId })
+        .from(tenantMembershipsTable)
+        .where(and(
+          eq(tenantMembershipsTable.tenantId, tenantId),
+          inArray(tenantMembershipsTable.role, ["approver", "tenant_admin", "super_admin"]),
+        )));
+    const approverIds = [...new Set(baselineApprovers.map((m) => m.clerkId))];
+    await Promise.all(approverIds.map((uid) =>
+      createNotification(tenantId, uid, "approval_required",
+        "Requisition requires your approval",
+        `Purchase Requisition ${genCode("REQ", id)} has been submitted and is awaiting your approval.`,
+        { entityType: "purchase_requisition", entityId: id, entityCode: genCode("REQ", id) }),
+    ));
   }
 
   res.json(updated);
