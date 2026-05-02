@@ -23,7 +23,7 @@ import {
 import { writeAuditLog } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { isStripeConfigured, getUncachableStripeClient } from "../lib/stripe";
-import { sendEmail, buildWelcomeEmail } from "../lib/email";
+import { sendEmail, buildWelcomeEmail, buildInviteEmail, buildInviteSignUpUrl, isEmailConfigured } from "../lib/email";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
@@ -86,6 +86,127 @@ async function ensureUniqueSlug(base: string): Promise<string> {
 
 function pendingClerkIdForEmail(email: string): string {
   return `pending:${email.toLowerCase()}`;
+}
+
+// ── Invite delivery helper ─────────────────────────────────────────────────────
+
+interface InviteDeliveryResult {
+  email: string;
+  role: string;
+  delivered: boolean;
+  reason?: string;
+  clerkInvitationId?: string;
+}
+
+/**
+ * Deliver branded invite emails for a batch of pending memberships.
+ *
+ * For each invite we (a) create a Clerk invitation with `notify: false` so the
+ * pending account + metadata exists for downstream tooling, then (b) send our
+ * own branded email through `sendEmail`. Either step can fail without
+ * affecting the others — the caller has already persisted the pending
+ * membership rows, so the user record is never rolled back on send failure.
+ *
+ * The link in the email lands on `/sign-up?email_address=<invitee>`. The
+ * frontend `<SignUp>` component reads that param and pre-fills the email
+ * field; the lazy-claim logic in `/auth/me` activates the membership the
+ * first time the new user authenticates.
+ */
+async function deliverInviteEmails(args: {
+  invites: Array<{ email: string; role: string }>;
+  tenantId: number;
+  tenantName: string;
+  inviterFirstName: string | null;
+  inviterLastName: string | null;
+  inviterEmail: string;
+  signUpBaseUrl: string | undefined;
+}): Promise<{ results: InviteDeliveryResult[]; sent: number }> {
+  const results: InviteDeliveryResult[] = [];
+  let sent = 0;
+
+  const inviterName =
+    [args.inviterFirstName ?? "", args.inviterLastName ?? ""]
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(" ") || null;
+
+  for (const invite of args.invites) {
+    const result: InviteDeliveryResult = {
+      email: invite.email,
+      role: invite.role,
+      delivered: false,
+    };
+
+    // (a) Create Clerk invitation (metadata + pending account) — best effort
+    try {
+      const invitation = await clerk.invitations.createInvitation({
+        emailAddress: invite.email,
+        redirectUrl: args.signUpBaseUrl,
+        publicMetadata: { pendingTenantId: args.tenantId, pendingRole: invite.role },
+        ignoreExisting: true,
+        notify: false,
+      });
+      result.clerkInvitationId = invitation.id;
+    } catch (err) {
+      logger.warn(
+        { err, tenantId: args.tenantId, inviteEmail: invite.email },
+        "Clerk invitation create failed (continuing with branded email)",
+      );
+    }
+
+    // (b) Send branded email — failure is logged but never rolls anything back
+    if (!args.signUpBaseUrl) {
+      result.reason =
+        "Could not resolve a sign-up URL (set FRONTEND_URL so invite links work)";
+      logger.warn(
+        { tenantId: args.tenantId, inviteEmail: invite.email },
+        "Skipping branded invite email — no sign-up URL resolved",
+      );
+      results.push(result);
+      continue;
+    }
+
+    const signUpUrl = buildInviteSignUpUrl(args.signUpBaseUrl, invite.email);
+    const content = buildInviteEmail({
+      inviteeEmail: invite.email,
+      inviterName,
+      inviterEmail: args.inviterEmail,
+      companyName: args.tenantName,
+      role: invite.role,
+      signUpUrl,
+    });
+
+    const configured = isEmailConfigured();
+    if (!configured) {
+      result.reason =
+        "Email provider not configured — set SMTP_HOST, SMTP_USER, SMTP_PASS";
+      results.push(result);
+      continue;
+    }
+
+    try {
+      const ok = await sendEmail({ to: invite.email, ...content });
+      result.delivered = ok;
+      if (ok) {
+        sent++;
+      } else {
+        // SMTP is configured but the transport rejected the message
+        // (auth failure, bounced, network error, etc.). sendEmail has
+        // already logged the underlying error.
+        result.reason = "Email provider rejected the message (see server logs)";
+      }
+    } catch (err) {
+      result.reason = err instanceof Error ? err.message : "Unknown send error";
+      logger.error(
+        { err, tenantId: args.tenantId, inviteEmail: invite.email },
+        "Branded invite email send failed",
+      );
+    }
+
+    results.push(result);
+  }
+
+  return { results, sent };
 }
 
 // ── CSV parser ─────────────────────────────────────────────────────────────────
@@ -768,42 +889,38 @@ router.post(
 
     // ── Send invites ───────────────────────────────────────────────────────────
     let invitesSent = 0;
-    const inviteResults: Array<{ email: string; role: string; delivered: boolean; reason?: string; clerkInvitationId?: string }> = [];
+    let inviteResults: InviteDeliveryResult[] = [];
 
     if (step5?.invites && step5.invites.length > 0) {
       const seen = new Set<string>([userEmail.toLowerCase()]);
+      const dedupedInvites: Array<{ email: string; role: string }> = [];
       const inviteRows: Array<typeof tenantMembershipsTable.$inferInsert> = [];
 
       for (const invite of step5.invites) {
         const lower = invite.email.toLowerCase();
         if (seen.has(lower)) continue;
         seen.add(lower);
+        dedupedInvites.push({ email: lower, role: invite.role });
         inviteRows.push({ tenantId: tenant.id, clerkId: pendingClerkIdForEmail(lower), email: lower, role: invite.role, isActive: "false" });
       }
 
       if (inviteRows.length > 0) {
         await adminDb.insert(tenantMembershipsTable).values(inviteRows);
-        const redirectUrl = resolveInviteRedirectUrl(req);
+        const signUpBaseUrl = resolveInviteRedirectUrl(req);
 
-        for (const row of inviteRows) {
-          try {
-            const invitation = await clerk.invitations.createInvitation({
-              emailAddress: row.email!,
-              redirectUrl,
-              publicMetadata: { pendingTenantId: tenant.id, pendingRole: row.role },
-              ignoreExisting: true,
-              notify: true,
-            });
-            invitesSent++;
-            inviteResults.push({ email: row.email!, role: row.role!, delivered: true, clerkInvitationId: invitation.id });
-          } catch (err) {
-            const reason = err instanceof Error ? err.message : "Unknown invite error";
-            inviteResults.push({ email: row.email!, role: row.role!, delivered: false, reason });
-            logger.error({ err, tenantId: tenant.id, inviteEmail: row.email }, "Invite failed");
-          }
-        }
+        const delivery = await deliverInviteEmails({
+          invites: dedupedInvites,
+          tenantId: tenant.id,
+          tenantName: tenant.name,
+          inviterFirstName: firstName,
+          inviterLastName: lastName,
+          inviterEmail: userEmail,
+          signUpBaseUrl,
+        });
+        inviteResults = delivery.results;
+        invitesSent = delivery.sent;
 
-        await writeAuditLog({ req, actorClerkId: clerkId, actorEmail: userEmail, tenantId: tenant.id, action: "tenant.invites_sent", entityType: "tenant", entityId: tenant.id, newValues: { invites: inviteResults } });
+        await writeAuditLog({ req, actorClerkId: clerkId, actorEmail: userEmail, tenantId: tenant.id, action: "tenant.invites_sent", entityType: "tenant", entityId: tenant.id, newValues: { invites: inviteResults, sent: invitesSent, attempted: inviteResults.length } });
       }
     }
 
@@ -912,30 +1029,33 @@ router.post(
     await adminDb.insert(tenantMembershipsTable).values({ tenantId: tenant.id, clerkId, email: userEmail, firstName, lastName, role: "tenant_admin", isActive: "true" });
 
     let invitesSent = 0;
-    const inviteResults: Array<{ email: string; role: string; delivered: boolean; reason?: string; clerkInvitationId?: string }> = [];
+    let inviteResults: InviteDeliveryResult[] = [];
     if (data.invites && data.invites.length > 0) {
       const seen = new Set<string>([userEmail.toLowerCase()]);
+      const dedupedInvites: Array<{ email: string; role: string }> = [];
       const inviteRows: Array<typeof tenantMembershipsTable.$inferInsert> = [];
       for (const invite of data.invites) {
         const lower = invite.email.toLowerCase();
         if (seen.has(lower)) continue;
         seen.add(lower);
+        dedupedInvites.push({ email: lower, role: invite.role });
         inviteRows.push({ tenantId: tenant.id, clerkId: pendingClerkIdForEmail(lower), email: lower, role: invite.role, isActive: "false" });
       }
       if (inviteRows.length > 0) {
         await adminDb.insert(tenantMembershipsTable).values(inviteRows);
-        const redirectUrl = resolveInviteRedirectUrl(req);
-        for (const row of inviteRows) {
-          try {
-            const invitation = await clerk.invitations.createInvitation({ emailAddress: row.email!, redirectUrl, publicMetadata: { pendingTenantId: tenant.id, pendingRole: row.role }, ignoreExisting: true, notify: true });
-            invitesSent++;
-            inviteResults.push({ email: row.email!, role: row.role!, delivered: true, clerkInvitationId: invitation.id });
-          } catch (err) {
-            const reason = err instanceof Error ? err.message : "Unknown invite error";
-            inviteResults.push({ email: row.email!, role: row.role!, delivered: false, reason });
-          }
-        }
-        await writeAuditLog({ req, actorClerkId: clerkId, actorEmail: userEmail, tenantId: tenant.id, action: "tenant.invites_sent", entityType: "tenant", entityId: tenant.id, newValues: { invites: inviteResults } });
+        const signUpBaseUrl = resolveInviteRedirectUrl(req);
+        const delivery = await deliverInviteEmails({
+          invites: dedupedInvites,
+          tenantId: tenant.id,
+          tenantName: tenant.name,
+          inviterFirstName: firstName,
+          inviterLastName: lastName,
+          inviterEmail: userEmail,
+          signUpBaseUrl,
+        });
+        inviteResults = delivery.results;
+        invitesSent = delivery.sent;
+        await writeAuditLog({ req, actorClerkId: clerkId, actorEmail: userEmail, tenantId: tenant.id, action: "tenant.invites_sent", entityType: "tenant", entityId: tenant.id, newValues: { invites: inviteResults, sent: invitesSent, attempted: inviteResults.length } });
       }
     }
 

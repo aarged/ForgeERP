@@ -102,9 +102,24 @@ function SignInPage() {
 }
 
 function SignUpPage() {
+  // Invite emails link to /sign-up?email_address=<invitee> so the new user
+  // doesn't have to retype the address they were invited under. The lazy
+  // claim in /auth/me still matches them by verified email after sign-up.
+  const params = new URLSearchParams(window.location.search);
+  const invitedEmail =
+    params.get("email_address") ??
+    params.get("emailAddress") ??
+    params.get("email") ??
+    undefined;
+  const initialValues = invitedEmail ? { emailAddress: invitedEmail } : undefined;
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-muted/30 px-4">
-      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+      <SignUp
+        routing="path"
+        path={`${basePath}/sign-up`}
+        signInUrl={`${basePath}/sign-in`}
+        initialValues={initialValues}
+      />
     </div>
   );
 }
