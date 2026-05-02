@@ -26,6 +26,7 @@ import {
   itemsTable,
   glAccountsTable,
   notificationsTable,
+  tenantsTable,
 } from "@workspace/db";
 import { withTenantDb, type TenantDb } from "@workspace/db/rls";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -36,6 +37,7 @@ import {
 } from "../middlewares/tenantContext";
 import { writeAuditLog } from "../lib/audit";
 import { sendEmail } from "../lib/email";
+import { logger } from "../lib/logger";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import PDFDocument from "pdfkit";
@@ -302,6 +304,287 @@ async function createCreditNoteGlPosting(db: TenantDb, tenantId: number, creditN
   return posting;
 }
 
+// ── Quotation/Invoice PDF + Email helpers ────────────────────────────────────
+
+type QuotationRecord = typeof quotationsTable.$inferSelect;
+type QuotationLineRecord = typeof quotationLinesTable.$inferSelect;
+type InvoiceRecord = typeof customerInvoicesTable.$inferSelect;
+type InvoiceLineRecord = typeof customerInvoiceLinesTable.$inferSelect;
+type TenantRecord = typeof tenantsTable.$inferSelect;
+
+async function loadTenantHeader(tenantId: number): Promise<TenantRecord | null> {
+  const [t] = await withTenantDb(tenantId, (db) =>
+    db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1));
+  return t ?? null;
+}
+
+function formatTenantAddress(t: TenantRecord | null): string[] {
+  if (!t) return [];
+  const out: string[] = [];
+  if (t.tradingName || t.name) out.push(t.tradingName ?? t.name);
+  if (t.legalName && t.legalName !== (t.tradingName ?? t.name)) out.push(t.legalName);
+  if (t.addressLine1) out.push(t.addressLine1);
+  if (t.addressLine2) out.push(t.addressLine2);
+  const cityLine = [t.city, t.state, t.postalCode].filter(Boolean).join(" ");
+  if (cityLine) out.push(cityLine);
+  if (t.country) out.push(t.country);
+  if (t.taxId) out.push(`Tax ID: ${t.taxId}`);
+  if (t.email) out.push(t.email);
+  if (t.phone) out.push(t.phone);
+  return out;
+}
+
+function generateQuotationPdf(quot: QuotationRecord, lines: QuotationLineRecord[], tenant: TenantRecord | null): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: "A4" });
+    const chunks: Buffer[] = [];
+    doc.on("data", (c: Buffer) => chunks.push(c));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    // Header
+    doc.fontSize(20).font("Helvetica-Bold").text("QUOTATION", 50, 50);
+    doc.fontSize(12).font("Helvetica").text(quot.code, 50, 76);
+    doc.fontSize(10).text(`Status: ${quot.status.toUpperCase()}`, 400, 50, { align: "right" });
+    doc.text(`Date: ${new Date(quot.createdAt).toLocaleDateString()}`, 400, 65, { align: "right" });
+    if (quot.expiryDate) doc.text(`Expires: ${quot.expiryDate}`, 400, 80, { align: "right" });
+
+    // Tenant block (top-right under date)
+    const tenantLines = formatTenantAddress(tenant);
+    let tY = 95;
+    doc.fontSize(8).font("Helvetica");
+    for (const line of tenantLines) {
+      doc.text(line, 350, tY, { width: 200, align: "right" });
+      tY += 11;
+    }
+
+    doc.moveDown(2);
+    const sepY = Math.max(doc.y, tY + 10);
+    doc.moveTo(50, sepY).lineTo(doc.page.width - 50, sepY).stroke();
+    doc.y = sepY + 8;
+
+    // Customer block
+    doc.fontSize(11).font("Helvetica-Bold").text("Quotation For:", 50, doc.y);
+    doc.font("Helvetica").fontSize(10).text(quot.customerName ?? "—");
+    if (quot.customerEmail) doc.text(quot.customerEmail);
+    if (quot.customerRef) doc.text(`Customer Ref: ${quot.customerRef}`);
+    if (quot.requestedDate) doc.text(`Requested Date: ${quot.requestedDate}`);
+    if (quot.paymentTerms) doc.text(`Payment Terms: ${quot.paymentTerms}`);
+    doc.moveDown(1);
+
+    // Lines table
+    const colX = { num: 50, item: 70, desc: 150, qty: 340, uom: 380, price: 430, total: 500 };
+    doc.font("Helvetica-Bold").fontSize(10);
+    const headerY = doc.y;
+    doc.text("#", colX.num, headerY, { width: 20 });
+    doc.text("Item", colX.item, headerY, { width: 80 });
+    doc.text("Description", colX.desc, headerY, { width: 185 });
+    doc.text("Qty", colX.qty, headerY, { width: 40 });
+    doc.text("UoM", colX.uom, headerY, { width: 50 });
+    doc.text("Price", colX.price, headerY, { width: 70 });
+    doc.text("Total", colX.total, headerY, { width: 60 });
+    doc.moveDown(0.3);
+    doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+    doc.moveDown(0.3);
+
+    doc.font("Helvetica").fontSize(9);
+    lines.forEach((l, i) => {
+      const rowY = doc.y;
+      doc.text(String(l.lineNumber ?? i + 1), colX.num, rowY, { width: 20 });
+      doc.text(l.itemCode ?? "—", colX.item, rowY, { width: 80 });
+      doc.text(l.description ?? l.itemName ?? "", colX.desc, rowY, { width: 185 });
+      doc.text(String(l.quantity), colX.qty, rowY, { width: 40 });
+      doc.text(l.unitOfMeasure ?? "", colX.uom, rowY, { width: 50 });
+      doc.text(Number(l.unitPrice).toFixed(2), colX.price, rowY, { width: 70 });
+      doc.text(Number(l.lineTotal).toFixed(2), colX.total, rowY, { width: 60 });
+      doc.moveDown(0.8);
+      if (doc.y > doc.page.height - 120) doc.addPage();
+    });
+
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+    doc.moveDown(0.5);
+
+    // Totals
+    doc.font("Helvetica").fontSize(10);
+    doc.text(`Subtotal: ${Number(quot.subtotal).toFixed(2)} ${quot.currencyCode}`, { align: "right" });
+    doc.text(`Tax: ${Number(quot.taxAmount).toFixed(2)} ${quot.currencyCode}`, { align: "right" });
+    doc.font("Helvetica-Bold").fontSize(11);
+    doc.text(`Total: ${Number(quot.total).toFixed(2)} ${quot.currencyCode}`, { align: "right" });
+
+    if (quot.notes) {
+      doc.moveDown(1);
+      doc.font("Helvetica-Bold").fontSize(10).text("Notes:");
+      doc.font("Helvetica").fontSize(9).text(quot.notes);
+    }
+
+    doc.end();
+  });
+}
+
+function generateInvoicePdf(invoice: InvoiceRecord, lines: InvoiceLineRecord[], tenant: TenantRecord | null): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: "A4" });
+    const chunks: Buffer[] = [];
+    doc.on("data", (c: Buffer) => chunks.push(c));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    // Header
+    doc.fontSize(20).font("Helvetica-Bold").text("TAX INVOICE", 50, 50);
+    doc.fontSize(12).font("Helvetica").text(invoice.code, 50, 76);
+    doc.fontSize(10).text(`Status: ${invoice.status.toUpperCase()}`, 400, 50, { align: "right" });
+    doc.text(`Invoice Date: ${invoice.invoiceDate ?? new Date(invoice.createdAt).toLocaleDateString()}`, 400, 65, { align: "right" });
+    if (invoice.dueDate) doc.text(`Due Date: ${invoice.dueDate}`, 400, 80, { align: "right" });
+
+    // Tenant block
+    const tenantLines = formatTenantAddress(tenant);
+    let tY = 95;
+    doc.fontSize(8).font("Helvetica");
+    for (const line of tenantLines) {
+      doc.text(line, 350, tY, { width: 200, align: "right" });
+      tY += 11;
+    }
+
+    doc.moveDown(2);
+    const sepY = Math.max(doc.y, tY + 10);
+    doc.moveTo(50, sepY).lineTo(doc.page.width - 50, sepY).stroke();
+    doc.y = sepY + 8;
+
+    // Bill-to block
+    doc.fontSize(11).font("Helvetica-Bold").text("Bill To:", 50, doc.y);
+    doc.font("Helvetica").fontSize(10).text(invoice.customerName ?? "—");
+    if (invoice.customerEmail) doc.text(invoice.customerEmail);
+    doc.moveDown(1);
+
+    // Lines table
+    const colX = { num: 50, item: 70, desc: 150, qty: 340, price: 400, tax: 460, total: 510 };
+    doc.font("Helvetica-Bold").fontSize(10);
+    const headerY = doc.y;
+    doc.text("#", colX.num, headerY, { width: 20 });
+    doc.text("Item", colX.item, headerY, { width: 80 });
+    doc.text("Description", colX.desc, headerY, { width: 185 });
+    doc.text("Qty", colX.qty, headerY, { width: 50 });
+    doc.text("Price", colX.price, headerY, { width: 60 });
+    doc.text("Tax%", colX.tax, headerY, { width: 50 });
+    doc.text("Total", colX.total, headerY, { width: 60 });
+    doc.moveDown(0.3);
+    doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+    doc.moveDown(0.3);
+
+    doc.font("Helvetica").fontSize(9);
+    lines.forEach((l, i) => {
+      const rowY = doc.y;
+      doc.text(String(i + 1), colX.num, rowY, { width: 20 });
+      doc.text(l.itemCode ?? "—", colX.item, rowY, { width: 80 });
+      doc.text(l.description ?? l.itemName ?? "", colX.desc, rowY, { width: 185 });
+      doc.text(String(l.quantity), colX.qty, rowY, { width: 50 });
+      doc.text(Number(l.unitPrice).toFixed(2), colX.price, rowY, { width: 60 });
+      doc.text(Number(l.taxPct ?? 0).toFixed(2), colX.tax, rowY, { width: 50 });
+      doc.text(Number(l.lineTotal).toFixed(2), colX.total, rowY, { width: 60 });
+      doc.moveDown(0.8);
+      if (doc.y > doc.page.height - 160) doc.addPage();
+    });
+
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+    doc.moveDown(0.5);
+
+    // Totals
+    const balance = Number(invoice.total) - Number(invoice.paidAmount ?? 0);
+    doc.font("Helvetica").fontSize(10);
+    doc.text(`Subtotal: ${Number(invoice.subtotal).toFixed(2)} ${invoice.currencyCode}`, { align: "right" });
+    doc.text(`Tax: ${Number(invoice.taxAmount).toFixed(2)} ${invoice.currencyCode}`, { align: "right" });
+    doc.font("Helvetica-Bold").fontSize(11);
+    doc.text(`Total: ${Number(invoice.total).toFixed(2)} ${invoice.currencyCode}`, { align: "right" });
+    if (Number(invoice.paidAmount ?? 0) > 0) {
+      doc.font("Helvetica").fontSize(10);
+      doc.text(`Paid: ${Number(invoice.paidAmount).toFixed(2)} ${invoice.currencyCode}`, { align: "right" });
+      doc.font("Helvetica-Bold").fontSize(11);
+      doc.text(`Balance Due: ${balance.toFixed(2)} ${invoice.currencyCode}`, { align: "right" });
+    }
+
+    // Payment details
+    doc.moveDown(1.2);
+    doc.font("Helvetica-Bold").fontSize(10).text("Payment Details");
+    doc.font("Helvetica").fontSize(9);
+    if (invoice.dueDate) doc.text(`Payment is due by ${invoice.dueDate}.`);
+    doc.text(`Please reference invoice number ${invoice.code} when remitting payment.`);
+    if (tenant?.email) doc.text(`Remit confirmation to: ${tenant.email}`);
+    if (tenant?.taxId) doc.text(`Our Tax ID / ABN: ${tenant.taxId}`);
+
+    if (invoice.notes) {
+      doc.moveDown(1);
+      doc.font("Helvetica-Bold").fontSize(10).text("Notes:");
+      doc.font("Helvetica").fontSize(9).text(invoice.notes);
+    }
+
+    doc.end();
+  });
+}
+
+function buildQuotationEmailHtml(quot: QuotationRecord, tenant: TenantRecord | null): string {
+  const companyName = tenant?.tradingName ?? tenant?.name ?? "Forge ERP";
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:sans-serif;background:#f8fafc;padding:32px;margin:0">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#f97316,#ea580c);padding:24px 32px">
+      <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">${escapeHtml(companyName)}</span>
+    </div>
+    <div style="padding:32px">
+      <p style="font-size:16px;color:#1e293b;margin-top:0">Dear ${escapeHtml(quot.customerName ?? "Customer")},</p>
+      <p style="font-size:15px;color:#475569;line-height:1.6">
+        Please find attached quotation <strong>${escapeHtml(quot.code)}</strong> for your review.
+        Total value: <strong>${Number(quot.total).toFixed(2)} ${escapeHtml(quot.currencyCode)}</strong>.
+      </p>
+      ${quot.expiryDate ? `<p style="font-size:15px;color:#475569">This quotation is valid until <strong>${escapeHtml(String(quot.expiryDate))}</strong>.</p>` : ""}
+      ${quot.paymentTerms ? `<p style="font-size:15px;color:#475569">Payment terms: <strong>${escapeHtml(quot.paymentTerms)}</strong></p>` : ""}
+      <p style="font-size:13px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:20px;margin-bottom:0">
+        Reply to this email to accept the quotation or raise any queries.<br>${escapeHtml(companyName)}
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function buildInvoiceEmailHtml(invoice: InvoiceRecord, tenant: TenantRecord | null): string {
+  const companyName = tenant?.tradingName ?? tenant?.name ?? "Forge ERP";
+  const balance = Number(invoice.total) - Number(invoice.paidAmount ?? 0);
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:sans-serif;background:#f8fafc;padding:32px;margin:0">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#f97316,#ea580c);padding:24px 32px">
+      <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">${escapeHtml(companyName)}</span>
+    </div>
+    <div style="padding:32px">
+      <p style="font-size:16px;color:#1e293b;margin-top:0">Dear ${escapeHtml(invoice.customerName ?? "Customer")},</p>
+      <p style="font-size:15px;color:#475569;line-height:1.6">
+        Please find attached invoice <strong>${escapeHtml(invoice.code)}</strong>.
+        Amount due: <strong>${balance.toFixed(2)} ${escapeHtml(invoice.currencyCode)}</strong>.
+      </p>
+      ${invoice.dueDate ? `<p style="font-size:15px;color:#475569">Payment is due by <strong>${escapeHtml(String(invoice.dueDate))}</strong>.</p>` : ""}
+      <div style="margin:24px 0;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0">
+        <p style="margin:0 0 8px 0;font-size:14px;font-weight:600;color:#0f172a">Payment Details</p>
+        <p style="margin:0;font-size:13px;color:#475569;line-height:1.6">
+          Please reference invoice <strong>${escapeHtml(invoice.code)}</strong> when remitting payment.<br>
+          ${tenant?.email ? `Remit confirmation to: <a href="mailto:${escapeHtml(tenant.email)}" style="color:#ea580c">${escapeHtml(tenant.email)}</a><br>` : ""}
+          ${tenant?.taxId ? `Our Tax ID / ABN: <strong>${escapeHtml(tenant.taxId)}</strong>` : ""}
+        </p>
+      </div>
+      <p style="font-size:13px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:20px;margin-bottom:0">
+        Questions? Reply to this email and we'll get right back to you.<br>${escapeHtml(companyName)}
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ── ATP Endpoint ──────────────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -455,15 +738,52 @@ router.post("/sales/quotations/:id/send", ...tenantWriteMiddleware, async (req: 
   const [quot] = await withTenantDb(tenantId, (db) => db.select().from(quotationsTable).where(and(eq(quotationsTable.id, id), eq(quotationsTable.tenantId, tenantId), isNull(quotationsTable.deletedAt))).limit(1));
   if (!quot) { res.status(404).json({ error: "Quotation not found" }); return; }
   if (!["draft", "sent"].includes(quot.status)) { res.status(400).json({ error: `Cannot send quotation in status: ${quot.status}` }); return; }
-  const toEmail = (req.body as { email?: string }).email ?? quot.customerEmail;
+
+  // Resolve recipient: explicit body param → quotation customer email → fallback to customer record
+  let toEmail = (req.body as { email?: string }).email ?? quot.customerEmail ?? null;
+  if (!toEmail && quot.customerId) {
+    const [cust] = await withTenantDb(tenantId, (db) =>
+      db.select({ email: customersTable.email }).from(customersTable)
+        .where(and(eq(customersTable.id, quot.customerId!), eq(customersTable.tenantId, tenantId))).limit(1));
+    toEmail = cust?.email ?? null;
+  }
   if (!toEmail) { res.status(400).json({ error: "No customer email available. Provide email in request body or set on quotation." }); return; }
+
+  // Build PDF attachment + branded HTML
+  const [lines, tenant] = await Promise.all([
+    withTenantDb(tenantId, (db) => db.select().from(quotationLinesTable)
+      .where(and(eq(quotationLinesTable.quotationId, id), eq(quotationLinesTable.tenantId, tenantId)))
+      .orderBy(quotationLinesTable.lineNumber)),
+    loadTenantHeader(tenantId),
+  ]);
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await generateQuotationPdf(quot, lines, tenant);
+  } catch (err) {
+    logger.warn({ err, quotationId: id }, "Quotation PDF generation failed");
+    res.status(500).json({ error: "Failed to render quotation PDF. Quotation status was not changed." });
+    return;
+  }
+  const companyName = tenant?.tradingName ?? tenant?.name ?? "Forge ERP";
+
   let emailSent = false;
   try {
-    emailSent = await sendEmail({ to: toEmail, subject: `Quotation ${quot.code}`, html: `<p>Please find attached quotation <strong>${quot.code}</strong> for your review.</p>`, text: `Quotation ${quot.code} is ready for your review.` });
-  } catch { emailSent = false; }
-  if (!emailSent) { res.status(502).json({ error: "Email dispatch failed. Quotation status not changed." }); return; }
+    emailSent = await sendEmail({
+      to: toEmail,
+      subject: `Quotation ${quot.code} from ${companyName}`,
+      html: buildQuotationEmailHtml(quot, tenant),
+      text: `Dear ${quot.customerName ?? "Customer"},\n\nPlease find attached quotation ${quot.code} for your review.\nTotal: ${Number(quot.total).toFixed(2)} ${quot.currencyCode}.${quot.expiryDate ? `\nValid until: ${quot.expiryDate}.` : ""}\n\n${companyName}`,
+      attachments: [{ filename: `${quot.code}.pdf`, content: pdfBuffer, contentType: "application/pdf" }],
+    });
+  } catch (err) {
+    logger.warn({ err, quotationId: id, toEmail }, "Quotation email dispatch failed");
+    res.status(502).json({ error: "Email dispatch failed. Quotation status was not changed.", customerEmail: toEmail });
+    return;
+  }
+  if (!emailSent) { res.status(502).json({ error: "Email could not be dispatched (mail transport unavailable). Quotation status was not changed.", customerEmail: toEmail, emailSent: false }); return; }
+
   const [updated] = await withTenantDb(tenantId, (db) => db.update(quotationsTable).set({ status: "sent", sentAt: new Date() }).where(and(eq(quotationsTable.id, id), eq(quotationsTable.tenantId, tenantId))).returning());
-  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "quotation.sent", entityType: "quotation", entityId: String(id) });
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "quotation.sent", entityType: "quotation", entityId: String(id), newValues: { customerEmail: toEmail, emailSent } });
   res.json({ ...updated, emailSent, sentTo: toEmail });
 });
 
@@ -1424,15 +1744,54 @@ router.post("/sales/invoices/:id/send", ...tenantWriteMiddleware, async (req: Re
   const [invoice] = await withTenantDb(tenantId, (db) => db.select().from(customerInvoicesTable).where(and(eq(customerInvoicesTable.id, id), eq(customerInvoicesTable.tenantId, tenantId))).limit(1));
   if (!invoice) { res.status(404).json({ error: "Invoice not found" }); return; }
   if (!["draft", "sent"].includes(invoice.status)) { res.status(400).json({ error: `Cannot send invoice in status: ${invoice.status}` }); return; }
-  const toEmail = (req.body as { email?: string }).email ?? invoice.customerEmail;
-  if (!toEmail) { res.status(400).json({ error: "No customer email available" }); return; }
+
+  // Resolve recipient: explicit body param → invoice customer email → fallback to customer record
+  let toEmail = (req.body as { email?: string }).email ?? invoice.customerEmail ?? null;
+  if (!toEmail && invoice.customerId) {
+    const [cust] = await withTenantDb(tenantId, (db) =>
+      db.select({ email: customersTable.email }).from(customersTable)
+        .where(and(eq(customersTable.id, invoice.customerId!), eq(customersTable.tenantId, tenantId))).limit(1));
+    toEmail = cust?.email ?? null;
+  }
+  if (!toEmail) { res.status(400).json({ error: "No customer email available. Provide email in request body or set on invoice/customer." }); return; }
+
+  // Build PDF attachment + branded HTML
+  // customerInvoiceLinesTable has no lineNumber column — order by id for stable ordering.
+  const [lines, tenant] = await Promise.all([
+    withTenantDb(tenantId, (db) => db.select().from(customerInvoiceLinesTable)
+      .where(and(eq(customerInvoiceLinesTable.invoiceId, id), eq(customerInvoiceLinesTable.tenantId, tenantId)))
+      .orderBy(customerInvoiceLinesTable.id)),
+    loadTenantHeader(tenantId),
+  ]);
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await generateInvoicePdf(invoice, lines, tenant);
+  } catch (err) {
+    logger.warn({ err, invoiceId: id }, "Invoice PDF generation failed");
+    res.status(500).json({ error: "Failed to render invoice PDF. Invoice status was not changed." });
+    return;
+  }
+  const companyName = tenant?.tradingName ?? tenant?.name ?? "Forge ERP";
+  const balance = Number(invoice.total) - Number(invoice.paidAmount ?? 0);
+
   let emailSent = false;
   try {
-    emailSent = await sendEmail({ to: toEmail, subject: `Invoice ${invoice.code} - ${invoice.total}`, html: `<p>Please find your invoice <strong>${invoice.code}</strong> for amount <strong>${invoice.currencyCode} ${Number(invoice.total).toFixed(2)}</strong>.</p>`, text: `Invoice ${invoice.code} for ${invoice.currencyCode} ${Number(invoice.total).toFixed(2)}` });
-  } catch { emailSent = false; }
-  if (!emailSent) { res.status(502).json({ error: "Email dispatch failed. Invoice status not changed." }); return; }
+    emailSent = await sendEmail({
+      to: toEmail,
+      subject: `Invoice ${invoice.code} from ${companyName} — ${invoice.currencyCode} ${Number(invoice.total).toFixed(2)}`,
+      html: buildInvoiceEmailHtml(invoice, tenant),
+      text: `Dear ${invoice.customerName ?? "Customer"},\n\nPlease find attached invoice ${invoice.code} for ${balance.toFixed(2)} ${invoice.currencyCode}.${invoice.dueDate ? `\nPayment is due by ${invoice.dueDate}.` : ""}\nPlease reference invoice ${invoice.code} when remitting payment.\n\n${companyName}`,
+      attachments: [{ filename: `${invoice.code}.pdf`, content: pdfBuffer, contentType: "application/pdf" }],
+    });
+  } catch (err) {
+    logger.warn({ err, invoiceId: id, toEmail }, "Invoice email dispatch failed");
+    res.status(502).json({ error: "Email dispatch failed. Invoice status was not changed.", customerEmail: toEmail });
+    return;
+  }
+  if (!emailSent) { res.status(502).json({ error: "Email could not be dispatched (mail transport unavailable). Invoice status was not changed.", customerEmail: toEmail, emailSent: false }); return; }
+
   const [updated] = await withTenantDb(tenantId, (db) => db.update(customerInvoicesTable).set({ status: "sent", sentAt: new Date() }).where(and(eq(customerInvoicesTable.id, id), eq(customerInvoicesTable.tenantId, tenantId))).returning());
-  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "invoice.sent", entityType: "customer_invoice", entityId: String(id) });
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "invoice.sent", entityType: "customer_invoice", entityId: String(id), newValues: { customerEmail: toEmail, emailSent } });
   res.json({ ...updated, emailSent, sentTo: toEmail });
 });
 
