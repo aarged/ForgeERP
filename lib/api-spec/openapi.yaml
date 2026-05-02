@@ -9565,6 +9565,9 @@ components:
         dueAt: { type: string, format: date-time, nullable: true }
         notes: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
+        totalLines: { type: integer, nullable: true }
+        confirmedLines: { type: integer, nullable: true }
+        shortLines: { type: integer, nullable: true }
 
     PickSlipLine:
       type: object

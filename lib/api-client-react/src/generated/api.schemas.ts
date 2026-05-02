@@ -2326,6 +2326,9 @@ export interface PickSlip {
   dueAt?: string | null;
   notes?: string | null;
   createdAt?: string;
+  totalLines?: number | null;
+  confirmedLines?: number | null;
+  shortLines?: number | null;
 }
 
 export interface PickSlipLine {

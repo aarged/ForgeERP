@@ -5373,6 +5373,9 @@ export const ListPickSlipsResponse = zod.object({
         dueAt: zod.coerce.date().nullish(),
         notes: zod.string().nullish(),
         createdAt: zod.coerce.date().optional(),
+        totalLines: zod.number().nullish(),
+        confirmedLines: zod.number().nullish(),
+        shortLines: zod.number().nullish(),
       }),
     )
     .optional(),
@@ -5437,6 +5440,9 @@ export const GetPickSlipResponse = zod
     dueAt: zod.coerce.date().nullish(),
     notes: zod.string().nullish(),
     createdAt: zod.coerce.date().optional(),
+    totalLines: zod.number().nullish(),
+    confirmedLines: zod.number().nullish(),
+    shortLines: zod.number().nullish(),
   })
   .and(
     zod.object({
@@ -5504,6 +5510,9 @@ export const ListMyPickSlipsResponse = zod.object({
         dueAt: zod.coerce.date().nullish(),
         notes: zod.string().nullish(),
         createdAt: zod.coerce.date().optional(),
+        totalLines: zod.number().nullish(),
+        confirmedLines: zod.number().nullish(),
+        shortLines: zod.number().nullish(),
       }),
     )
     .optional(),
@@ -5544,6 +5553,9 @@ export const ListPickQueueResponse = zod.object({
         dueAt: zod.coerce.date().nullish(),
         notes: zod.string().nullish(),
         createdAt: zod.coerce.date().optional(),
+        totalLines: zod.number().nullish(),
+        confirmedLines: zod.number().nullish(),
+        shortLines: zod.number().nullish(),
       }),
     )
     .optional(),
@@ -5585,6 +5597,9 @@ export const AssignPickSlipResponse = zod
     dueAt: zod.coerce.date().nullish(),
     notes: zod.string().nullish(),
     createdAt: zod.coerce.date().optional(),
+    totalLines: zod.number().nullish(),
+    confirmedLines: zod.number().nullish(),
+    shortLines: zod.number().nullish(),
   })
   .and(
     zod.object({
@@ -5647,6 +5662,9 @@ export const StartPickSlipResponse = zod
     dueAt: zod.coerce.date().nullish(),
     notes: zod.string().nullish(),
     createdAt: zod.coerce.date().optional(),
+    totalLines: zod.number().nullish(),
+    confirmedLines: zod.number().nullish(),
+    shortLines: zod.number().nullish(),
   })
   .and(
     zod.object({
@@ -5709,6 +5727,9 @@ export const CompletePickSlipResponse = zod
     dueAt: zod.coerce.date().nullish(),
     notes: zod.string().nullish(),
     createdAt: zod.coerce.date().optional(),
+    totalLines: zod.number().nullish(),
+    confirmedLines: zod.number().nullish(),
+    shortLines: zod.number().nullish(),
   })
   .and(
     zod.object({

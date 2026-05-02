@@ -144,8 +144,12 @@ import {
   ClipboardList,
   BadgeDollarSign,
   AlertCircle,
+  AlertTriangle,
   Printer,
   BarChart2,
+  User,
+  Clock,
+  Image as ImageIcon,
 } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -158,6 +162,12 @@ function fmt(val: string | number | null | undefined, decimals = 2): string {
 function fmtDate(val: string | null | undefined): string {
   if (!val) return "—";
   return new Date(val).toLocaleDateString();
+}
+
+function fmtDateTime(val: string | Date | null | undefined): string {
+  if (!val) return "—";
+  const d = val instanceof Date ? val : new Date(val);
+  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -3279,6 +3289,10 @@ function PickSlipsTab() {
               <TableHead>Code</TableHead>
               <TableHead>Sales Order</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Picker</TableHead>
+              <TableHead>Started</TableHead>
+              <TableHead>Lines</TableHead>
+              <TableHead>Short</TableHead>
               <TableHead>Created</TableHead>
               <TableHead />
             </TableRow>
@@ -3286,52 +3300,126 @@ function PickSlipsTab() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={5}>
+                <TableCell colSpan={9}>
                   <Skeleton className="h-8 w-full" />
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && pickSlips.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                   No pick slips found. They are auto-created when despatches are made.
                 </TableCell>
               </TableRow>
             )}
-            {pickSlips.map((ps) => (
-              <TableRow
-                key={ps.id ?? 0}
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => setDetailId(ps.id ?? null)}
-              >
-                <TableCell className="font-mono text-sm">{ps.code ?? ""}</TableCell>
-                <TableCell className="font-mono text-xs">
-                  SO-{String(ps.soId).padStart(6, "0")}
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={ps.status} />
-                </TableCell>
-                <TableCell className="text-muted-foreground text-xs">
-                  {fmtDate(ps.createdAt)}
-                </TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="sm" onClick={() => setDetailId(ps.id ?? null)}>
-                    View
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+            {pickSlips.map((ps) => {
+              const total = ps.totalLines ?? 0;
+              const confirmed = ps.confirmedLines ?? 0;
+              const short = ps.shortLines ?? 0;
+              const pct = total > 0 ? Math.round((confirmed / total) * 100) : 0;
+              return (
+                <TableRow
+                  key={ps.id ?? 0}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => setDetailId(ps.id ?? null)}
+                  data-testid={`row-pickslip-${ps.id}`}
+                >
+                  <TableCell className="font-mono text-sm">{ps.code ?? ""}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    SO-{String(ps.soId).padStart(6, "0")}
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={ps.status} />
+                  </TableCell>
+                  <TableCell className="text-xs" data-testid={`cell-picker-${ps.id}`}>
+                    {ps.assignedToName ? (
+                      <span className="inline-flex items-center gap-1">
+                        <User className="w-3 h-3 text-muted-foreground" />
+                        {ps.assignedToName}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Unassigned</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground" data-testid={`cell-started-${ps.id}`}>
+                    {ps.startedAt ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {fmtDateTime(ps.startedAt)}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs" data-testid={`cell-lines-${ps.id}`}>
+                    {total > 0 ? (
+                      <div className="flex items-center gap-2 min-w-[80px]">
+                        <span className="font-mono">{confirmed}/{total}</span>
+                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className={`h-full ${confirmed === total ? "bg-green-500" : "bg-blue-500"}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs" data-testid={`cell-short-${ps.id}`}>
+                    {short > 0 ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
+                        <AlertTriangle className="w-3 h-3" />
+                        {short}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs">
+                    {fmtDate(ps.createdAt)}
+                  </TableCell>
+                  <TableCell>
+                    <Button variant="ghost" size="sm" onClick={() => setDetailId(ps.id ?? null)}>
+                      View
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
 
       {/* Detail Dialog */}
       <Dialog open={detailId !== null} onOpenChange={(v) => { if (!v) setDetailId(null); }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{det?.code ?? "Pick Slip"}</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <span>{det?.code ?? "Pick Slip"}</span>
               {det?.status && <StatusBadge status={det.status} />}
+            </DialogTitle>
+            <DialogDescription>
+              {det && (
+                <span className="flex flex-wrap items-center gap-4 text-xs mt-1">
+                  <span className="inline-flex items-center gap-1">
+                    <User className="w-3 h-3" />
+                    {det.assignedToName ?? "Unassigned"}
+                  </span>
+                  {det.startedAt && (
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Started {fmtDateTime(det.startedAt)}
+                    </span>
+                  )}
+                  {det.completedAt && (
+                    <span className="inline-flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Completed {fmtDateTime(det.completedAt)}
+                    </span>
+                  )}
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
           {det && (
@@ -3339,25 +3427,92 @@ function PickSlipsTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Item</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Required</TableHead>
                   <TableHead className="text-right">Picked</TableHead>
                   <TableHead>Location</TableHead>
+                  <TableHead>Lot / Serial</TableHead>
+                  <TableHead>Photo</TableHead>
+                  <TableHead>Notes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {det.lines?.map((l) => (
-                  <TableRow key={l.id ?? 0}>
-                    <TableCell className="text-xs">
+                  <TableRow key={l.id ?? 0} data-testid={`row-pickline-${l.id}`}>
+                    <TableCell className="text-xs align-top">
                       {l.itemCode ? `${l.itemCode} – ${l.itemName}` : "—"}
                     </TableCell>
-                    <TableCell className="text-xs text-right">
+                    <TableCell className="text-xs align-top">
+                      <PickLineStatusBadge status={l.confirmStatus} />
+                      {l.confirmedByName && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          by {l.confirmedByName}
+                        </div>
+                      )}
+                      {l.confirmedAt && (
+                        <div className="text-[10px] text-muted-foreground">
+                          {fmtDateTime(l.confirmedAt)}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-right align-top">
                       {fmt(l.requiredQty, 0)}
                     </TableCell>
-                    <TableCell className="text-xs text-right">
+                    <TableCell className="text-xs text-right align-top">
                       {fmt(l.pickedQty, 0)}
                     </TableCell>
-                    <TableCell className="text-xs">
-                      {l.locationId ? `Location #${l.locationId}` : "—"}
+                    <TableCell className="text-xs align-top">
+                      {l.locationLabel ?? (l.locationId ? `Location #${l.locationId}` : "—")}
+                    </TableCell>
+                    <TableCell className="text-xs align-top">
+                      {l.lotNumber || l.serialNumber || l.batchNumber ? (
+                        <div className="space-y-0.5">
+                          {l.lotNumber && <div>Lot: <span className="font-mono">{l.lotNumber}</span></div>}
+                          {l.serialNumber && <div>SN: <span className="font-mono">{l.serialNumber}</span></div>}
+                          {l.batchNumber && <div>Batch: <span className="font-mono">{l.batchNumber}</span></div>}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="align-top">
+                      {l.photoObjectPath ? (
+                        <a
+                          href={`/api/storage${l.photoObjectPath}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block"
+                          data-testid={`link-photo-${l.id}`}
+                        >
+                          <img
+                            src={`/api/storage${l.photoObjectPath}`}
+                            alt={`Pick photo for line ${l.id}`}
+                            className="w-12 h-12 object-cover rounded border hover:opacity-80"
+                          />
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground text-xs inline-flex items-center gap-1">
+                          <ImageIcon className="w-3 h-3" />
+                          —
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs align-top">
+                      {l.confirmStatus === "short" && l.shortReason ? (
+                        <div className="space-y-0.5">
+                          <div className="inline-flex items-center gap-1 text-amber-700 font-medium">
+                            <AlertTriangle className="w-3 h-3" />
+                            {l.shortReason.replace(/_/g, " ")}
+                          </div>
+                          {l.shortNote && (
+                            <div className="text-[10px] text-muted-foreground">{l.shortNote}</div>
+                          )}
+                        </div>
+                      ) : l.notes ? (
+                        <span className="text-muted-foreground">{l.notes}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -3367,6 +3522,21 @@ function PickSlipsTab() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function PickLineStatusBadge({ status }: { status?: string | null }) {
+  const s = status ?? "pending";
+  const cls =
+    s === "picked"
+      ? "bg-green-100 text-green-700"
+      : s === "short"
+        ? "bg-amber-100 text-amber-700"
+        : "bg-gray-100 text-gray-700";
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium capitalize ${cls}`}>
+      {s}
+    </span>
   );
 }
 

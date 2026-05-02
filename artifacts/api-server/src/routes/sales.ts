@@ -1132,7 +1132,31 @@ router.get("/sales/pick-slips", ...tenantUserMiddleware, async (req: Request, re
         soId ? eq(pickSlipsTable.soId, Number(soId)) : undefined,
         status ? eq(pickSlipsTable.status, status) : undefined))
       .orderBy(desc(pickSlipsTable.createdAt)).limit(lim + 1).offset((pg - 1) * lim));
-  res.json({ data: rows.slice(0, lim), hasMore: rows.length > lim, page: pg });
+  const visible = rows.slice(0, lim);
+  // Aggregate per-slip line counts so the supervisor table can show progress
+  // (x/y confirmed, short count) without a per-row detail fetch.
+  const slipIds = visible.map((s) => s.id);
+  const counts = new Map<number, { total: number; confirmed: number; short: number }>();
+  if (slipIds.length > 0) {
+    const lineRows = await withTenantDb(tenantId, (db) =>
+      db.select({
+        pickSlipId: pickSlipLinesTable.pickSlipId,
+        confirmStatus: pickSlipLinesTable.confirmStatus,
+      }).from(pickSlipLinesTable)
+        .where(and(eq(pickSlipLinesTable.tenantId, tenantId), inArray(pickSlipLinesTable.pickSlipId, slipIds))));
+    for (const l of lineRows) {
+      const bucket = counts.get(l.pickSlipId) ?? { total: 0, confirmed: 0, short: 0 };
+      bucket.total += 1;
+      if (l.confirmStatus === "picked") bucket.confirmed += 1;
+      else if (l.confirmStatus === "short") bucket.short += 1;
+      counts.set(l.pickSlipId, bucket);
+    }
+  }
+  const data = visible.map((s) => {
+    const c = counts.get(s.id) ?? { total: 0, confirmed: 0, short: 0 };
+    return { ...s, totalLines: c.total, confirmedLines: c.confirmed, shortLines: c.short };
+  });
+  res.json({ data, hasMore: rows.length > lim, page: pg });
 });
 
 router.get("/sales/pick-slips/:id", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
