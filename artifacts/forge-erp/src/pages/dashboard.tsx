@@ -14,7 +14,7 @@ import {
   Calculator, PackageSearch, ShoppingCart, 
   AlertTriangle, CheckCircle2, DollarSign, Activity,
   TrendingUp, Clock, Package, FileText, FileBarChart,
-  Settings2, ChevronUp, ChevronDown, ArrowUpDown
+  Settings2, ChevronUp, ChevronDown, ArrowUpDown, Warehouse
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { LucideIcon } from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart, Bar,
+  LineChart, Line,
+  XAxis, YAxis,
+  CartesianGrid, Tooltip, Legend,
+  Cell,
+} from "recharts";
 
 // ── Formatters ─────────────────────────────────────────────────────────────────
 
@@ -88,6 +96,8 @@ interface SoItem { id: number; code: string; customerName: string; total: string
 interface StockAlertItem { itemCode: string; itemName: string; qtyOnHand: number; reorderPoint: number; }
 interface PendingApprovalItem { type: string; code: string; requestedBy: string; amount: number; }
 interface GlActivityItem { code: string; postedAt: string; notes: string; totalDebit: number; }
+interface StockValueItem { warehouseId: number; warehouseName: string; totalValue: string | number; itemCount: number; }
+interface SalesByPeriodItem { period: string; orderCount: string | number; revenue: string | number; }
 
 // ── Widget Components ──────────────────────────────────────────────────────────
 
@@ -269,6 +279,139 @@ function WidgetGlActivity() {
   );
 }
 
+function WidgetSalesByPeriod() {
+  const { data, isLoading } = useGetDashboardWidgetType("sales-by-period", undefined, { query: { queryKey: getGetDashboardWidgetTypeQueryKey("sales-by-period") } });
+  const items = (data?.data as unknown as SalesByPeriodItem[] | undefined) ?? [];
+
+  const chartData = useMemo(() => items.map((row) => {
+    const d = new Date(row.period);
+    return {
+      label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      revenue: Number(row.revenue) || 0,
+      orderCount: Number(row.orderCount) || 0,
+    };
+  }), [items]);
+
+  if (isLoading) return <Skeleton className="h-80 col-span-1 lg:col-span-2" />;
+
+  return (
+    <Card className="col-span-1 lg:col-span-2">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-emerald-500" />
+          Revenue by Period
+        </CardTitle>
+        <CardDescription>Monthly invoiced revenue (last 6 months)</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {chartData.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-12">No revenue data available</p>
+        ) : (
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 10, right: 16, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="label" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis
+                  tick={{ fontSize: 12 }}
+                  stroke="hsl(var(--muted-foreground))"
+                  tickFormatter={(v) => {
+                    const n = Number(v);
+                    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+                    if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+                    return `$${n}`;
+                  }}
+                />
+                <Tooltip
+                  formatter={(value: number | string, name: string) => {
+                    if (name === "Revenue") return [fmt(value, true), name];
+                    return [fmt(value), name];
+                  }}
+                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6, fontSize: 12 }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+const STOCK_VALUE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#14b8a6", "#ec4899", "#6366f1"];
+
+function WidgetStockValue() {
+  const { data, isLoading } = useGetDashboardWidgetType("stock-value", undefined, { query: { queryKey: getGetDashboardWidgetTypeQueryKey("stock-value") } });
+  const items = (data?.data as unknown as StockValueItem[] | undefined) ?? [];
+
+  const chartData = useMemo(() => items.map((row) => ({
+    name: row.warehouseName,
+    value: Number(row.totalValue) || 0,
+    itemCount: Number(row.itemCount) || 0,
+  })), [items]);
+
+  const total = useMemo(() => chartData.reduce((acc, r) => acc + r.value, 0), [chartData]);
+
+  if (isLoading) return <Skeleton className="h-80 col-span-1 lg:col-span-2" />;
+
+  return (
+    <Card className="col-span-1 lg:col-span-2">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Warehouse className="h-4 w-4 text-blue-500" />
+          Stock Value by Warehouse
+        </CardTitle>
+        <CardDescription>Total inventory value: {fmt(total, true)}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {chartData.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-12">No stock value data available</p>
+        ) : (
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} layout="vertical" margin={{ top: 10, right: 24, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                <XAxis
+                  type="number"
+                  tick={{ fontSize: 12 }}
+                  stroke="hsl(var(--muted-foreground))"
+                  tickFormatter={(v) => {
+                    const n = Number(v);
+                    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+                    if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+                    return `$${n}`;
+                  }}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tick={{ fontSize: 12 }}
+                  stroke="hsl(var(--muted-foreground))"
+                  width={120}
+                />
+                <Tooltip
+                  formatter={(value: number | string, _name: string, ctx: { payload?: { itemCount?: number } }) => {
+                    const count = ctx?.payload?.itemCount;
+                    return [`${fmt(value, true)}${count != null ? ` (${count} items)` : ""}`, "Stock Value"];
+                  }}
+                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6, fontSize: 12 }}
+                />
+                <Bar dataKey="value" name="Stock Value" radius={[0, 4, 4, 0]}>
+                  {chartData.map((_, i) => (
+                    <Cell key={i} fill={STOCK_VALUE_COLORS[i % STOCK_VALUE_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Widget Library ─────────────────────────────────────────────────────────────
 
 type UserRole = "super_admin" | "tenant_admin" | "purchaser" | "warehouse" | "approver" | "accountant" | "viewer";
@@ -286,15 +429,17 @@ const WIDGET_LIBRARY: WidgetDef[] = [
   { id: "stock-alerts",      label: "Stock Alerts",           availableRoles: ["super_admin","tenant_admin","warehouse","accountant"],           Component: WidgetStockAlerts },
   { id: "pending-approvals", label: "Pending Approvals",      availableRoles: ["super_admin","tenant_admin","approver"],                        Component: WidgetPendingApprovals },
   { id: "gl-activity",       label: "GL Activity",            availableRoles: ["super_admin","tenant_admin","accountant"],                      Component: WidgetGlActivity },
+  { id: "sales-by-period",   label: "Revenue by Period",      availableRoles: ["super_admin","tenant_admin","accountant"],                      Component: WidgetSalesByPeriod },
+  { id: "stock-value",       label: "Stock Value by Warehouse", availableRoles: ["super_admin","tenant_admin","warehouse","accountant"],         Component: WidgetStockValue },
 ];
 
 const DEFAULT_WIDGETS: Record<string, string[]> = {
-  super_admin: ["recent-orders","recent-pos","stock-alerts","gl-activity"],
-  tenant_admin:["recent-orders","recent-pos","stock-alerts","gl-activity"],
+  super_admin: ["sales-by-period","stock-value","recent-orders","recent-pos","stock-alerts","gl-activity"],
+  tenant_admin:["sales-by-period","stock-value","recent-orders","recent-pos","stock-alerts","gl-activity"],
   purchaser:   ["recent-pos"],
-  warehouse:   ["stock-alerts"],
+  warehouse:   ["stock-value","stock-alerts"],
   approver:    ["pending-approvals","recent-pos"],
-  accountant:  ["gl-activity","recent-orders","stock-alerts"],
+  accountant:  ["sales-by-period","stock-value","gl-activity","recent-orders","stock-alerts"],
   viewer:      [],
 };
 
