@@ -464,6 +464,39 @@ export interface AuditLog {
   createdAt: string;
 }
 
+export interface TrendPoint {
+  /** ISO date for the start of the week bucket (Monday, UTC) */
+  weekStart: string;
+  value: number;
+}
+
+export interface AdminTrends {
+  /** Number of weekly buckets returned */
+  weeks: number;
+  /** Tenant signups per week derived from tenants.createdAt */
+  signupsPerWeek: TrendPoint[];
+  /** Cumulative count of non-suspended tenants at the end of each week */
+  activeTenantsOverTime: TrendPoint[];
+  /** Estimated MRR in cents at the end of each week */
+  mrrCentsOverTime: TrendPoint[];
+  /** True when MRR is a plan-tier estimate rather than live Stripe data */
+  mrrIsEstimate: boolean;
+}
+
+export interface TenantActivityPoint {
+  /** ISO date (YYYY-MM-DD) for the day bucket (UTC) */
+  date: string;
+  count: number;
+}
+
+export interface TenantActivity {
+  /** Number of daily buckets returned */
+  days: number;
+  activity: TenantActivityPoint[];
+  /** Total audit-log events in the window */
+  totalEvents: number;
+}
+
 export type OnboardingInviteRole =
   (typeof OnboardingInviteRole)[keyof typeof OnboardingInviteRole];
 
@@ -2785,6 +2818,24 @@ export type UploadOnboardingCsvBody = {
 
 export type GetAdminAuditLogsParams = {
   tenantId?: number;
+};
+
+export type GetAdminTrendsParams = {
+  /**
+   * Number of weeks of history to return (1-52, default 12)
+   * @minimum 1
+   * @maximum 52
+   */
+  weeks?: number;
+};
+
+export type GetAdminTenantActivityParams = {
+  /**
+   * Number of days of history (1-90, default 30)
+   * @minimum 1
+   * @maximum 90
+   */
+  days?: number;
 };
 
 export type ListItemsParams = {

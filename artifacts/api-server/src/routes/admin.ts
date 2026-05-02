@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
-import { eq, isNull, count, sql } from "drizzle-orm";
+import { eq, isNull, count, sql, and, gte } from "drizzle-orm";
 import {
   adminPool,
   tenantsTable,
   tenantMembershipsTable,
+  auditLogsTable,
 } from "@workspace/db";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db/schema";
@@ -1068,6 +1069,219 @@ router.patch(
       role: updated!.role,
       isActive: updated!.isActive === "true",
       joinedAt: updated!.joinedAt.toISOString(),
+    });
+  },
+);
+
+// ── GET /admin/trends ─────────────────────────────────────────────────────────
+
+/** Returns the Monday-aligned UTC start of the week containing `d`. */
+function startOfWeekUtc(d: Date): Date {
+  const out = new Date(d);
+  out.setUTCHours(0, 0, 0, 0);
+  // JS getUTCDay: 0=Sun..6=Sat. We want Monday-aligned weeks.
+  const dow = out.getUTCDay();
+  const offset = dow === 0 ? -6 : 1 - dow;
+  out.setUTCDate(out.getUTCDate() + offset);
+  return out;
+}
+
+router.get(
+  "/admin/trends",
+  ...superAdminOnly,
+  async (req: Request, res: Response): Promise<void> => {
+    const rawWeeks = Number(req.query.weeks);
+    const weeks = Number.isFinite(rawWeeks)
+      ? Math.max(1, Math.min(52, Math.trunc(rawWeeks)))
+      : 12;
+
+    // Build week buckets (oldest → newest), Monday-aligned UTC.
+    const currentWeekStart = startOfWeekUtc(new Date());
+    const buckets: { weekStart: Date; weekEnd: Date }[] = [];
+    for (let i = weeks - 1; i >= 0; i--) {
+      const weekStart = new Date(currentWeekStart);
+      weekStart.setUTCDate(weekStart.getUTCDate() - i * 7);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+      buckets.push({ weekStart, weekEnd });
+    }
+
+    // Pull all non-deleted tenants — fine for typical platform sizes.
+    const allTenants = await adminDb
+      .select({
+        createdAt: tenantsTable.createdAt,
+        status: tenantsTable.status,
+        planTier: tenantsTable.planTier,
+      })
+      .from(tenantsTable)
+      .where(isNull(tenantsTable.deletedAt));
+
+    const signupsPerWeek = buckets.map((b) => ({
+      weekStart: b.weekStart.toISOString(),
+      value: allTenants.filter(
+        (t) => t.createdAt >= b.weekStart && t.createdAt < b.weekEnd,
+      ).length,
+    }));
+
+    // Cumulative count of non-suspended tenants that existed by end of week.
+    // Note: status reflects current status, so historical accuracy degrades
+    // for tenants whose status changed; this is documented in the schema.
+    const activeTenantsOverTime = buckets.map((b) => ({
+      weekStart: b.weekStart.toISOString(),
+      value: allTenants.filter(
+        (t) => t.createdAt < b.weekEnd && t.status !== "suspended",
+      ).length,
+    }));
+
+    // Try Stripe MRR over time first: bucket active subs by their `created`.
+    let mrrCentsOverTime: { weekStart: string; value: number }[] = [];
+    let mrrIsEstimate = true;
+
+    if (isStripeConfigured()) {
+      try {
+        const stripe = await getUncachableStripeClient();
+        type SubLite = {
+          created: number;
+          status: string;
+          monthly: number;
+          canceledAt: number | null;
+        };
+        const subs: SubLite[] = [];
+        let hasMore = true;
+        let startingAfter: string | undefined;
+
+        while (hasMore) {
+          const batch = await stripe.subscriptions.list({
+            status: "all",
+            limit: 100,
+            ...(startingAfter ? { starting_after: startingAfter } : {}),
+          });
+          for (const sub of batch.data) {
+            const monthly = subToMonthlyCents(
+              sub as Parameters<typeof subToMonthlyCents>[0],
+            );
+            const subAny = sub as unknown as { canceled_at: number | null };
+            subs.push({
+              created: sub.created,
+              status: sub.status,
+              monthly,
+              canceledAt: subAny.canceled_at,
+            });
+          }
+          hasMore = batch.has_more;
+          startingAfter = batch.data[batch.data.length - 1]?.id;
+        }
+
+        mrrCentsOverTime = buckets.map((b) => {
+          const weekEndUnix = Math.floor(b.weekEnd.getTime() / 1000);
+          const mrr = subs
+            .filter(
+              (s) =>
+                s.created < weekEndUnix &&
+                (s.canceledAt === null || s.canceledAt > weekEndUnix) &&
+                s.status !== "incomplete_expired",
+            )
+            .reduce((sum, s) => sum + s.monthly, 0);
+          return { weekStart: b.weekStart.toISOString(), value: mrr };
+        });
+        mrrIsEstimate = false;
+      } catch (err) {
+        logger.warn(
+          { err },
+          "Failed to fetch Stripe historical MRR, falling back to plan-tier estimate",
+        );
+      }
+    }
+
+    if (mrrIsEstimate) {
+      mrrCentsOverTime = buckets.map((b) => ({
+        weekStart: b.weekStart.toISOString(),
+        value: allTenants
+          .filter(
+            (t) => t.createdAt < b.weekEnd && t.status === "active",
+          )
+          .reduce(
+            (sum, t) => sum + (PLAN_MRR_CENTS[t.planTier] ?? 0),
+            0,
+          ),
+      }));
+    }
+
+    res.json({
+      weeks,
+      signupsPerWeek,
+      activeTenantsOverTime,
+      mrrCentsOverTime,
+      mrrIsEstimate,
+    });
+  },
+);
+
+// ── GET /admin/tenants/:id/activity ───────────────────────────────────────────
+
+router.get(
+  "/admin/tenants/:id/activity",
+  ...superAdminOnly,
+  async (req: Request, res: Response): Promise<void> => {
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid tenant id" });
+      return;
+    }
+
+    const rawDays = Number(req.query.days);
+    const days = Number.isFinite(rawDays)
+      ? Math.max(1, Math.min(90, Math.trunc(rawDays)))
+      : 30;
+
+    const [tenant] = await adminDb
+      .select({ id: tenantsTable.id, deletedAt: tenantsTable.deletedAt })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, id))
+      .limit(1);
+
+    if (!tenant || tenant.deletedAt) {
+      res.status(404).json({ error: "Tenant not found" });
+      return;
+    }
+
+    // Window starts `days-1` days before today (UTC), midnight-aligned.
+    const startDate = new Date();
+    startDate.setUTCHours(0, 0, 0, 0);
+    startDate.setUTCDate(startDate.getUTCDate() - (days - 1));
+
+    const logs = await adminDb
+      .select({ createdAt: auditLogsTable.createdAt })
+      .from(auditLogsTable)
+      .where(
+        and(
+          eq(auditLogsTable.tenantId, id),
+          gte(auditLogsTable.createdAt, startDate),
+        ),
+      );
+
+    const buckets = new Map<string, number>();
+    for (let i = 0; i < days; i++) {
+      const d = new Date(startDate);
+      d.setUTCDate(d.getUTCDate() + i);
+      buckets.set(d.toISOString().slice(0, 10), 0);
+    }
+    for (const l of logs) {
+      const day = l.createdAt.toISOString().slice(0, 10);
+      if (buckets.has(day)) {
+        buckets.set(day, (buckets.get(day) ?? 0) + 1);
+      }
+    }
+
+    const activity = Array.from(buckets.entries()).map(([date, count]) => ({
+      date,
+      count,
+    }));
+
+    res.json({
+      days,
+      activity,
+      totalEvents: logs.length,
     });
   },
 );

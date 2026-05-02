@@ -22,6 +22,7 @@ import type {
   AdminTenantCreated,
   AdminTenantDetail,
   AdminTenantMember,
+  AdminTrends,
   ApprovalDecisionBody,
   ApprovalStep,
   ApprovalWorkflow,
@@ -120,6 +121,8 @@ import type {
   GeneratePurchaseOrderPdf200,
   GeneratePurchaseOrderPdfBody,
   GetAdminAuditLogsParams,
+  GetAdminTenantActivityParams,
+  GetAdminTrendsParams,
   GetAtp200,
   GetAtpParams,
   GetDashboardKpi200,
@@ -311,6 +314,7 @@ import type {
   SupplierListResponse,
   SupplierPerformanceRow,
   Tenant,
+  TenantActivity,
   TenantMember,
   TraceLotNumber200,
   TraceLotNumberParams,
@@ -2442,6 +2446,221 @@ export function useGetAdminAuditLogs<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetAdminAuditLogsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns weekly trend buckets for tenant signups, active tenant count, and estimated MRR. Used to render historical charts on the super-admin dashboard. MRR is derived from Stripe subscriptions when configured; otherwise it falls back to a plan-tier estimate from current tenant records (mrrIsEstimate=true).
+
+ * @summary Get platform trend data
+ */
+export const getGetAdminTrendsUrl = (params?: GetAdminTrendsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/trends?${stringifiedParams}`
+    : `/api/admin/trends`;
+};
+
+export const getAdminTrends = async (
+  params?: GetAdminTrendsParams,
+  options?: RequestInit,
+): Promise<AdminTrends> => {
+  return customFetch<AdminTrends>(getGetAdminTrendsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminTrendsQueryKey = (params?: GetAdminTrendsParams) => {
+  return [`/api/admin/trends`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAdminTrendsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminTrends>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminTrendsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAdminTrends>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminTrendsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminTrends>>> = ({
+    signal,
+  }) => getAdminTrends(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminTrends>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdminTrendsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminTrends>>
+>;
+export type GetAdminTrendsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get platform trend data
+ */
+
+export function useGetAdminTrends<
+  TData = Awaited<ReturnType<typeof getAdminTrends>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminTrendsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAdminTrends>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminTrendsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns a daily count of audit-log events for the given tenant for the last N days (default 30). Used to render the activity sparkline in the tenant detail sheet.
+
+ * @summary Get per-tenant activity counts
+ */
+export const getGetAdminTenantActivityUrl = (
+  id: number,
+  params?: GetAdminTenantActivityParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/tenants/${id}/activity?${stringifiedParams}`
+    : `/api/admin/tenants/${id}/activity`;
+};
+
+export const getAdminTenantActivity = async (
+  id: number,
+  params?: GetAdminTenantActivityParams,
+  options?: RequestInit,
+): Promise<TenantActivity> => {
+  return customFetch<TenantActivity>(getGetAdminTenantActivityUrl(id, params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminTenantActivityQueryKey = (
+  id: number,
+  params?: GetAdminTenantActivityParams,
+) => {
+  return [
+    `/api/admin/tenants/${id}/activity`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetAdminTenantActivityQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminTenantActivity>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  params?: GetAdminTenantActivityParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAdminTenantActivity>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAdminTenantActivityQueryKey(id, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAdminTenantActivity>>
+  > = ({ signal }) =>
+    getAdminTenantActivity(id, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminTenantActivity>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdminTenantActivityQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminTenantActivity>>
+>;
+export type GetAdminTenantActivityQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get per-tenant activity counts
+ */
+
+export function useGetAdminTenantActivity<
+  TData = Awaited<ReturnType<typeof getAdminTenantActivity>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  params?: GetAdminTenantActivityParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAdminTenantActivity>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminTenantActivityQueryOptions(
+    id,
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

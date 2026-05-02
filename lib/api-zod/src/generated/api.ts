@@ -793,6 +793,98 @@ export const GetAdminAuditLogsResponse = zod.array(
 );
 
 /**
+ * Returns weekly trend buckets for tenant signups, active tenant count, and estimated MRR. Used to render historical charts on the super-admin dashboard. MRR is derived from Stripe subscriptions when configured; otherwise it falls back to a plan-tier estimate from current tenant records (mrrIsEstimate=true).
+
+ * @summary Get platform trend data
+ */
+export const getAdminTrendsQueryWeeksDefault = 12;
+export const getAdminTrendsQueryWeeksMax = 52;
+
+export const GetAdminTrendsQueryParams = zod.object({
+  weeks: zod.coerce
+    .number()
+    .min(1)
+    .max(getAdminTrendsQueryWeeksMax)
+    .default(getAdminTrendsQueryWeeksDefault)
+    .describe("Number of weeks of history to return (1-52, default 12)"),
+});
+
+export const GetAdminTrendsResponse = zod.object({
+  weeks: zod.number().describe("Number of weekly buckets returned"),
+  signupsPerWeek: zod
+    .array(
+      zod.object({
+        weekStart: zod
+          .string()
+          .describe("ISO date for the start of the week bucket (Monday, UTC)"),
+        value: zod.number(),
+      }),
+    )
+    .describe("Tenant signups per week derived from tenants.createdAt"),
+  activeTenantsOverTime: zod
+    .array(
+      zod.object({
+        weekStart: zod
+          .string()
+          .describe("ISO date for the start of the week bucket (Monday, UTC)"),
+        value: zod.number(),
+      }),
+    )
+    .describe(
+      "Cumulative count of non-suspended tenants at the end of each week",
+    ),
+  mrrCentsOverTime: zod
+    .array(
+      zod.object({
+        weekStart: zod
+          .string()
+          .describe("ISO date for the start of the week bucket (Monday, UTC)"),
+        value: zod.number(),
+      }),
+    )
+    .describe("Estimated MRR in cents at the end of each week"),
+  mrrIsEstimate: zod
+    .boolean()
+    .describe(
+      "True when MRR is a plan-tier estimate rather than live Stripe data",
+    ),
+});
+
+/**
+ * Returns a daily count of audit-log events for the given tenant for the last N days (default 30). Used to render the activity sparkline in the tenant detail sheet.
+
+ * @summary Get per-tenant activity counts
+ */
+export const GetAdminTenantActivityParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const getAdminTenantActivityQueryDaysDefault = 30;
+export const getAdminTenantActivityQueryDaysMax = 90;
+
+export const GetAdminTenantActivityQueryParams = zod.object({
+  days: zod.coerce
+    .number()
+    .min(1)
+    .max(getAdminTenantActivityQueryDaysMax)
+    .default(getAdminTenantActivityQueryDaysDefault)
+    .describe("Number of days of history (1-90, default 30)"),
+});
+
+export const GetAdminTenantActivityResponse = zod.object({
+  days: zod.number().describe("Number of daily buckets returned"),
+  activity: zod.array(
+    zod.object({
+      date: zod
+        .string()
+        .describe("ISO date (YYYY-MM-DD) for the day bucket (UTC)"),
+      count: zod.number(),
+    }),
+  ),
+  totalEvents: zod.number().describe("Total audit-log events in the window"),
+});
+
+/**
  * @summary List items
  */
 export const listItemsQueryPageDefault = 1;

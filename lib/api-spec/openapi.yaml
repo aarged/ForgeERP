@@ -886,6 +886,101 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/trends:
+    get:
+      operationId: getAdminTrends
+      tags: [admin]
+      summary: Get platform trend data
+      description: >
+        Returns weekly trend buckets for tenant signups, active tenant count,
+        and estimated MRR. Used to render historical charts on the super-admin
+        dashboard. MRR is derived from Stripe subscriptions when configured;
+        otherwise it falls back to a plan-tier estimate from current tenant
+        records (mrrIsEstimate=true).
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: weeks
+          in: query
+          required: false
+          description: Number of weeks of history to return (1-52, default 12)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 52
+            default: 12
+      responses:
+        "200":
+          description: Weekly trend buckets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTrends"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/tenants/{id}/activity:
+    get:
+      operationId: getAdminTenantActivity
+      tags: [admin]
+      summary: Get per-tenant activity counts
+      description: >
+        Returns a daily count of audit-log events for the given tenant for the
+        last N days (default 30). Used to render the activity sparkline in the
+        tenant detail sheet.
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: days
+          in: query
+          required: false
+          description: Number of days of history (1-90, default 30)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 30
+      responses:
+        "200":
+          description: Daily activity counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantActivity"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /master-data/items:
     get:
       operationId: listItems
@@ -7141,6 +7236,79 @@ components:
         - id
         - action
         - createdAt
+
+    TrendPoint:
+      type: object
+      properties:
+        weekStart:
+          type: string
+          description: ISO date for the start of the week bucket (Monday, UTC)
+        value:
+          type: number
+      required:
+        - weekStart
+        - value
+
+    AdminTrends:
+      type: object
+      properties:
+        weeks:
+          type: integer
+          description: Number of weekly buckets returned
+        signupsPerWeek:
+          type: array
+          description: Tenant signups per week derived from tenants.createdAt
+          items:
+            $ref: "#/components/schemas/TrendPoint"
+        activeTenantsOverTime:
+          type: array
+          description: Cumulative count of non-suspended tenants at the end of each week
+          items:
+            $ref: "#/components/schemas/TrendPoint"
+        mrrCentsOverTime:
+          type: array
+          description: Estimated MRR in cents at the end of each week
+          items:
+            $ref: "#/components/schemas/TrendPoint"
+        mrrIsEstimate:
+          type: boolean
+          description: True when MRR is a plan-tier estimate rather than live Stripe data
+      required:
+        - weeks
+        - signupsPerWeek
+        - activeTenantsOverTime
+        - mrrCentsOverTime
+        - mrrIsEstimate
+
+    TenantActivityPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          description: ISO date (YYYY-MM-DD) for the day bucket (UTC)
+        count:
+          type: integer
+      required:
+        - date
+        - count
+
+    TenantActivity:
+      type: object
+      properties:
+        days:
+          type: integer
+          description: Number of daily buckets returned
+        activity:
+          type: array
+          items:
+            $ref: "#/components/schemas/TenantActivityPoint"
+        totalEvents:
+          type: integer
+          description: Total audit-log events in the window
+      required:
+        - days
+        - activity
+        - totalEvents
 
     OnboardingInvite:
       type: object

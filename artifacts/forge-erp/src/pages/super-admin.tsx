@@ -4,6 +4,9 @@ import {
   useGetAdminKpi,
   useListAdminTenants,
   useGetAdminTenant,
+  useGetAdminTrends,
+  useGetAdminTenantActivity,
+  getGetAdminTenantActivityQueryKey,
   useCreateAdminTenant,
   useUpdateAdminTenant,
   useDeleteAdminTenant,
@@ -21,8 +24,23 @@ import {
 import type {
   AdminTenant,
   AdminTenantMember,
+  AdminTrends,
+  TenantActivity,
   UpdateMemberBody,
 } from "@workspace/api-client-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -222,6 +240,330 @@ function KpiBar() {
         ))}
       </div>
     </div>
+  );
+}
+
+// ── Trends section ────────────────────────────────────────────────────────────
+
+function formatWeekLabel(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function TrendsChart({
+  title,
+  description,
+  data,
+  variant,
+  color,
+  formatValue,
+}: {
+  title: string;
+  description: string;
+  data: AdminTrends["signupsPerWeek"];
+  variant: "bar" | "line" | "area";
+  color: string;
+  formatValue?: (v: number) => string;
+}) {
+  const chartData = data.map((p) => ({
+    label: formatWeekLabel(p.weekStart),
+    value: p.value,
+  }));
+
+  const tooltipFormatter = (value: number | string): [string, string] => [
+    formatValue ? formatValue(Number(value)) : String(value),
+    title,
+  ];
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </CardHeader>
+      <CardContent className="pb-3">
+        <div className="h-40 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            {variant === "bar" ? (
+              <BarChart
+                data={chartData}
+                margin={{ top: 4, right: 4, left: -12, bottom: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="currentColor"
+                  className="text-border"
+                />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={36}
+                  tickFormatter={(v) => (formatValue ? formatValue(Number(v)) : String(v))}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  formatter={tooltipFormatter}
+                  contentStyle={{ fontSize: 12, padding: "4px 8px" }}
+                />
+                <Bar dataKey="value" fill={color} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            ) : variant === "area" ? (
+              <AreaChart
+                data={chartData}
+                margin={{ top: 4, right: 4, left: -12, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id={`fill-${title}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={color} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="currentColor"
+                  className="text-border"
+                />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={48}
+                  tickFormatter={(v) => (formatValue ? formatValue(Number(v)) : String(v))}
+                />
+                <Tooltip
+                  formatter={tooltipFormatter}
+                  contentStyle={{ fontSize: 12, padding: "4px 8px" }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke={color}
+                  strokeWidth={2}
+                  fill={`url(#fill-${title})`}
+                />
+              </AreaChart>
+            ) : (
+              <LineChart
+                data={chartData}
+                margin={{ top: 4, right: 4, left: -12, bottom: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="currentColor"
+                  className="text-border"
+                />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={36}
+                  tickFormatter={(v) => (formatValue ? formatValue(Number(v)) : String(v))}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  formatter={tooltipFormatter}
+                  contentStyle={{ fontSize: 12, padding: "4px 8px" }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke={color}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const TREND_RANGES: Array<{ label: string; weeks: number }> = [
+  { label: "8w", weeks: 8 },
+  { label: "12w", weeks: 12 },
+  { label: "26w", weeks: 26 },
+  { label: "52w", weeks: 52 },
+];
+
+function TrendsSection() {
+  const [weeks, setWeeks] = useState(12);
+  const { data, isLoading } = useGetAdminTrends({ weeks });
+
+  return (
+    <div className="space-y-3" data-testid="admin-trends-section">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold flex items-center gap-1.5">
+            <TrendingUp className="h-4 w-4 text-violet-500" />
+            Trends
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Weekly platform health signals
+            {data?.mrrIsEstimate && (
+              <span className="ml-1.5 text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                MRR is plan-tier estimate
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          {TREND_RANGES.map((r) => (
+            <Button
+              key={r.weeks}
+              size="sm"
+              variant={weeks === r.weeks ? "default" : "outline"}
+              className="h-7 px-2.5 text-xs"
+              onClick={() => setWeeks(r.weeks)}
+              data-testid={`trend-range-${r.weeks}`}
+            >
+              {r.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading || !data ? (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4">
+                <div className="h-4 w-32 rounded bg-muted animate-pulse mb-3" />
+                <div className="h-40 w-full rounded bg-muted animate-pulse" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <TrendsChart
+            title="Signups per week"
+            description="New tenants created"
+            data={data.signupsPerWeek}
+            variant="bar"
+            color="#3b82f6"
+          />
+          <TrendsChart
+            title="Active tenants"
+            description="Cumulative non-suspended tenants"
+            data={data.activeTenantsOverTime}
+            variant="line"
+            color="#10b981"
+          />
+          <TrendsChart
+            title="MRR over time"
+            description={
+              data.mrrIsEstimate
+                ? "Estimated from current plan tiers"
+                : "From Stripe active subscriptions"
+            }
+            data={data.mrrCentsOverTime}
+            variant="area"
+            color="#8b5cf6"
+            formatValue={(v) => formatMrr(v)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Per-tenant activity sparkline ─────────────────────────────────────────────
+
+function TenantActivitySparkline({
+  tenantId,
+  open,
+}: {
+  tenantId: number;
+  open: boolean;
+}) {
+  const { data, isLoading } = useGetAdminTenantActivity(
+    tenantId,
+    { days: 30 },
+    {
+      query: {
+        queryKey: getGetAdminTenantActivityQueryKey(tenantId, { days: 30 }),
+        enabled: open && tenantId > 0,
+      },
+    },
+  );
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <TrendingUp className="h-4 w-4" />
+          Activity
+          {data && (
+            <span className="text-xs font-normal text-muted-foreground">
+              · {data.totalEvents} events / {data.days}d
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pb-3">
+        {isLoading || !data ? (
+          <div className="h-20 w-full rounded bg-muted animate-pulse" />
+        ) : data.totalEvents === 0 ? (
+          <p className="text-xs text-muted-foreground py-4 text-center">
+            No audit-log activity in the last {data.days} days.
+          </p>
+        ) : (
+          <div className="h-20 w-full" data-testid="tenant-activity-sparkline">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={data.activity}
+                margin={{ top: 2, right: 2, left: 2, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#6366f1" stopOpacity={0.45} />
+                    <stop offset="100%" stopColor="#6366f1" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <Tooltip
+                  formatter={(v: number | string) => [String(v), "events"]}
+                  labelFormatter={(label: string) =>
+                    new Date(label).toLocaleDateString()
+                  }
+                  contentStyle={{ fontSize: 11, padding: "2px 6px" }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="count"
+                  stroke="#6366f1"
+                  strokeWidth={1.5}
+                  fill="url(#spark-fill)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -624,6 +966,8 @@ function TenantDetailSheet({
               </Button>
             )}
           </div>
+
+          <TenantActivitySparkline tenantId={tenant.id} open={open} />
 
           <TenantMembersCard tenantId={tenant.id} open={open} />
 
@@ -1095,6 +1439,9 @@ export default function SuperAdmin() {
 
       {/* KPIs */}
       <KpiBar />
+
+      {/* Trends */}
+      <TrendsSection />
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
