@@ -26,7 +26,7 @@ The frontend utilizes React with Vite, styled using Tailwind CSS v4, shadcn/ui f
 **Feature Specifications:**
 - **Multi-tenancy:** Core to the platform, with a `tenants` table and RLS policies ensuring data segregation.
 - **Role-Based Access Control (RBAC):** Defined roles (`super_admin`, `tenant_admin`, `purchaser`, `warehouse`, `approver`, `accountant`, `viewer`) govern access.
-- **Audit Logging:** A comprehensive `audit_logs` table records all system actions.
+- **Audit Logging:** A comprehensive `audit_logs` table records all system actions. Super admins can browse audit history via the "Audit Logs" tab on `/super-admin`, with client-side filtering by tenant and action and 50-per-page pagination.
 - **Onboarding Wizard:** A 5-step self-serve onboarding process for new tenants, including company details, structure, master data import, plan/payment setup, and team invitations.
 - **Modules:**
     - **Procurement & Purchase Orders:** Covers requisitions, purchase orders, goods receipts, and returns.

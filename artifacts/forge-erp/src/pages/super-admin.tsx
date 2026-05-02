@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetAdminKpi,
@@ -15,6 +15,7 @@ import {
   useGetTenantInvoices,
   useListAdminTenantMembers,
   useUpdateAdminTenantMember,
+  useGetAdminAuditLogs,
   getListAdminTenantsQueryKey,
   getGetAdminKpiQueryKey,
   getGetTenantInvoicesQueryKey,
@@ -25,6 +26,7 @@ import type {
   AdminTenant,
   AdminTenantMember,
   AdminTrends,
+  AuditLog,
   TenantActivity,
   UpdateMemberBody,
 } from "@workspace/api-client-react";
@@ -82,6 +84,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import {
   MoreHorizontal,
@@ -98,6 +111,10 @@ import {
   Ban,
   Trash2,
   ArrowUpDown,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -1387,6 +1404,352 @@ function TenantRowActions({
   );
 }
 
+// ── Audit Logs tab ────────────────────────────────────────────────────────────
+
+const AUDIT_PAGE_SIZE = 50;
+
+function formatActorEmail(log: AuditLog): string {
+  if (log.actorEmail) return log.actorEmail;
+  if (log.actorClerkId) return log.actorClerkId;
+  return "system";
+}
+
+function ActionBadge({ action }: { action: string }) {
+  const lower = action.toLowerCase();
+  let style = "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+  if (lower.includes("created") || lower.includes("accepted")) {
+    style =
+      "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400";
+  } else if (lower.includes("deleted") || lower.includes("failed")) {
+    style = "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
+  } else if (lower.includes("updated") || lower.includes("sync")) {
+    style = "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
+  } else if (
+    lower.includes("stripe") ||
+    lower.includes("subscription") ||
+    lower.includes("billing")
+  ) {
+    style =
+      "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400";
+  }
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-mono font-medium",
+        style,
+      )}
+    >
+      {action}
+    </span>
+  );
+}
+
+function MetadataDiff({ log }: { log: AuditLog }) {
+  const hasOld =
+    log.oldValues !== null &&
+    log.oldValues !== undefined &&
+    !(typeof log.oldValues === "object" && Object.keys(log.oldValues as object).length === 0);
+  const hasNew =
+    log.newValues !== null &&
+    log.newValues !== undefined &&
+    !(typeof log.newValues === "object" && Object.keys(log.newValues as object).length === 0);
+
+  if (!hasOld && !hasNew) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          data-testid={`audit-diff-trigger-${log.id}`}
+        >
+          <Eye className="mr-1 h-3 w-3" />
+          View
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[420px] p-0"
+        data-testid={`audit-diff-content-${log.id}`}
+      >
+        <div className="border-b px-3 py-2">
+          <p className="text-xs font-semibold">Metadata diff</p>
+          <p className="text-[10px] text-muted-foreground">
+            {log.entityType ?? "—"}
+            {log.entityId ? ` · #${log.entityId}` : ""}
+          </p>
+        </div>
+        <div className="max-h-[360px] overflow-auto p-3 space-y-3">
+          {hasOld && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 mb-1">
+                Before
+              </p>
+              <pre className="text-[11px] leading-snug bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded p-2 overflow-x-auto whitespace-pre-wrap break-words">
+                {JSON.stringify(log.oldValues, null, 2)}
+              </pre>
+            </div>
+          )}
+          {hasNew && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-1">
+                After
+              </p>
+              <pre className="text-[11px] leading-snug bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 rounded p-2 overflow-x-auto whitespace-pre-wrap break-words">
+                {JSON.stringify(log.newValues, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function AuditLogsTab() {
+  const [tenantFilter, setTenantFilter] = useState<string>("all");
+  const [actionFilter, setActionFilter] = useState<string>("all");
+  const [page, setPage] = useState(0);
+
+  const { data: tenants } = useListAdminTenants();
+
+  // Fetch all audit logs (capped at 100 server-side) and apply both filters
+  // client-side. We don't pass tenantId to the API because some tenant-scoped
+  // events (e.g. "tenant.created") store the tenant in entityId rather than
+  // tenant_id, so server-side filtering would hide them.
+  const {
+    data: logs,
+    isLoading,
+    isFetching,
+    refetch,
+  } = useGetAdminAuditLogs();
+
+  const tenantNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const t of tenants ?? []) {
+      map.set(t.id, t.name);
+    }
+    return map;
+  }, [tenants]);
+
+  const uniqueActions = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of logs ?? []) set.add(l.action);
+    return Array.from(set).sort();
+  }, [logs]);
+
+  const filtered = useMemo(() => {
+    let result = logs ?? [];
+    if (tenantFilter !== "all") {
+      const tid = Number(tenantFilter);
+      result = result.filter(
+        (l) =>
+          l.tenantId === tid ||
+          (l.entityType === "tenant" && l.entityId === String(tid)),
+      );
+    }
+    if (actionFilter !== "all") {
+      result = result.filter((l) => l.action === actionFilter);
+    }
+    return result;
+  }, [logs, tenantFilter, actionFilter]);
+
+  // Reset to first page when filters change or result set shrinks
+  useEffect(() => {
+    setPage(0);
+  }, [tenantFilter, actionFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / AUDIT_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pageItems = filtered.slice(
+    currentPage * AUDIT_PAGE_SIZE,
+    (currentPage + 1) * AUDIT_PAGE_SIZE,
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={tenantFilter} onValueChange={setTenantFilter}>
+          <SelectTrigger
+            className="h-8 w-[200px] text-sm"
+            data-testid="audit-filter-tenant"
+          >
+            <SelectValue placeholder="Tenant" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All tenants</SelectItem>
+            {(tenants ?? []).map((t) => (
+              <SelectItem key={t.id} value={String(t.id)}>
+                {t.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={actionFilter} onValueChange={setActionFilter}>
+          <SelectTrigger
+            className="h-8 w-[220px] text-sm"
+            data-testid="audit-filter-action"
+          >
+            <SelectValue placeholder="Action" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All actions</SelectItem>
+            {uniqueActions.map((a) => (
+              <SelectItem key={a} value={a}>
+                {a}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => void refetch()}
+          disabled={isFetching}
+          title="Refresh"
+          data-testid="audit-refresh"
+        >
+          <RefreshCw
+            className={cn("h-4 w-4", isFetching && "animate-spin")}
+          />
+        </Button>
+        <div className="ml-auto text-xs text-muted-foreground">
+          {filtered.length} {filtered.length === 1 ? "entry" : "entries"}
+        </div>
+      </div>
+
+      {/* Table */}
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-[160px]">Timestamp</TableHead>
+              <TableHead>Action</TableHead>
+              <TableHead>Actor</TableHead>
+              <TableHead>Target</TableHead>
+              <TableHead className="w-[90px] text-right">Diff</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 6 }).map((_, i) => (
+                <TableRow key={i}>
+                  {[140, 140, 180, 160, 60].map((w, j) => (
+                    <TableCell key={j}>
+                      <div
+                        className="h-4 rounded bg-muted animate-pulse"
+                        style={{ width: w }}
+                      />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : pageItems.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={5}
+                  className="text-center py-16 text-muted-foreground"
+                >
+                  {(logs ?? []).length === 0
+                    ? "No audit log entries yet."
+                    : "No entries match your filters."}
+                </TableCell>
+              </TableRow>
+            ) : (
+              pageItems.map((log) => {
+                // Resolve target tenant: prefer tenant_id, fall back to entityId
+                // when the audit row is itself a tenant entity (e.g. tenant.created).
+                let targetTenantId: number | null = log.tenantId ?? null;
+                if (
+                  targetTenantId == null &&
+                  log.entityType === "tenant" &&
+                  log.entityId
+                ) {
+                  const parsed = Number(log.entityId);
+                  if (!Number.isNaN(parsed)) targetTenantId = parsed;
+                }
+                const tenantName =
+                  targetTenantId != null
+                    ? tenantNameById.get(targetTenantId) ??
+                      `Tenant #${targetTenantId}`
+                    : "—";
+                return (
+                  <TableRow
+                    key={log.id}
+                    data-testid={`audit-row-${log.id}`}
+                  >
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                      {new Date(log.createdAt).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <ActionBadge action={log.action} />
+                    </TableCell>
+                    <TableCell className="text-sm truncate max-w-[220px]">
+                      {formatActorEmail(log)}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <span className="font-medium">{tenantName}</span>
+                      {log.entityType && (
+                        <span className="text-xs text-muted-foreground ml-1">
+                          · {log.entityType}
+                          {log.entityId ? ` #${log.entityId}` : ""}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <MetadataDiff log={log} />
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </Card>
+
+      {/* Pagination */}
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            Page {currentPage + 1} of {totalPages} · showing{" "}
+            {pageItems.length} of {filtered.length}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+              data-testid="audit-prev-page"
+            >
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage >= totalPages - 1}
+              data-testid="audit-next-page"
+            >
+              Next
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SuperAdmin() {
@@ -1413,28 +1776,11 @@ export default function SuperAdmin() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Super Admin</h2>
-          <p className="text-sm text-muted-foreground">
-            Platform management · all tenants
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => void refetch()}
-            title="Refresh"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            New Tenant
-          </Button>
-        </div>
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Super Admin</h2>
+        <p className="text-sm text-muted-foreground">
+          Platform management · all tenants
+        </p>
       </div>
 
       {/* KPIs */}
@@ -1443,8 +1789,38 @@ export default function SuperAdmin() {
       {/* Trends */}
       <TrendsSection />
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2">
+      <Tabs defaultValue="tenants" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="tenants" data-testid="tab-tenants">
+            <Building2 className="mr-1.5 h-4 w-4" />
+            Tenants
+          </TabsTrigger>
+          <TabsTrigger value="audit" data-testid="tab-audit">
+            <FileText className="mr-1.5 h-4 w-4" />
+            Audit Logs
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="tenants" className="space-y-4">
+          {/* Tenants toolbar */}
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => void refetch()}
+              title="Refresh"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              New Tenant
+            </Button>
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <Input
@@ -1573,6 +1949,12 @@ export default function SuperAdmin() {
           </TableBody>
         </Table>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="audit">
+          <AuditLogsTab />
+        </TabsContent>
+      </Tabs>
 
       <CreateTenantDialog open={createOpen} onOpenChange={setCreateOpen} />
       <TenantDetailSheet
