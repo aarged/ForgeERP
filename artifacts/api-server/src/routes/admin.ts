@@ -949,29 +949,103 @@ router.patch(
       return;
     }
 
-    const [existing] = await adminDb
-      .select()
-      .from(tenantMembershipsTable)
-      .where(
-        sql`${tenantMembershipsTable.id} = ${membershipId} AND ${tenantMembershipsTable.tenantId} = ${id}`,
-      )
-      .limit(1);
+    // Atomic guard + update.
+    //
+    // To prevent locking the platform out by removing the last active
+    // super_admin, we wrap the read-check-update in a transaction and take
+    // row-level locks (SELECT ... FOR UPDATE) on every currently active
+    // super_admin row plus the target membership. Any concurrent request
+    // that also touches an active super_admin will block on the same lock
+    // set and re-evaluate the invariant after the first transaction commits,
+    // so two simultaneous demotions/deactivations cannot both succeed.
+    const txResult = await adminDb.transaction(async (tx) => {
+      // Lock the union of (a) all currently active super_admin rows and
+      // (b) the target membership row. Returning `id` is enough — we just
+      // need the locks; we re-read state below.
+      await tx
+        .select({ id: tenantMembershipsTable.id })
+        .from(tenantMembershipsTable)
+        .where(
+          sql`(${tenantMembershipsTable.role} = 'super_admin'
+                AND ${tenantMembershipsTable.isActive} = 'true')
+              OR ${tenantMembershipsTable.id} = ${membershipId}`,
+        )
+        .for("update");
 
-    if (!existing) {
+      // Re-read the target membership inside the transaction to get the
+      // freshest committed state.
+      const [current] = await tx
+        .select()
+        .from(tenantMembershipsTable)
+        .where(
+          sql`${tenantMembershipsTable.id} = ${membershipId}
+              AND ${tenantMembershipsTable.tenantId} = ${id}`,
+        )
+        .limit(1);
+
+      if (!current) {
+        return { kind: "not_found" as const };
+      }
+
+      const isCurrentlyActiveSuperAdmin =
+        current.role === "super_admin" && current.isActive === "true";
+      const willRemainSuperAdmin =
+        parsed.data.role === undefined
+          ? current.role === "super_admin"
+          : parsed.data.role === "super_admin";
+      const willRemainActive =
+        parsed.data.isActive === undefined
+          ? current.isActive === "true"
+          : parsed.data.isActive;
+      const wouldLoseSuperAdminStatus =
+        isCurrentlyActiveSuperAdmin &&
+        (!willRemainSuperAdmin || !willRemainActive);
+
+      if (wouldLoseSuperAdminStatus) {
+        // Count other active super_admins under the lock taken above.
+        const [{ remaining } = { remaining: 0 }] = await tx
+          .select({ remaining: sql<number>`COUNT(*)::int` })
+          .from(tenantMembershipsTable)
+          .where(
+            sql`${tenantMembershipsTable.role} = 'super_admin'
+                AND ${tenantMembershipsTable.isActive} = 'true'
+                AND ${tenantMembershipsTable.id} <> ${membershipId}`,
+          );
+
+        if (Number(remaining) === 0) {
+          return { kind: "last_super_admin" as const };
+        }
+      }
+
+      const updateFields: Partial<typeof tenantMembershipsTable.$inferInsert> =
+        {};
+      if (parsed.data.role !== undefined) updateFields.role = parsed.data.role;
+      if (parsed.data.isActive !== undefined)
+        updateFields.isActive = parsed.data.isActive ? "true" : "false";
+
+      const [updated] = await tx
+        .update(tenantMembershipsTable)
+        .set(updateFields)
+        .where(eq(tenantMembershipsTable.id, membershipId))
+        .returning();
+
+      return { kind: "ok" as const, existing: current, updated: updated! };
+    });
+
+    if (txResult.kind === "not_found") {
       res.status(404).json({ error: "Member not found" });
       return;
     }
+    if (txResult.kind === "last_super_admin") {
+      res.status(409).json({
+        error:
+          "Cannot remove the last active super admin — at least one active super admin must remain on the platform.",
+        code: "LAST_SUPER_ADMIN",
+      });
+      return;
+    }
 
-    const updateFields: Partial<typeof tenantMembershipsTable.$inferInsert> = {};
-    if (parsed.data.role !== undefined) updateFields.role = parsed.data.role;
-    if (parsed.data.isActive !== undefined)
-      updateFields.isActive = parsed.data.isActive ? "true" : "false";
-
-    const [updated] = await adminDb
-      .update(tenantMembershipsTable)
-      .set(updateFields)
-      .where(eq(tenantMembershipsTable.id, membershipId))
-      .returning();
+    const { existing, updated } = txResult;
 
     await writeAuditLog({
       req,

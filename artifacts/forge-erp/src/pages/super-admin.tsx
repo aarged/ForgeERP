@@ -338,10 +338,23 @@ function TenantMembersCard({
           queryKey: getListAdminTenantsQueryKey(),
         });
       },
-      onError: () => {
+      onError: (error) => {
+        const data = (error as { data?: { error?: string; code?: string } })
+          ?.data;
+        const status = (error as { status?: number })?.status;
+        if (data?.code === "LAST_SUPER_ADMIN" || status === 409) {
+          toast({
+            title: "Action blocked",
+            description:
+              data?.error ??
+              "At least one active super admin must remain on the platform.",
+            variant: "destructive",
+          });
+          return;
+        }
         toast({
           title: "Error",
-          description: "Failed to update member",
+          description: data?.error ?? "Failed to update member",
           variant: "destructive",
         });
       },
