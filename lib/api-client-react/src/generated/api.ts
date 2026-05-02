@@ -77,6 +77,7 @@ import type {
   CreateSubscriptionBody,
   CreateSupplierBody,
   CreateTenantBody,
+  CreateTenantInviteBody,
   CreateWarehouseBody,
   CreateWarehouseLocationBody,
   CreditNote,
@@ -316,6 +317,7 @@ import type {
   SupplierPerformanceRow,
   Tenant,
   TenantActivity,
+  TenantInviteResult,
   TenantMember,
   TraceLotNumber200,
   TraceLotNumberParams,
@@ -333,6 +335,7 @@ import type {
   UpdateSerialNumberBody,
   UpdateStocktakeLineBody,
   UpdateTenantBody,
+  UpdateTenantMemberBody,
   UpdateUserBody,
   UploadOnboardingCsvBody,
   UploadUrlRequest,
@@ -668,7 +671,10 @@ export function useGetCurrentTenant<
 }
 
 /**
- * Returns all members of the current tenant
+ * Returns all members of the current tenant — both active members and
+pending invitations. Pending rows have `status: pending` and a
+`clerkId` that begins with `pending:`. Tenant-admin only.
+
  * @summary List tenant members
  */
 export const getGetTenantMembersUrl = () => {
@@ -742,6 +748,362 @@ export function useGetTenantMembers<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Tenant-admin only. Cannot set role to super_admin, modify a super_admin,
+modify your own membership, or demote/deactivate the last active
+tenant_admin.
+
+ * @summary Update a tenant member's role or active status
+ */
+export const getUpdateTenantMemberUrl = (membershipId: number) => {
+  return `/api/tenants/current/members/${membershipId}`;
+};
+
+export const updateTenantMember = async (
+  membershipId: number,
+  updateTenantMemberBody: UpdateTenantMemberBody,
+  options?: RequestInit,
+): Promise<TenantMember> => {
+  return customFetch<TenantMember>(getUpdateTenantMemberUrl(membershipId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateTenantMemberBody),
+  });
+};
+
+export const getUpdateTenantMemberMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateTenantMember>>,
+    TError,
+    { membershipId: number; data: BodyType<UpdateTenantMemberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateTenantMember>>,
+  TError,
+  { membershipId: number; data: BodyType<UpdateTenantMemberBody> },
+  TContext
+> => {
+  const mutationKey = ["updateTenantMember"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateTenantMember>>,
+    { membershipId: number; data: BodyType<UpdateTenantMemberBody> }
+  > = (props) => {
+    const { membershipId, data } = props ?? {};
+
+    return updateTenantMember(membershipId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateTenantMemberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateTenantMember>>
+>;
+export type UpdateTenantMemberMutationBody = BodyType<UpdateTenantMemberBody>;
+export type UpdateTenantMemberMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a tenant member's role or active status
+ */
+export const useUpdateTenantMember = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateTenantMember>>,
+    TError,
+    { membershipId: number; data: BodyType<UpdateTenantMemberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateTenantMember>>,
+  TError,
+  { membershipId: number; data: BodyType<UpdateTenantMemberBody> },
+  TContext
+> => {
+  return useMutation(getUpdateTenantMemberMutationOptions(options));
+};
+
+/**
+ * Creates a pending membership row (clerkId = `pending:<email>`,
+isActive=false) and dispatches a Clerk invitation email.
+Tenant-admin only.
+
+ * @summary Invite a new member to the current tenant
+ */
+export const getCreateTenantInviteUrl = () => {
+  return `/api/tenants/current/invites`;
+};
+
+export const createTenantInvite = async (
+  createTenantInviteBody: CreateTenantInviteBody,
+  options?: RequestInit,
+): Promise<TenantInviteResult> => {
+  return customFetch<TenantInviteResult>(getCreateTenantInviteUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createTenantInviteBody),
+  });
+};
+
+export const getCreateTenantInviteMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createTenantInvite>>,
+    TError,
+    { data: BodyType<CreateTenantInviteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createTenantInvite>>,
+  TError,
+  { data: BodyType<CreateTenantInviteBody> },
+  TContext
+> => {
+  const mutationKey = ["createTenantInvite"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createTenantInvite>>,
+    { data: BodyType<CreateTenantInviteBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createTenantInvite(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateTenantInviteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createTenantInvite>>
+>;
+export type CreateTenantInviteMutationBody = BodyType<CreateTenantInviteBody>;
+export type CreateTenantInviteMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Invite a new member to the current tenant
+ */
+export const useCreateTenantInvite = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createTenantInvite>>,
+    TError,
+    { data: BodyType<CreateTenantInviteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createTenantInvite>>,
+  TError,
+  { data: BodyType<CreateTenantInviteBody> },
+  TContext
+> => {
+  return useMutation(getCreateTenantInviteMutationOptions(options));
+};
+
+/**
+ * Tenant-admin only. Re-dispatches the Clerk invitation email for a pending membership.
+ * @summary Resend a pending tenant invitation
+ */
+export const getResendTenantInviteUrl = (membershipId: number) => {
+  return `/api/tenants/current/invites/${membershipId}/resend`;
+};
+
+export const resendTenantInvite = async (
+  membershipId: number,
+  options?: RequestInit,
+): Promise<TenantInviteResult> => {
+  return customFetch<TenantInviteResult>(
+    getResendTenantInviteUrl(membershipId),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getResendTenantInviteMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resendTenantInvite>>,
+    TError,
+    { membershipId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof resendTenantInvite>>,
+  TError,
+  { membershipId: number },
+  TContext
+> => {
+  const mutationKey = ["resendTenantInvite"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof resendTenantInvite>>,
+    { membershipId: number }
+  > = (props) => {
+    const { membershipId } = props ?? {};
+
+    return resendTenantInvite(membershipId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ResendTenantInviteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof resendTenantInvite>>
+>;
+
+export type ResendTenantInviteMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Resend a pending tenant invitation
+ */
+export const useResendTenantInvite = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resendTenantInvite>>,
+    TError,
+    { membershipId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof resendTenantInvite>>,
+  TError,
+  { membershipId: number },
+  TContext
+> => {
+  return useMutation(getResendTenantInviteMutationOptions(options));
+};
+
+/**
+ * Tenant-admin only. Deletes the pending membership row and revokes any
+pending Clerk invitations for that email.
+
+ * @summary Revoke a pending tenant invitation
+ */
+export const getRevokeTenantInviteUrl = (membershipId: number) => {
+  return `/api/tenants/current/invites/${membershipId}`;
+};
+
+export const revokeTenantInvite = async (
+  membershipId: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getRevokeTenantInviteUrl(membershipId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getRevokeTenantInviteMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof revokeTenantInvite>>,
+    TError,
+    { membershipId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof revokeTenantInvite>>,
+  TError,
+  { membershipId: number },
+  TContext
+> => {
+  const mutationKey = ["revokeTenantInvite"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof revokeTenantInvite>>,
+    { membershipId: number }
+  > = (props) => {
+    const { membershipId } = props ?? {};
+
+    return revokeTenantInvite(membershipId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RevokeTenantInviteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof revokeTenantInvite>>
+>;
+
+export type RevokeTenantInviteMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Revoke a pending tenant invitation
+ */
+export const useRevokeTenantInvite = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof revokeTenantInvite>>,
+    TError,
+    { membershipId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof revokeTenantInvite>>,
+  TError,
+  { membershipId: number },
+  TContext
+> => {
+  return useMutation(getRevokeTenantInviteMutationOptions(options));
+};
 
 /**
  * Returns platform-wide KPI metrics for the super-admin dashboard

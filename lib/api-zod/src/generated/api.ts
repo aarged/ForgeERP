@@ -68,18 +68,135 @@ export const GetCurrentTenantResponse = zod.object({
 });
 
 /**
- * Returns all members of the current tenant
+ * Returns all members of the current tenant — both active members and
+pending invitations. Pending rows have `status: pending` and a
+`clerkId` that begins with `pending:`. Tenant-admin only.
+
  * @summary List tenant members
  */
 export const GetTenantMembersResponseItem = zod.object({
+  id: zod.number(),
   clerkId: zod.string(),
   email: zod.string(),
   firstName: zod.string().nullish(),
   lastName: zod.string().nullish(),
-  role: zod.string(),
+  role: zod.enum([
+    "super_admin",
+    "tenant_admin",
+    "purchaser",
+    "warehouse",
+    "approver",
+    "accountant",
+    "viewer",
+  ]),
+  isActive: zod.boolean(),
+  status: zod.enum(["active", "pending", "inactive"]),
   joinedAt: zod.string(),
 });
 export const GetTenantMembersResponse = zod.array(GetTenantMembersResponseItem);
+
+/**
+ * Tenant-admin only. Cannot set role to super_admin, modify a super_admin,
+modify your own membership, or demote/deactivate the last active
+tenant_admin.
+
+ * @summary Update a tenant member's role or active status
+ */
+export const UpdateTenantMemberParams = zod.object({
+  membershipId: zod.coerce.number(),
+});
+
+export const UpdateTenantMemberBody = zod.object({
+  role: zod
+    .enum([
+      "tenant_admin",
+      "purchaser",
+      "warehouse",
+      "approver",
+      "accountant",
+      "viewer",
+    ])
+    .optional(),
+  isActive: zod.boolean().optional(),
+});
+
+export const UpdateTenantMemberResponse = zod.object({
+  id: zod.number(),
+  clerkId: zod.string(),
+  email: zod.string(),
+  firstName: zod.string().nullish(),
+  lastName: zod.string().nullish(),
+  role: zod.enum([
+    "super_admin",
+    "tenant_admin",
+    "purchaser",
+    "warehouse",
+    "approver",
+    "accountant",
+    "viewer",
+  ]),
+  isActive: zod.boolean(),
+  status: zod.enum(["active", "pending", "inactive"]),
+  joinedAt: zod.string(),
+});
+
+/**
+ * Creates a pending membership row (clerkId = `pending:<email>`,
+isActive=false) and dispatches a Clerk invitation email.
+Tenant-admin only.
+
+ * @summary Invite a new member to the current tenant
+ */
+export const CreateTenantInviteBody = zod.object({
+  email: zod.string().email(),
+  role: zod.enum([
+    "tenant_admin",
+    "purchaser",
+    "warehouse",
+    "approver",
+    "accountant",
+    "viewer",
+  ]),
+});
+
+/**
+ * Tenant-admin only. Re-dispatches the Clerk invitation email for a pending membership.
+ * @summary Resend a pending tenant invitation
+ */
+export const ResendTenantInviteParams = zod.object({
+  membershipId: zod.coerce.number(),
+});
+
+export const ResendTenantInviteResponse = zod
+  .object({
+    id: zod.number().describe("Membership row id (use for resend \/ revoke)"),
+    email: zod.string().email(),
+    role: zod.enum([
+      "tenant_admin",
+      "purchaser",
+      "warehouse",
+      "approver",
+      "accountant",
+      "viewer",
+    ]),
+    delivered: zod.boolean(),
+    clerkInvitationId: zod.string().nullish(),
+    reason: zod
+      .string()
+      .nullish()
+      .describe("Failure reason when delivered is false."),
+  })
+  .describe("Outcome of dispatching (or resending) a tenant invitation.");
+
+/**
+ * Tenant-admin only. Deletes the pending membership row and revokes any
+pending Clerk invitations for that email.
+
+ * @summary Revoke a pending tenant invitation
+ */
+export const RevokeTenantInviteParams = zod.object({
+  membershipId: zod.coerce.number(),
+});
 
 /**
  * Returns platform-wide KPI metrics for the super-admin dashboard

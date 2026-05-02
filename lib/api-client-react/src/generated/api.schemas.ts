@@ -71,15 +71,104 @@ export interface Tenant {
   createdAt: string;
 }
 
+export type TenantMemberRole =
+  (typeof TenantMemberRole)[keyof typeof TenantMemberRole];
+
+export const TenantMemberRole = {
+  super_admin: "super_admin",
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+export type TenantMemberStatus =
+  (typeof TenantMemberStatus)[keyof typeof TenantMemberStatus];
+
+export const TenantMemberStatus = {
+  active: "active",
+  pending: "pending",
+  inactive: "inactive",
+} as const;
+
 export interface TenantMember {
+  id: number;
   clerkId: string;
   email: string;
   /** @nullable */
   firstName?: string | null;
   /** @nullable */
   lastName?: string | null;
-  role: string;
+  role: TenantMemberRole;
+  isActive: boolean;
+  status: TenantMemberStatus;
   joinedAt: string;
+}
+
+export type CreateTenantInviteBodyRole =
+  (typeof CreateTenantInviteBodyRole)[keyof typeof CreateTenantInviteBodyRole];
+
+export const CreateTenantInviteBodyRole = {
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+export interface CreateTenantInviteBody {
+  email: string;
+  role: CreateTenantInviteBodyRole;
+}
+
+export type TenantInviteResultRole =
+  (typeof TenantInviteResultRole)[keyof typeof TenantInviteResultRole];
+
+export const TenantInviteResultRole = {
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+/**
+ * Outcome of dispatching (or resending) a tenant invitation.
+ */
+export interface TenantInviteResult {
+  /** Membership row id (use for resend / revoke) */
+  id: number;
+  email: string;
+  role: TenantInviteResultRole;
+  delivered: boolean;
+  /** @nullable */
+  clerkInvitationId?: string | null;
+  /**
+   * Failure reason when delivered is false.
+   * @nullable
+   */
+  reason?: string | null;
+}
+
+export type UpdateTenantMemberBodyRole =
+  (typeof UpdateTenantMemberBodyRole)[keyof typeof UpdateTenantMemberBodyRole];
+
+export const UpdateTenantMemberBodyRole = {
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+export interface UpdateTenantMemberBody {
+  role?: UpdateTenantMemberBodyRole;
+  isActive?: boolean;
 }
 
 export interface AdminKpi {

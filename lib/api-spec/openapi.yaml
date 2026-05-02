@@ -127,7 +127,10 @@ paths:
       operationId: getTenantMembers
       tags: [tenants]
       summary: List tenant members
-      description: Returns all members of the current tenant
+      description: |
+        Returns all members of the current tenant — both active members and
+        pending invitations. Pending rows have `status: pending` and a
+        `clerkId` that begins with `pending:`. Tenant-admin only.
       security:
         - clerkAuth: []
       responses:
@@ -141,6 +144,206 @@ paths:
                   $ref: "#/components/schemas/TenantMember"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/current/members/{membershipId}:
+    patch:
+      operationId: updateTenantMember
+      tags: [tenants]
+      summary: Update a tenant member's role or active status
+      description: |
+        Tenant-admin only. Cannot set role to super_admin, modify a super_admin,
+        modify your own membership, or demote/deactivate the last active
+        tenant_admin.
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTenantMemberBody"
+      responses:
+        "200":
+          description: Updated member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantMember"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/current/invites:
+    post:
+      operationId: createTenantInvite
+      tags: [tenants]
+      summary: Invite a new member to the current tenant
+      description: |
+        Creates a pending membership row (clerkId = `pending:<email>`,
+        isActive=false) and dispatches a Clerk invitation email.
+        Tenant-admin only.
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTenantInviteBody"
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantInviteResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Member or pending invite already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/current/invites/{membershipId}/resend:
+    post:
+      operationId: resendTenantInvite
+      tags: [tenants]
+      summary: Resend a pending tenant invitation
+      description: Tenant-admin only. Re-dispatches the Clerk invitation email for a pending membership.
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invite resent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantInviteResult"
+        "400":
+          description: Membership is not pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/current/invites/{membershipId}:
+    delete:
+      operationId: revokeTenantInvite
+      tags: [tenants]
+      summary: Revoke a pending tenant invitation
+      description: |
+        Tenant-admin only. Deletes the pending membership row and revokes any
+        pending Clerk invitations for that email.
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Invite revoked
+        "400":
+          description: Membership is not pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Member not found
           content:
             application/json:
               schema:
@@ -6843,6 +7046,8 @@ components:
     TenantMember:
       type: object
       properties:
+        id:
+          type: integer
         clerkId:
           type: string
         email:
@@ -6853,13 +7058,77 @@ components:
           type: ["string", "null"]
         role:
           type: string
+          enum:
+            - super_admin
+            - tenant_admin
+            - purchaser
+            - warehouse
+            - approver
+            - accountant
+            - viewer
+        isActive:
+          type: boolean
+        status:
+          type: string
+          enum: [active, pending, inactive]
         joinedAt:
           type: string
       required:
+        - id
         - clerkId
         - email
         - role
+        - isActive
+        - status
         - joinedAt
+
+    CreateTenantInviteBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [tenant_admin, purchaser, warehouse, approver, accountant, viewer]
+      required:
+        - email
+        - role
+
+    TenantInviteResult:
+      type: object
+      description: Outcome of dispatching (or resending) a tenant invitation.
+      properties:
+        id:
+          type: integer
+          description: Membership row id (use for resend / revoke)
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [tenant_admin, purchaser, warehouse, approver, accountant, viewer]
+        delivered:
+          type: boolean
+        clerkInvitationId:
+          type: ["string", "null"]
+        reason:
+          type: ["string", "null"]
+          description: Failure reason when delivered is false.
+      required:
+        - id
+        - email
+        - role
+        - delivered
+
+    UpdateTenantMemberBody:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [tenant_admin, purchaser, warehouse, approver, accountant, viewer]
+        isActive:
+          type: boolean
 
     AdminKpi:
       type: object
