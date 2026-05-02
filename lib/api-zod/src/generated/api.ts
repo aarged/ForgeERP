@@ -199,6 +199,75 @@ export const RevokeTenantInviteParams = zod.object({
 });
 
 /**
+ * Creates a new tenant for the authenticated user, assigns them as tenant_admin, and (for paid plans) creates a Stripe Checkout Session whose URL the client should redirect the user to. For the "starter" plan, the response asks the client to send the user to /dashboard. Idempotent: if the user already has an active tenant membership, returns the existing tenant unchanged.
+
+ * @summary Self-serve tenant onboarding
+ */
+export const onboardTenantBodyCompanyNameMax = 200;
+
+export const onboardTenantBodySlugMin = 2;
+export const onboardTenantBodySlugMax = 60;
+
+export const onboardTenantBodySlugRegExp = new RegExp("^[a-z0-9-]+$");
+
+export const OnboardTenantBody = zod
+  .object({
+    companyName: zod
+      .string()
+      .min(1)
+      .max(onboardTenantBodyCompanyNameMax)
+      .describe("The display name of the tenant \/ company."),
+    slug: zod
+      .string()
+      .min(onboardTenantBodySlugMin)
+      .max(onboardTenantBodySlugMax)
+      .regex(onboardTenantBodySlugRegExp)
+      .optional()
+      .describe(
+        "Optional URL-safe slug. If omitted, derived from companyName.",
+      ),
+    planTier: zod
+      .enum(["starter", "growth", "enterprise"])
+      .describe(
+        'Subscription plan to activate. \"starter\" is free; paid plans require Stripe checkout.',
+      ),
+    billingEmail: zod
+      .string()
+      .email()
+      .describe("Email used for invoices and Stripe customer record."),
+  })
+  .describe("Payload for the self-serve \/tenants\/onboard endpoint.");
+
+export const OnboardTenantResponse = zod.object({
+  tenantId: zod.number(),
+  slug: zod.string(),
+  name: zod.string(),
+  planTier: zod.enum(["starter", "growth", "enterprise"]),
+  status: zod.enum(["active", "suspended", "trial", "pending"]),
+  role: zod.string(),
+  redirectTo: zod
+    .string()
+    .describe(
+      'Where the client should send the user next. Either an absolute Stripe Checkout URL (for paid plans when Stripe is configured) or the relative path \"\/dashboard\".\n',
+    ),
+  checkoutUrl: zod
+    .string()
+    .nullish()
+    .describe(
+      "Stripe Checkout Session URL (only set for paid plans when Stripe is configured).",
+    ),
+  checkoutSessionId: zod
+    .string()
+    .nullish()
+    .describe("Stripe Checkout Session id, when one was created."),
+  alreadyOnboarded: zod
+    .boolean()
+    .describe(
+      "True when the user already had a tenant; no new tenant was created.",
+    ),
+});
+
+/**
  * Returns platform-wide KPI metrics for the super-admin dashboard
  * @summary Get platform KPI metrics
  */

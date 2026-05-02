@@ -603,6 +603,84 @@ export interface OnboardingInvite {
   role: OnboardingInviteRole;
 }
 
+/**
+ * Subscription plan to activate. "starter" is free; paid plans require Stripe checkout.
+ */
+export type OnboardTenantInputPlanTier =
+  (typeof OnboardTenantInputPlanTier)[keyof typeof OnboardTenantInputPlanTier];
+
+export const OnboardTenantInputPlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+/**
+ * Payload for the self-serve /tenants/onboard endpoint.
+ */
+export interface OnboardTenantInput {
+  /**
+   * The display name of the tenant / company.
+   * @minLength 1
+   * @maxLength 200
+   */
+  companyName: string;
+  /**
+   * Optional URL-safe slug. If omitted, derived from companyName.
+   * @minLength 2
+   * @maxLength 60
+   * @pattern ^[a-z0-9-]+$
+   */
+  slug?: string;
+  /** Subscription plan to activate. "starter" is free; paid plans require Stripe checkout. */
+  planTier: OnboardTenantInputPlanTier;
+  /** Email used for invoices and Stripe customer record. */
+  billingEmail: string;
+}
+
+export type OnboardTenantResultPlanTier =
+  (typeof OnboardTenantResultPlanTier)[keyof typeof OnboardTenantResultPlanTier];
+
+export const OnboardTenantResultPlanTier = {
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
+} as const;
+
+export type OnboardTenantResultStatus =
+  (typeof OnboardTenantResultStatus)[keyof typeof OnboardTenantResultStatus];
+
+export const OnboardTenantResultStatus = {
+  active: "active",
+  suspended: "suspended",
+  trial: "trial",
+  pending: "pending",
+} as const;
+
+export interface OnboardTenantResult {
+  tenantId: number;
+  slug: string;
+  name: string;
+  planTier: OnboardTenantResultPlanTier;
+  status: OnboardTenantResultStatus;
+  role: string;
+  /** Where the client should send the user next. Either an absolute Stripe Checkout URL (for paid plans when Stripe is configured) or the relative path "/dashboard".
+   */
+  redirectTo: string;
+  /**
+   * Stripe Checkout Session URL (only set for paid plans when Stripe is configured).
+   * @nullable
+   */
+  checkoutUrl?: string | null;
+  /**
+   * Stripe Checkout Session id, when one was created.
+   * @nullable
+   */
+  checkoutSessionId?: string | null;
+  /** True when the user already had a tenant; no new tenant was created. */
+  alreadyOnboarded: boolean;
+}
+
 export type OnboardingTenantInputPlanTier =
   (typeof OnboardingTenantInputPlanTier)[keyof typeof OnboardingTenantInputPlanTier];
 

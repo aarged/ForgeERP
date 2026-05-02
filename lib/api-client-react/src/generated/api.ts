@@ -233,6 +233,8 @@ import type {
   MasterWarehouse,
   MasterWarehouseDetail,
   Notification,
+  OnboardTenantInput,
+  OnboardTenantResult,
   OnboardingResult,
   OnboardingSession,
   OnboardingSessionUpdate,
@@ -1103,6 +1105,94 @@ export const useRevokeTenantInvite = <
   TContext
 > => {
   return useMutation(getRevokeTenantInviteMutationOptions(options));
+};
+
+/**
+ * Creates a new tenant for the authenticated user, assigns them as tenant_admin, and (for paid plans) creates a Stripe Checkout Session whose URL the client should redirect the user to. For the "starter" plan, the response asks the client to send the user to /dashboard. Idempotent: if the user already has an active tenant membership, returns the existing tenant unchanged.
+
+ * @summary Self-serve tenant onboarding
+ */
+export const getOnboardTenantUrl = () => {
+  return `/api/tenants/onboard`;
+};
+
+export const onboardTenant = async (
+  onboardTenantInput: OnboardTenantInput,
+  options?: RequestInit,
+): Promise<OnboardTenantResult> => {
+  return customFetch<OnboardTenantResult>(getOnboardTenantUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(onboardTenantInput),
+  });
+};
+
+export const getOnboardTenantMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof onboardTenant>>,
+    TError,
+    { data: BodyType<OnboardTenantInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof onboardTenant>>,
+  TError,
+  { data: BodyType<OnboardTenantInput> },
+  TContext
+> => {
+  const mutationKey = ["onboardTenant"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof onboardTenant>>,
+    { data: BodyType<OnboardTenantInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return onboardTenant(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type OnboardTenantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof onboardTenant>>
+>;
+export type OnboardTenantMutationBody = BodyType<OnboardTenantInput>;
+export type OnboardTenantMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Self-serve tenant onboarding
+ */
+export const useOnboardTenant = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof onboardTenant>>,
+    TError,
+    { data: BodyType<OnboardTenantInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof onboardTenant>>,
+  TError,
+  { data: BodyType<OnboardTenantInput> },
+  TContext
+> => {
+  return useMutation(getOnboardTenantMutationOptions(options));
 };
 
 /**

@@ -349,6 +349,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/onboard:
+    post:
+      operationId: onboardTenant
+      tags: [tenants]
+      summary: Self-serve tenant onboarding
+      description: >
+        Creates a new tenant for the authenticated user, assigns them as
+        tenant_admin, and (for paid plans) creates a Stripe Checkout Session
+        whose URL the client should redirect the user to. For the "starter"
+        plan, the response asks the client to send the user to /dashboard.
+        Idempotent: if the user already has an active tenant membership,
+        returns the existing tenant unchanged.
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardTenantInput"
+      responses:
+        "201":
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardTenantResult"
+        "200":
+          description: User already had a tenant; returns existing one
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardTenantResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Slug already taken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/kpi:
     get:
       operationId: getAdminKpi
@@ -7610,6 +7662,75 @@ components:
       required:
         - email
         - role
+
+    OnboardTenantInput:
+      type: object
+      description: Payload for the self-serve /tenants/onboard endpoint.
+      required:
+        - companyName
+        - planTier
+        - billingEmail
+      properties:
+        companyName:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The display name of the tenant / company.
+        slug:
+          type: string
+          minLength: 2
+          maxLength: 60
+          pattern: "^[a-z0-9-]+$"
+          description: Optional URL-safe slug. If omitted, derived from companyName.
+        planTier:
+          type: string
+          enum: [starter, growth, enterprise]
+          description: Subscription plan to activate. "starter" is free; paid plans require Stripe checkout.
+        billingEmail:
+          type: string
+          format: email
+          description: Email used for invoices and Stripe customer record.
+
+    OnboardTenantResult:
+      type: object
+      required:
+        - tenantId
+        - slug
+        - name
+        - planTier
+        - status
+        - role
+        - redirectTo
+        - alreadyOnboarded
+      properties:
+        tenantId:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        planTier:
+          type: string
+          enum: [starter, growth, enterprise]
+        status:
+          type: string
+          enum: [active, suspended, trial, pending]
+        role:
+          type: string
+        redirectTo:
+          type: string
+          description: >
+            Where the client should send the user next. Either an absolute Stripe Checkout URL
+            (for paid plans when Stripe is configured) or the relative path "/dashboard".
+        checkoutUrl:
+          type: ["string", "null"]
+          description: Stripe Checkout Session URL (only set for paid plans when Stripe is configured).
+        checkoutSessionId:
+          type: ["string", "null"]
+          description: Stripe Checkout Session id, when one was created.
+        alreadyOnboarded:
+          type: boolean
+          description: True when the user already had a tenant; no new tenant was created.
 
     OnboardingTenantInput:
       type: object
