@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, Controller } from "react-hook-form";
 import {
   useGetFinanceJournals,
   getGetFinanceJournalsQueryKey,
@@ -14,7 +14,12 @@ import {
   useGetFinanceAccountMovements,
   getGetFinanceAccountMovementsQueryKey,
   useListGlAccounts,
-  type GlPosting
+  useCreateGlAccount,
+  useUpdateGlAccount,
+  getListGlAccountsQueryKey,
+  type GlPosting,
+  type MasterGlAccount,
+  type CreateGlAccountBody,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -27,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -44,8 +50,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Eye, Download, Undo2, ChevronDown, ChevronRight, FileText, CheckCircle2 } from "lucide-react";
+import { Plus, Search, Eye, Download, Undo2, ChevronDown, ChevronRight, FileText, CheckCircle2, Pencil, Power } from "lucide-react";
 
 // ── Local DTOs ────────────────────────────────────────────────────────────────
 
@@ -552,6 +559,321 @@ function AccountLedgerTab() {
   );
 }
 
+// ── Chart of Accounts ─────────────────────────────────────────────────────────
+
+const GL_ACCOUNT_TYPES: CreateGlAccountBody["accountType"][] = [
+  "asset",
+  "liability",
+  "equity",
+  "revenue",
+  "expense",
+];
+
+const TYPE_BADGE: Record<string, string> = {
+  asset: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  liability: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+  equity: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+  revenue: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  expense: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+};
+
+interface GlAccountFormValues {
+  code: string;
+  name: string;
+  accountType: CreateGlAccountBody["accountType"];
+  isActive: boolean;
+}
+
+function GlAccountModal({
+  open,
+  onOpenChange,
+  account,
+  onSuccess,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  account?: MasterGlAccount;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const create = useCreateGlAccount();
+  const update = useUpdateGlAccount();
+  const isEdit = !!account?.id;
+
+  const { register, control, handleSubmit, reset, formState: { errors } } = useForm<GlAccountFormValues>({
+    defaultValues: { code: "", name: "", accountType: "asset", isActive: true },
+  });
+
+  useEffect(() => {
+    if (open) {
+      reset({
+        code: account?.code ?? "",
+        name: account?.name ?? "",
+        accountType: (account?.accountType as CreateGlAccountBody["accountType"]) ?? "asset",
+        isActive: account?.isActive ?? true,
+      });
+    }
+  }, [open, account, reset]);
+
+  const onSubmit = handleSubmit(async (vals) => {
+    try {
+      if (isEdit && account?.id) {
+        await update.mutateAsync({ id: account.id, data: vals });
+        toast({ title: "GL account updated" });
+      } else {
+        await create.mutateAsync({ data: vals });
+        toast({ title: "GL account created" });
+      }
+      onSuccess();
+      onOpenChange(false);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "An unexpected error occurred";
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    }
+  });
+
+  const isPending = create.isPending || update.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit GL Account" : "New GL Account"}</DialogTitle>
+          <DialogDescription>
+            {isEdit ? "Update this account in your chart of accounts." : "Add a new account to your chart of accounts."}
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Code <span className="text-destructive">*</span></Label>
+              <Input {...register("code", { required: true })} placeholder="1000" />
+              {errors.code && <p className="text-xs text-destructive">Required</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Account Type <span className="text-destructive">*</span></Label>
+              <Controller
+                control={control}
+                name="accountType"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {GL_ACCOUNT_TYPES.map((t) => (
+                        <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Name <span className="text-destructive">*</span></Label>
+            <Input {...register("name", { required: true })} placeholder="Cash and Cash Equivalents" />
+            {errors.name && <p className="text-xs text-destructive">Required</p>}
+          </div>
+          <div className="flex items-center gap-2 pt-2">
+            <Controller
+              control={control}
+              name="isActive"
+              render={({ field }) => (
+                <Switch checked={field.value} onCheckedChange={field.onChange} id="gl-active" />
+              )}
+            />
+            <Label htmlFor="gl-active">Active</Label>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>Cancel</Button>
+            <Button type="submit" disabled={isPending}>
+              {isPending ? "Saving…" : isEdit ? "Save Changes" : "Create Account"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ChartOfAccountsTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [activeFilter, setActiveFilter] = useState<"active" | "all">("active");
+  const [page, setPage] = useState(1);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editAccount, setEditAccount] = useState<MasterGlAccount | undefined>();
+  const update = useUpdateGlAccount();
+
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => { setPage(1); }, [typeFilter, activeFilter]);
+
+  const limit = 25;
+  const params = {
+    q: debouncedSearch || undefined,
+    accountType: typeFilter !== "all" ? typeFilter : undefined,
+    activeOnly: activeFilter === "active" ? "true" : "false",
+    page,
+    limit,
+    sort: "code",
+    dir: "asc" as const,
+  };
+
+  const { data, isLoading, isFetching } = useListGlAccounts(params);
+  const accounts = data?.accounts ?? [];
+  const hasMore = data?.hasMore ?? false;
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: getListGlAccountsQueryKey() });
+  };
+
+  const handleToggleActive = async (account: MasterGlAccount) => {
+    if (!account.id) return;
+    const next = !account.isActive;
+    try {
+      await update.mutateAsync({ id: account.id, data: { isActive: next } as Partial<CreateGlAccountBody> as CreateGlAccountBody });
+      toast({ title: next ? "Account reactivated" : "Account deactivated" });
+      refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "An unexpected error occurred";
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap">
+          <div className="relative w-64">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search code or name…"
+              className="pl-8"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              {GL_ACCOUNT_TYPES.map((t) => (
+                <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={activeFilter} onValueChange={(v) => setActiveFilter(v as "active" | "all")}>
+            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active only</SelectItem>
+              <SelectItem value="all">All accounts</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button onClick={() => { setEditAccount(undefined); setModalOpen(true); }}>
+          <Plus className="h-4 w-4 mr-2" />New Account
+        </Button>
+      </div>
+
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-32">Code</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead className="w-32">Type</TableHead>
+              <TableHead className="w-24">Status</TableHead>
+              <TableHead className="w-32 text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={5} className="text-center py-8">Loading accounts…</TableCell></TableRow>
+            ) : accounts.length === 0 ? (
+              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No GL accounts found</TableCell></TableRow>
+            ) : accounts.map((a) => (
+              <TableRow key={a.id}>
+                <TableCell className="font-mono font-medium">{a.code}</TableCell>
+                <TableCell>{a.name}</TableCell>
+                <TableCell>
+                  <Badge variant="secondary" className={`capitalize ${TYPE_BADGE[a.accountType ?? ""] ?? ""}`}>
+                    {a.accountType}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  {a.isActive ? (
+                    <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400">Active</Badge>
+                  ) : (
+                    <Badge variant="secondary">Inactive</Badge>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Edit"
+                      onClick={() => { setEditAccount(a); setModalOpen(true); }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title={a.isActive ? "Deactivate" : "Reactivate"}
+                      onClick={() => handleToggleActive(a)}
+                      disabled={update.isPending}
+                    >
+                      <Power className={`h-4 w-4 ${a.isActive ? "text-destructive" : "text-emerald-600"}`} />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <div>
+          Page {page}{isFetching ? " — loading…" : ""}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1 || isFetching}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => p + 1)}
+            disabled={!hasMore || isFetching}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+
+      <GlAccountModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        account={editAccount}
+        onSuccess={refresh}
+      />
+    </div>
+  );
+}
+
 export default function Finance() {
   return (
     <div className="space-y-6">
@@ -565,6 +887,7 @@ export default function Finance() {
           <TabsTrigger value="journals">Journal Ledger</TabsTrigger>
           <TabsTrigger value="trial-balance">Trial Balance</TabsTrigger>
           <TabsTrigger value="account-ledger">Account Ledger</TabsTrigger>
+          <TabsTrigger value="chart-of-accounts">Chart of Accounts</TabsTrigger>
         </TabsList>
         
         <TabsContent value="journals">
@@ -577,6 +900,10 @@ export default function Finance() {
 
         <TabsContent value="account-ledger">
           <AccountLedgerTab />
+        </TabsContent>
+
+        <TabsContent value="chart-of-accounts">
+          <ChartOfAccountsTab />
         </TabsContent>
       </Tabs>
     </div>
