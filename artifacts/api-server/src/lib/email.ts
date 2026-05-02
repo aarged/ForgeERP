@@ -151,6 +151,116 @@ The Forge ERP Team`;
   return { subject, html, text };
 }
 
+interface InviteSummaryItem {
+  email: string;
+  role: string;
+  delivered: boolean;
+  reason?: string;
+}
+
+export function buildInviteSummaryEmail(opts: {
+  inviterFirstName: string | null;
+  companyName: string;
+  results: InviteSummaryItem[];
+  settingsUrl: string;
+}): { subject: string; html: string; text: string } {
+  const greeting = opts.inviterFirstName ? `Hi ${opts.inviterFirstName}` : "Hi there";
+  const sent = opts.results.filter((r) => r.delivered);
+  const failed = opts.results.filter((r) => !r.delivered);
+  const total = opts.results.length;
+
+  const subject =
+    failed.length === 0
+      ? `${sent.length} team ${sent.length === 1 ? "invite" : "invites"} sent for ${opts.companyName}`
+      : `${sent.length} of ${total} team invites sent for ${opts.companyName} — ${failed.length} need attention`;
+
+  const renderRow = (r: InviteSummaryItem) => {
+    const status = r.delivered ? "Sent" : "Failed";
+    const reason = r.delivered ? "" : ` — ${r.reason ?? "Unknown error"}`;
+    return `  • ${r.email} (${ROLE_LABELS[r.role] ?? r.role}) — ${status}${reason}`;
+  };
+
+  const text = `${greeting},
+
+Here is a summary of the team invitations sent for ${opts.companyName} on Forge ERP:
+
+Successfully delivered (${sent.length}):
+${sent.length === 0 ? "  (none)" : sent.map(renderRow).join("\n")}
+
+${failed.length > 0 ? `Could not deliver (${failed.length}):
+${failed.map(renderRow).join("\n")}
+
+You can resend any failed invitations from your workspace settings:
+${opts.settingsUrl}` : `All invitations were delivered successfully.`}
+
+The Forge ERP Team`;
+
+  const renderRowHtml = (r: InviteSummaryItem) => {
+    const safeEmail = escapeHtml(r.email);
+    const safeRole = escapeHtml(ROLE_LABELS[r.role] ?? r.role);
+    if (r.delivered) {
+      return `<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#1e293b">${safeEmail}</td><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#64748b">${safeRole}</td><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#059669">✓ Sent</td></tr>`;
+    }
+    const safeReason = escapeHtml(r.reason ?? "Unknown error");
+    return `<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#1e293b">${safeEmail}</td><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#64748b">${safeRole}</td><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#dc2626">✗ ${safeReason}</td></tr>`;
+  };
+
+  const safeCompany = escapeHtml(opts.companyName);
+  const safeSettingsUrl = escapeHtml(opts.settingsUrl);
+
+  const failedSection = failed.length > 0 ? `
+      <div style="margin:20px 0;padding:16px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px">
+        <p style="margin:0 0 8px;font-size:14px;color:#991b1b;font-weight:600">${failed.length} ${failed.length === 1 ? "invite" : "invites"} could not be delivered</p>
+        <p style="margin:0 0 12px;font-size:13px;color:#7f1d1d;line-height:1.5">
+          Open your workspace settings to retry these from the Pending Invites list.
+        </p>
+        <a href="${safeSettingsUrl}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-weight:600;font-size:13px">
+          Resend from Settings &rarr;
+        </a>
+      </div>` : `
+      <div style="margin:20px 0;padding:16px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:8px;font-size:14px;color:#166534">
+        All invitations were delivered successfully.
+      </div>`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:sans-serif;background:#f8fafc;padding:32px;margin:0">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#f97316,#ea580c);padding:24px 32px">
+      <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">Forge ERP</span>
+    </div>
+    <div style="padding:32px">
+      <p style="font-size:16px;color:#1e293b;margin-top:0">${escapeHtml(greeting)},</p>
+      <p style="font-size:15px;color:#475569;line-height:1.6">
+        Here is a summary of the team invitations sent for
+        <strong>${safeCompany}</strong>:
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+        <thead>
+          <tr style="background:#f8fafc">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#64748b;letter-spacing:0.04em">Invitee</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#64748b;letter-spacing:0.04em">Role</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#64748b;letter-spacing:0.04em">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${opts.results.map(renderRowHtml).join("")}
+        </tbody>
+      </table>
+      ${failedSection}
+      <p style="font-size:13px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:20px;margin-bottom:0">
+        The Forge ERP Team
+      </p>
+    </div>
+  </div>
+</body>
+</html>`.trim();
+
+  return { subject, html, text };
+}
+
 export function buildWelcomeEmail(opts: {
   firstName: string | null;
   companyName: string;

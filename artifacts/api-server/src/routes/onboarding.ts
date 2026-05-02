@@ -23,7 +23,13 @@ import {
 import { writeAuditLog } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { isStripeConfigured, getUncachableStripeClient } from "../lib/stripe";
-import { sendEmail, buildWelcomeEmail, buildInviteEmail, buildInviteSignUpUrl, isEmailConfigured } from "../lib/email";
+import { sendEmail, buildWelcomeEmail, buildInviteSummaryEmail } from "../lib/email";
+import {
+  deliverInviteEmails,
+  resolveInviteRedirectUrl,
+  resolveSettingsUrl,
+  type InviteDeliveryResult,
+} from "../lib/invites";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
@@ -34,38 +40,6 @@ const clerk = createClerkClient({
 });
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-
-// ── Origin helpers ─────────────────────────────────────────────────────────────
-
-function buildAllowedOrigins(): string[] {
-  const out = new Set<string>();
-  const add = (raw: string | undefined) => {
-    if (!raw) return;
-    try { out.add(new URL(raw).origin); } catch { /* ignore */ }
-  };
-  add(process.env.FRONTEND_URL);
-  for (const v of (process.env.FRONTEND_URLS ?? "").split(",")) add(v.trim());
-  if (process.env.REPLIT_DEV_DOMAIN) add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
-  return [...out];
-}
-
-function resolveInviteRedirectUrl(req: Request): string | undefined {
-  const allowed = buildAllowedOrigins();
-  const candidates: string[] = [];
-  if (req.headers.origin) candidates.push(req.headers.origin as string);
-  if (req.headers.referer) {
-    try { candidates.push(new URL(req.headers.referer as string).origin); } catch { /* ignore */ }
-  }
-  let chosenOrigin: string | undefined;
-  for (const c of candidates) {
-    if (allowed.includes(c)) { chosenOrigin = c; break; }
-  }
-  if (!chosenOrigin && allowed.length > 0 && process.env.FRONTEND_URL) {
-    try { chosenOrigin = new URL(process.env.FRONTEND_URL).origin; } catch { /* ignore */ }
-  }
-  if (!chosenOrigin) return undefined;
-  try { return new URL("/sign-up", chosenOrigin).toString(); } catch { return undefined; }
-}
 
 // ── Slug helpers ───────────────────────────────────────────────────────────────
 
@@ -86,127 +60,6 @@ async function ensureUniqueSlug(base: string): Promise<string> {
 
 function pendingClerkIdForEmail(email: string): string {
   return `pending:${email.toLowerCase()}`;
-}
-
-// ── Invite delivery helper ─────────────────────────────────────────────────────
-
-interface InviteDeliveryResult {
-  email: string;
-  role: string;
-  delivered: boolean;
-  reason?: string;
-  clerkInvitationId?: string;
-}
-
-/**
- * Deliver branded invite emails for a batch of pending memberships.
- *
- * For each invite we (a) create a Clerk invitation with `notify: false` so the
- * pending account + metadata exists for downstream tooling, then (b) send our
- * own branded email through `sendEmail`. Either step can fail without
- * affecting the others — the caller has already persisted the pending
- * membership rows, so the user record is never rolled back on send failure.
- *
- * The link in the email lands on `/sign-up?email_address=<invitee>`. The
- * frontend `<SignUp>` component reads that param and pre-fills the email
- * field; the lazy-claim logic in `/auth/me` activates the membership the
- * first time the new user authenticates.
- */
-async function deliverInviteEmails(args: {
-  invites: Array<{ email: string; role: string }>;
-  tenantId: number;
-  tenantName: string;
-  inviterFirstName: string | null;
-  inviterLastName: string | null;
-  inviterEmail: string;
-  signUpBaseUrl: string | undefined;
-}): Promise<{ results: InviteDeliveryResult[]; sent: number }> {
-  const results: InviteDeliveryResult[] = [];
-  let sent = 0;
-
-  const inviterName =
-    [args.inviterFirstName ?? "", args.inviterLastName ?? ""]
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join(" ") || null;
-
-  for (const invite of args.invites) {
-    const result: InviteDeliveryResult = {
-      email: invite.email,
-      role: invite.role,
-      delivered: false,
-    };
-
-    // (a) Create Clerk invitation (metadata + pending account) — best effort
-    try {
-      const invitation = await clerk.invitations.createInvitation({
-        emailAddress: invite.email,
-        redirectUrl: args.signUpBaseUrl,
-        publicMetadata: { pendingTenantId: args.tenantId, pendingRole: invite.role },
-        ignoreExisting: true,
-        notify: false,
-      });
-      result.clerkInvitationId = invitation.id;
-    } catch (err) {
-      logger.warn(
-        { err, tenantId: args.tenantId, inviteEmail: invite.email },
-        "Clerk invitation create failed (continuing with branded email)",
-      );
-    }
-
-    // (b) Send branded email — failure is logged but never rolls anything back
-    if (!args.signUpBaseUrl) {
-      result.reason =
-        "Could not resolve a sign-up URL (set FRONTEND_URL so invite links work)";
-      logger.warn(
-        { tenantId: args.tenantId, inviteEmail: invite.email },
-        "Skipping branded invite email — no sign-up URL resolved",
-      );
-      results.push(result);
-      continue;
-    }
-
-    const signUpUrl = buildInviteSignUpUrl(args.signUpBaseUrl, invite.email);
-    const content = buildInviteEmail({
-      inviteeEmail: invite.email,
-      inviterName,
-      inviterEmail: args.inviterEmail,
-      companyName: args.tenantName,
-      role: invite.role,
-      signUpUrl,
-    });
-
-    const configured = isEmailConfigured();
-    if (!configured) {
-      result.reason =
-        "Email provider not configured — set SMTP_HOST, SMTP_USER, SMTP_PASS";
-      results.push(result);
-      continue;
-    }
-
-    try {
-      const ok = await sendEmail({ to: invite.email, ...content });
-      result.delivered = ok;
-      if (ok) {
-        sent++;
-      } else {
-        // SMTP is configured but the transport rejected the message
-        // (auth failure, bounced, network error, etc.). sendEmail has
-        // already logged the underlying error.
-        result.reason = "Email provider rejected the message (see server logs)";
-      }
-    } catch (err) {
-      result.reason = err instanceof Error ? err.message : "Unknown send error";
-      logger.error(
-        { err, tenantId: args.tenantId, inviteEmail: invite.email },
-        "Branded invite email send failed",
-      );
-    }
-
-    results.push(result);
-  }
-
-  return { results, sent };
 }
 
 // ── CSV parser ─────────────────────────────────────────────────────────────────
@@ -961,6 +814,33 @@ router.post(
         logger.warn({ err, tenantId: tenant.id, userEmail }, "Failed to send welcome email");
       }
     })();
+
+    // Send invite summary email to the inviting admin (fire-and-forget).
+    // Sent whenever any invites were attempted, even if all failed — the
+    // admin can use the failure list to retry from settings.
+    if (inviteResults.length > 0) {
+      void (async () => {
+        try {
+          const frontendBase = process.env.FRONTEND_URL
+            ?? `${req.protocol}://${req.get("x-forwarded-host") ?? req.get("host")}`;
+          const settingsUrl =
+            resolveSettingsUrl(req)
+            ?? `${frontendBase.replace(/\/$/, "")}/forge-erp/settings`;
+          const summaryContent = buildInviteSummaryEmail({
+            inviterFirstName: firstName,
+            companyName: tenant.name,
+            results: inviteResults,
+            settingsUrl,
+          });
+          await sendEmail({ to: userEmail, ...summaryContent });
+        } catch (err) {
+          logger.warn(
+            { err, tenantId: tenant.id, userEmail },
+            "Failed to send invite summary email",
+          );
+        }
+      })();
+    }
 
     res.status(201).json({
       tenantId: tenant.id,

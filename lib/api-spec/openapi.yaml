@@ -456,6 +456,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+
   /admin/kpi:
     get:
       operationId: getAdminKpi
@@ -7947,6 +7948,54 @@ components:
         alreadyOnboarded:
           type: boolean
           description: True when the user already had a tenant; no new tenant was created.
+
+    PendingInvite:
+      type: object
+      description: A teammate invitation that has been sent but not yet accepted.
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [tenant_admin, purchaser, warehouse, approver, accountant, viewer]
+        invitedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - email
+        - role
+        - invitedAt
+
+    InviteResendResult:
+      type: object
+      description: Result of resending a single pending teammate invite.
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [tenant_admin, purchaser, warehouse, approver, accountant, viewer]
+        delivered:
+          type: boolean
+          description: True if the branded invite email was successfully sent.
+        reason:
+          type: string
+          description: Failure reason when delivered is false.
+        clerkInvitationId:
+          type: string
+          description: Clerk invitation id, if delivery succeeded.
+      required:
+        - id
+        - email
+        - role
+        - delivered
 
     OnboardingTenantInput:
       type: object

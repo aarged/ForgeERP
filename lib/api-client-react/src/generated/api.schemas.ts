@@ -776,6 +776,55 @@ export interface OnboardTenantResult {
   alreadyOnboarded: boolean;
 }
 
+export type PendingInviteRole =
+  (typeof PendingInviteRole)[keyof typeof PendingInviteRole];
+
+export const PendingInviteRole = {
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+/**
+ * A teammate invitation that has been sent but not yet accepted.
+ */
+export interface PendingInvite {
+  id: number;
+  email: string;
+  role: PendingInviteRole;
+  invitedAt: string;
+}
+
+export type InviteResendResultRole =
+  (typeof InviteResendResultRole)[keyof typeof InviteResendResultRole];
+
+export const InviteResendResultRole = {
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+/**
+ * Result of resending a single pending teammate invite.
+ */
+export interface InviteResendResult {
+  id: number;
+  email: string;
+  role: InviteResendResultRole;
+  /** True if the branded invite email was successfully sent. */
+  delivered: boolean;
+  /** Failure reason when delivered is false. */
+  reason?: string;
+  /** Clerk invitation id, if delivery succeeded. */
+  clerkInvitationId?: string;
+}
+
 export type OnboardingTenantInputPlanTier =
   (typeof OnboardingTenantInputPlanTier)[keyof typeof OnboardingTenantInputPlanTier];
 
