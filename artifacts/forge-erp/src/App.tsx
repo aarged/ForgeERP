@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import { ClerkProvider, SignIn, SignUp, Show, useClerk, useAuth } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
@@ -8,7 +8,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 
-import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
+import {
+  useGetCurrentUser,
+  getGetCurrentUserQueryKey,
+  setAuthTokenGetter,
+} from "@workspace/api-client-react";
 import { AppShell } from "@/components/layout/app-shell";
 import LandingPage from "@/pages/landing";
 import PendingPage from "@/pages/pending";
@@ -246,6 +250,51 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
+/**
+ * Wires Clerk's session token into the orval-generated API client so that
+ * every API request carries an `Authorization: Bearer <jwt>` header.
+ *
+ * Why this matters: in development the Clerk session is stored in cookies
+ * tagged `SameSite=Lax`. The Replit workspace renders the app inside a
+ * cross-site iframe, so those cookies are never sent on /api/* requests
+ * and the server returns 401 with `x-clerk-auth-reason: dev-browser-missing`.
+ * Passing the JWT explicitly via the Authorization header sidesteps the
+ * cookie restriction. @clerk/express's getAuth() accepts both transports.
+ */
+function ClerkAuthTokenBridge() {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const queryClient = useQueryClient();
+  const didInvalidateRef = useRef(false);
+
+  useEffect(() => {
+    setAuthTokenGetter(async () => {
+      try {
+        return await getToken();
+      } catch {
+        return null;
+      }
+    });
+    return () => {
+      setAuthTokenGetter(null);
+    };
+  }, [getToken]);
+
+  // First-time setup OR re-sign-in: invalidate any /auth/me-style queries
+  // that may have been kicked off before the token getter was ready
+  // (e.g. on a page reload while already signed in).
+  useEffect(() => {
+    if (isLoaded && isSignedIn && !didInvalidateRef.current) {
+      didInvalidateRef.current = true;
+      queryClient.invalidateQueries();
+    }
+    if (!isSignedIn) {
+      didInvalidateRef.current = false;
+    }
+  }, [isLoaded, isSignedIn, queryClient]);
+
+  return null;
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -274,6 +323,7 @@ function ClerkProviderWithRoutes() {
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
       <QueryClientProvider client={queryClient}>
+        <ClerkAuthTokenBridge />
         <ClerkQueryClientCacheInvalidator />
         <Switch>
           <Route path="/" component={HomeRedirect} />
