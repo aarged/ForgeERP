@@ -4063,6 +4063,7 @@ export const ReportSupplierPerformanceHeader = zod.object({
 export const ReportSupplierPerformanceResponseItem = zod.object({
   supplierId: zod.number().nullish(),
   supplierName: zod.string().nullish(),
+  supplierCode: zod.string().nullish(),
   totalOrders: zod.number().optional(),
   totalValue: zod.number().optional(),
   avgOrderValue: zod.number().optional(),

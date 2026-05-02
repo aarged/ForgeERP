@@ -2774,20 +2774,31 @@ router.get("/procurement/reports/pending-approvals", ...approverMiddleware, asyn
   });
 });
 
-// Supplier performance
+// Supplier performance — joins to suppliers master so the report shows the
+// current canonical supplier name, falling back to the denormalized name on
+// the PO when the supplier link is missing (legacy/free-text POs) or the
+// supplier record has been deleted.
 router.get("/procurement/reports/supplier-performance", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
   const rows = await withTenantDb(tenantId, (db) =>
     db.select({
       supplierId: purchaseOrdersTable.supplierId,
-      supplierName: purchaseOrdersTable.supplierName,
+      supplierName: sql<string | null>`coalesce(${suppliersTable.name}, ${purchaseOrdersTable.supplierName})`,
+      supplierCode: suppliersTable.code,
       totalOrders: sql<number>`count(*)::int`,
       totalValue: sql<number>`sum(${purchaseOrdersTable.total})`,
       avgOrderValue: sql<number>`avg(${purchaseOrdersTable.total})`,
     })
       .from(purchaseOrdersTable)
+      .leftJoin(
+        suppliersTable,
+        and(
+          eq(suppliersTable.id, purchaseOrdersTable.supplierId),
+          eq(suppliersTable.tenantId, tenantId),
+        ),
+      )
       .where(and(eq(purchaseOrdersTable.tenantId, tenantId), isNull(purchaseOrdersTable.deletedAt)))
-      .groupBy(purchaseOrdersTable.supplierId, purchaseOrdersTable.supplierName)
+      .groupBy(purchaseOrdersTable.supplierId, suppliersTable.name, suppliersTable.code, purchaseOrdersTable.supplierName)
       .orderBy(desc(sql`sum(${purchaseOrdersTable.total})`)),
   );
   res.json(rows);

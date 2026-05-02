@@ -1876,6 +1876,7 @@ export interface PendingApprovalsReport {
 export interface SupplierPerformanceRow {
   supplierId?: number | null;
   supplierName?: string | null;
+  supplierCode?: string | null;
   totalOrders?: number;
   totalValue?: number;
   avgOrderValue?: number;

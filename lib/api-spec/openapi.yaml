@@ -8552,6 +8552,7 @@ components:
       properties:
         supplierId: { type: integer, nullable: true }
         supplierName: { type: string, nullable: true }
+        supplierCode: { type: string, nullable: true }
         totalOrders: { type: integer }
         totalValue: { type: number }
         avgOrderValue: { type: number }

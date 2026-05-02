@@ -95,6 +95,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import {
   MoreHorizontal,
@@ -118,6 +128,8 @@ import {
   BookOpen,
   Settings,
   AlertCircle,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -1187,15 +1199,113 @@ type PoFormValues = {
   lines: PoLineInput[];
 };
 
+type SupplierOption = {
+  id: number;
+  name: string;
+  code?: string | null;
+  currency?: string | null;
+  paymentTerms?: string | null;
+};
+
+function SupplierCombobox({
+  value,
+  onChange,
+  suppliers,
+  placeholder = "Search suppliers…",
+}: {
+  value: string;
+  onChange: (next: string, supplier: SupplierOption | null) => void;
+  suppliers: SupplierOption[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value !== "__none__" ? suppliers.find((s) => String(s.id) === value) : undefined;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal"
+          data-testid="supplier-combobox-trigger"
+        >
+          <span className={cn("truncate", !selected && "text-muted-foreground")}>
+            {selected ? selected.name : "— Select supplier —"}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] p-0"
+        align="start"
+        onOpenAutoFocus={(e) => {
+          // Let cmdk's input receive focus naturally for search
+          e.preventDefault();
+        }}
+      >
+        <Command
+          filter={(itemValue, search) => {
+            return itemValue.toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
+          }}
+        >
+          <CommandInput placeholder={placeholder} autoFocus />
+          <CommandList>
+            <CommandEmpty>No supplier found.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="__none__ none clear"
+                onSelect={() => {
+                  onChange("__none__", null);
+                  setOpen(false);
+                }}
+              >
+                <Check className={cn("mr-2 h-4 w-4", value === "__none__" ? "opacity-100" : "opacity-0")} />
+                <span className="text-muted-foreground">— None —</span>
+              </CommandItem>
+              {suppliers.map((s) => {
+                const itemValue = `${s.name} ${s.code ?? ""} ${s.id}`.trim();
+                const isSelected = value === String(s.id);
+                return (
+                  <CommandItem
+                    key={s.id}
+                    value={itemValue}
+                    onSelect={() => {
+                      onChange(String(s.id), s);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check className={cn("mr-2 h-4 w-4", isSelected ? "opacity-100" : "opacity-0")} />
+                    <div className="flex flex-col min-w-0">
+                      <span className="truncate">{s.name}</span>
+                      {(s.code || s.currency || s.paymentTerms) && (
+                        <span className="text-xs text-muted-foreground truncate">
+                          {[s.code, s.currency, s.paymentTerms].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
+                    </div>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function PoCreateDialog({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
   const { toast } = useToast();
   const createMut = useCreatePurchaseOrder();
   const { data: suppliersData } = useListSuppliers({});
   const { data: warehousesData } = useListWarehouses({});
-  const suppliers = (suppliersData as { suppliers?: { id: number; name: string }[] })?.suppliers ?? [];
+  const suppliers = ((suppliersData as { suppliers?: SupplierOption[] })?.suppliers ?? []) as SupplierOption[];
   const warehouses = (warehousesData as { warehouses?: { id: number; name: string }[] })?.warehouses ?? [];
 
-  const { register, handleSubmit, control, reset } = useForm<PoFormValues>({
+  const { register, handleSubmit, control, reset, setValue } = useForm<PoFormValues>({
     defaultValues: { supplierId: "__none__", deliverToWarehouseId: "__none__", deliveryDate: "", currencyCode: "AUD", paymentTerms: "Net30", notes: "", lines: [] },
   });
   const { fields, append, remove } = useFieldArray({ control, name: "lines" });
@@ -1237,13 +1347,18 @@ function PoCreateDialog({ open, onClose, onSaved }: { open: boolean; onClose: ()
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Supplier">
               <Controller name="supplierId" control={control} render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger><SelectValue placeholder="— select —" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— None —</SelectItem>
-                    {suppliers.map((s) => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SupplierCombobox
+                  value={field.value}
+                  suppliers={suppliers}
+                  onChange={(next, supplier) => {
+                    field.onChange(next);
+                    if (supplier) {
+                      // Auto-fill currency and payment terms from the selected supplier
+                      if (supplier.currency) setValue("currencyCode", supplier.currency, { shouldDirty: true });
+                      if (supplier.paymentTerms) setValue("paymentTerms", supplier.paymentTerms, { shouldDirty: true });
+                    }
+                  }}
+                />
               )} />
             </FormField>
             <FormField label="Deliver to Warehouse">
