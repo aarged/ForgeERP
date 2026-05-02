@@ -1350,9 +1350,13 @@ function ItemsTab({ initialId, initialCode }: { initialId?: number; initialCode?
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Skip when the value has not actually changed (e.g. on mount). Otherwise
+    // the debounce would clear `allRows` 300ms after a tab is opened, blanking
+    // out cached rows that the data-effect already populated.
+    if (search === debouncedSearch) return;
     const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); setAllRows([]); }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, debouncedSearch]);
 
   useEffect(() => { setPage(1); setAllRows([]); }, [sort.field, sort.dir]);
 
@@ -1673,9 +1677,13 @@ function SuppliersTab({ initialId, initialCode }: { initialId?: number; initialC
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Skip when the value has not actually changed (e.g. on mount). Otherwise
+    // the debounce would clear `allRows` 300ms after a tab is opened, blanking
+    // out cached rows that the data-effect already populated.
+    if (search === debouncedSearch) return;
     const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); setAllRows([]); }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, debouncedSearch]);
 
   useEffect(() => { setPage(1); setAllRows([]); }, [sort.field, sort.dir]);
 
@@ -1910,9 +1918,13 @@ function CustomersTab({ initialId, initialCode }: { initialId?: number; initialC
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Skip when the value has not actually changed (e.g. on mount). Otherwise
+    // the debounce would clear `allRows` 300ms after a tab is opened, blanking
+    // out cached rows that the data-effect already populated.
+    if (search === debouncedSearch) return;
     const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); setAllRows([]); }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, debouncedSearch]);
   useEffect(() => { setPage(1); setAllRows([]); }, [sort.field, sort.dir]);
 
   const { data, isLoading } = useListCustomers({ q: debouncedSearch || undefined, page, limit: 25, sort: sort.field, dir: sort.dir as "asc" | "desc" });
@@ -2119,9 +2131,13 @@ function WarehousesTab({ initialId, initialCode }: { initialId?: number; initial
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Skip when the value has not actually changed (e.g. on mount). Otherwise
+    // the debounce would clear `allRows` 300ms after a tab is opened, blanking
+    // out cached rows that the data-effect already populated.
+    if (search === debouncedSearch) return;
     const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); setAllRows([]); }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, debouncedSearch]);
   useEffect(() => { setPage(1); setAllRows([]); }, [sort.field, sort.dir]);
 
   const { data, isLoading } = useListWarehouses({ q: debouncedSearch || undefined, page, limit: 25, sort: sort.field, dir: sort.dir as "asc" | "desc" });
@@ -2507,9 +2523,13 @@ function GlAccountsTab({ initialId }: { initialId?: number }) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Skip when the value has not actually changed (e.g. on mount). Otherwise
+    // the debounce would clear `allRows` 300ms after a tab is opened, blanking
+    // out cached rows that the data-effect already populated.
+    if (search === debouncedSearch) return;
     const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); setAllRows([]); }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, debouncedSearch]);
   useEffect(() => { setPage(1); setAllRows([]); }, [sort.field, sort.dir, typeFilter]);
 
   const params = { q: debouncedSearch || undefined, accountType: typeFilter !== "all" ? typeFilter : undefined, page, limit: 50, sort: sort.field, dir: sort.dir };
