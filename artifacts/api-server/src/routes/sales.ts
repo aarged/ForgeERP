@@ -1159,17 +1159,6 @@ router.get("/sales/pick-slips", ...tenantUserMiddleware, async (req: Request, re
   res.json({ data, hasMore: rows.length > lim, page: pg });
 });
 
-router.get("/sales/pick-slips/:id", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId } = req as TenantRequest;
-  const id = Number(req.params.id);
-  const [slip, lines] = await Promise.all([
-    withTenantDb(tenantId, (db) => db.select().from(pickSlipsTable).where(and(eq(pickSlipsTable.id, id), eq(pickSlipsTable.tenantId, tenantId))).limit(1)),
-    withTenantDb(tenantId, (db) => db.select().from(pickSlipLinesTable).where(and(eq(pickSlipLinesTable.pickSlipId, id), eq(pickSlipLinesTable.tenantId, tenantId)))),
-  ]);
-  if (!slip[0]) { res.status(404).json({ error: "Pick slip not found" }); return; }
-  res.json({ ...slip[0], lines });
-});
-
 router.post("/sales/pick-slips", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId } = req as TenantRequest;
   const schema = z.object({
@@ -1335,6 +1324,19 @@ router.get("/sales/pick-progress", ...tenantUserMiddleware, async (req: Request,
     };
   });
   res.json({ unassigned, inProgress, completedToday, shortPickedToday, slips: slipSummaries });
+});
+
+// NOTE: must be registered AFTER the static `/mine`, `/queue`, `/pick-progress`
+// routes above so Express does not interpret those path segments as `:id`.
+router.get("/sales/pick-slips/:id", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [slip, lines] = await Promise.all([
+    withTenantDb(tenantId, (db) => db.select().from(pickSlipsTable).where(and(eq(pickSlipsTable.id, id), eq(pickSlipsTable.tenantId, tenantId))).limit(1)),
+    withTenantDb(tenantId, (db) => db.select().from(pickSlipLinesTable).where(and(eq(pickSlipLinesTable.pickSlipId, id), eq(pickSlipLinesTable.tenantId, tenantId)))),
+  ]);
+  if (!slip[0]) { res.status(404).json({ error: "Pick slip not found" }); return; }
+  res.json({ ...slip[0], lines });
 });
 
 // Claim or reassign a pick slip. With no body, the caller claims the slip themselves.
