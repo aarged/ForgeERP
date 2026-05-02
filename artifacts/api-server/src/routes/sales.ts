@@ -638,7 +638,9 @@ router.get("/sales/quotations/:id", ...tenantUserMiddleware, async (req: Request
 const quotationLineSchema = z.object({
   lineNumber: z.number().int().optional(),
   lineType: z.enum(["stock", "service", "charge", "comment"]).default("stock"),
-  itemId: z.number().int().optional(),
+  // itemId accepts either the numeric primary key or the items.code string
+  // (the latter being how external systems like Cyntric reference items).
+  itemId: z.union([z.number().int(), z.string().min(1)]).optional(),
   itemCode: z.string().optional(),
   itemName: z.string().optional(),
   description: z.string().optional(),
@@ -654,7 +656,10 @@ const quotationLineSchema = z.object({
 router.post("/sales/quotations", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const schema = z.object({
-    customerId: z.number().int().optional(),
+    // customerId accepts either the numeric primary key or the customers.code
+    // string (e.g. "CUST-001") so external systems can reference customers by
+    // their human-readable code.
+    customerId: z.union([z.number().int(), z.string().min(1)]).optional(),
     customerName: z.string().optional(),
     customerEmail: z.string().email().optional(),
     customerRef: z.string().optional(),
@@ -668,24 +673,84 @@ router.post("/sales/quotations", ...tenantWriteMiddleware, async (req: Request, 
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
-  const { lines, ...header } = parsed.data;
+  const { lines, customerId: rawCustomerId, ...rest } = parsed.data;
 
-  // Resolve customer details if customerId provided
-  let resolvedCustomerName = header.customerName;
-  let resolvedCustomerEmail = header.customerEmail;
-  if (header.customerId) {
-    const [cust] = await withTenantDb(tenantId, (db) => db.select({ name: customersTable.name, email: customersTable.email }).from(customersTable).where(and(eq(customersTable.id, header.customerId!), eq(customersTable.tenantId, tenantId))).limit(1));
-    resolvedCustomerName = resolvedCustomerName ?? cust?.name;
-    resolvedCustomerEmail = resolvedCustomerEmail ?? cust?.email ?? undefined;
+  // ── Resolve customerId (number-or-code) ─────────────────────────────────
+  let resolvedCustomerId: number | undefined;
+  let resolvedCustomerName = rest.customerName;
+  let resolvedCustomerEmail = rest.customerEmail;
+  if (rawCustomerId !== undefined) {
+    const customerLookup = await withTenantDb(tenantId, (db) => {
+      if (typeof rawCustomerId === "number") {
+        return db.select({ id: customersTable.id, name: customersTable.name, email: customersTable.email })
+          .from(customersTable)
+          .where(and(eq(customersTable.id, rawCustomerId), eq(customersTable.tenantId, tenantId), isNull(customersTable.deletedAt)))
+          .limit(1);
+      }
+      return db.select({ id: customersTable.id, name: customersTable.name, email: customersTable.email })
+        .from(customersTable)
+        .where(and(eq(customersTable.code, rawCustomerId), eq(customersTable.tenantId, tenantId), isNull(customersTable.deletedAt)))
+        .limit(1);
+    });
+    if (customerLookup.length === 0) {
+      res.status(400).json({
+        error: typeof rawCustomerId === "string"
+          ? `Customer with code "${rawCustomerId}" not found`
+          : `Customer with id ${rawCustomerId} not found`,
+      });
+      return;
+    }
+    const cust = customerLookup[0]!;
+    resolvedCustomerId = cust.id;
+    resolvedCustomerName = resolvedCustomerName ?? cust.name;
+    resolvedCustomerEmail = resolvedCustomerEmail ?? cust.email ?? undefined;
   }
+
+  // ── Resolve each line's itemId / itemCode ────────────────────────────────
+  const resolvedLines: Array<typeof lines[number] & { itemId?: number }> = [];
+  for (const line of lines) {
+    let lineItemId: number | undefined;
+    let lineItemCode = line.itemCode;
+    let lineItemName = line.itemName;
+
+    // Either itemId-as-string or explicit itemCode resolves via items.code.
+    const codeRef = typeof line.itemId === "string" ? line.itemId : line.itemCode;
+    const numericId = typeof line.itemId === "number" ? line.itemId : undefined;
+
+    if (numericId !== undefined) {
+      const [item] = await withTenantDb(tenantId, (db) =>
+        db.select({ id: itemsTable.id, code: itemsTable.code, name: itemsTable.name })
+          .from(itemsTable)
+          .where(and(eq(itemsTable.id, numericId), eq(itemsTable.tenantId, tenantId), isNull(itemsTable.deletedAt)))
+          .limit(1));
+      if (!item) { res.status(400).json({ error: `Item with id ${numericId} not found` }); return; }
+      lineItemId = item.id;
+      lineItemCode = lineItemCode ?? item.code;
+      lineItemName = lineItemName ?? item.name;
+    } else if (codeRef) {
+      const [item] = await withTenantDb(tenantId, (db) =>
+        db.select({ id: itemsTable.id, code: itemsTable.code, name: itemsTable.name })
+          .from(itemsTable)
+          .where(and(eq(itemsTable.code, codeRef), eq(itemsTable.tenantId, tenantId), isNull(itemsTable.deletedAt)))
+          .limit(1));
+      if (!item) { res.status(400).json({ error: `Item with code "${codeRef}" not found` }); return; }
+      lineItemId = item.id;
+      lineItemCode = item.code;
+      lineItemName = lineItemName ?? item.name;
+    }
+
+    resolvedLines.push({ ...line, itemId: lineItemId, itemCode: lineItemCode, itemName: lineItemName });
+  }
+
+  const header = { ...rest, customerId: resolvedCustomerId };
 
   const [quot] = await withTenantDb(tenantId, (db) =>
     db.insert(quotationsTable).values({ ...header, tenantId, code: "QT-TEMP", status: "draft", customerName: resolvedCustomerName, customerEmail: resolvedCustomerEmail, createdByClerkId: clerkUserId, createdByEmail: userEmail } as typeof quotationsTable.$inferInsert).returning());
   const quotId = quot!.id;
   await withTenantDb(tenantId, (db) => db.update(quotationsTable).set({ code: genCode("QT", quotId) }).where(eq(quotationsTable.id, quotId)));
-  if (lines.length > 0) {
+  if (resolvedLines.length > 0) {
     await withTenantDb(tenantId, (db) =>
-      db.insert(quotationLinesTable).values(lines.map((l, i) => ({
+      db.insert(quotationLinesTable).values(resolvedLines.map((l, i) => ({
         ...l, quotationId: quotId, tenantId, lineNumber: l.lineNumber ?? i + 1,
         quantity: String(l.quantity), unitPrice: String(l.unitPrice), discountPct: String(l.discountPct), taxPct: String(l.taxPct),
         lineTotal: (l.quantity * l.unitPrice * (1 - l.discountPct / 100)).toFixed(2),

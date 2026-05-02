@@ -40,6 +40,12 @@ export async function tenantContext(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  // API-key authenticated requests already have tenant context populated
+  // by apiKeyAuth — skip the Clerk session resolution.
+  if ((req as { apiKeyAuth?: boolean }).apiKeyAuth) {
+    next();
+    return;
+  }
   const auth = getAuth(req);
   const userId = auth?.userId;
 

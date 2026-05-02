@@ -83,6 +83,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { queryClient } from "@/lib/queryClient";
+import { IntegrationsPanel } from "@/components/settings/integrations-panel";
 
 // ── Profile form ─────────────────────────────────────────────────────────────
 
@@ -791,6 +792,11 @@ export default function Settings() {
               Members
             </TabsTrigger>
           )}
+          {canManageMembers && (
+            <TabsTrigger value="integrations" data-testid="tab-integrations">
+              Integrations
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="profile">
@@ -800,6 +806,12 @@ export default function Settings() {
         {canManageMembers && (
           <TabsContent value="members">
             <MembersPanel />
+          </TabsContent>
+        )}
+
+        {canManageMembers && (
+          <TabsContent value="integrations">
+            <IntegrationsPanel />
           </TabsContent>
         )}
       </Tabs>

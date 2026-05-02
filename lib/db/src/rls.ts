@@ -124,6 +124,8 @@ export async function applyRLSPolicies(): Promise<void> {
       // GL tables
       "gl_postings",
       "notifications",
+      // Integrations
+      "api_keys",
     ];
 
     for (const table of tenantScopedTables) {
@@ -220,6 +222,8 @@ export async function applyRLSPolicies(): Promise<void> {
       // GL
       "gl_postings",
       "notifications",
+      // Integrations
+      "api_keys",
     ];
     for (const table of standardTenantTables) {
       await client.query(`

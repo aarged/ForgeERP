@@ -12,6 +12,7 @@ import { WebhookHandlers } from "./lib/webhookHandlers";
 import { isStripeConfigured } from "./lib/stripe";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { apiKeyAuth } from "./middlewares/apiKeyAuth";
 
 const app: Express = express();
 
@@ -98,6 +99,11 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// API-key authentication runs before Clerk so external integrations
+// (Cyntric, etc.) using `Authorization: Bearer fk_live_…` short-circuit the
+// full Clerk session check. Requests without an `fk_` token fall through.
+app.use("/api", apiKeyAuth);
 
 app.use(
   clerkMiddleware((req) => ({

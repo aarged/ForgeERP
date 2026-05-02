@@ -154,6 +154,71 @@ export interface TenantInviteResult {
   reason?: string | null;
 }
 
+export type ApiKeySummaryRole =
+  (typeof ApiKeySummaryRole)[keyof typeof ApiKeySummaryRole];
+
+export const ApiKeySummaryRole = {
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+/**
+ * Public-facing API key metadata. Plaintext key material is never
+included — only the prefix is shown so admins can identify each key.
+
+ */
+export interface ApiKeySummary {
+  id: number;
+  label: string;
+  prefix: string;
+  role: ApiKeySummaryRole;
+  /** @nullable */
+  createdByEmail?: string | null;
+  createdAt: string;
+  /** @nullable */
+  lastUsedAt?: string | null;
+  /** @nullable */
+  revokedAt?: string | null;
+  /** @nullable */
+  revokedByEmail?: string | null;
+}
+
+export interface ApiKeyListResponse {
+  data: ApiKeySummary[];
+}
+
+export type CreateApiKeyBodyRole =
+  (typeof CreateApiKeyBodyRole)[keyof typeof CreateApiKeyBodyRole];
+
+export const CreateApiKeyBodyRole = {
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+export interface CreateApiKeyBody {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  label: string;
+  role?: CreateApiKeyBodyRole;
+}
+
+export type CreateApiKeyResult = ApiKeySummary & {
+  /** The full `fk_live_…` token. Returned EXACTLY ONCE at creation
+time and never again — the server only stores its SHA-256 hash.
+ */
+  plaintextKey: string;
+};
+
 export type UpdateTenantMemberBodyRole =
   (typeof UpdateTenantMemberBodyRole)[keyof typeof UpdateTenantMemberBodyRole];
 
@@ -2186,7 +2251,7 @@ export const QuotationLineInputLineType = {
 export interface QuotationLineInput {
   lineNumber?: number;
   lineType?: QuotationLineInputLineType;
-  itemId?: number;
+  itemId?: number | string;
   itemCode?: string;
   itemName?: string;
   description?: string;
@@ -2210,7 +2275,7 @@ export interface QuotationListResponse {
 }
 
 export interface CreateQuotationBody {
-  customerId?: number;
+  customerId?: number | string;
   customerName?: string;
   customerEmail?: string;
   customerRef?: string;

@@ -23,6 +23,7 @@ import type {
   AdminTenantDetail,
   AdminTenantMember,
   AdminTrends,
+  ApiKeyListResponse,
   ApprovalDecisionBody,
   ApprovalStep,
   ApprovalWorkflow,
@@ -35,6 +36,8 @@ import type {
   ConfirmPickLineBody,
   ConvertItemUomParams,
   ConvertQuotationToSo201,
+  CreateApiKeyBody,
+  CreateApiKeyResult,
   CreateApprovalStepBody,
   CreateApprovalWorkflowBody,
   CreateContactBody,
@@ -1107,6 +1110,262 @@ export const useRevokeTenantInvite = <
   TContext
 > => {
   return useMutation(getRevokeTenantInviteMutationOptions(options));
+};
+
+/**
+ * Tenant-admin only. Returns metadata for every API key (active and
+revoked). Plaintext key material is never returned by this endpoint —
+only the prefix (first 14 chars) so admins can identify each key.
+
+ * @summary List API keys for the current tenant
+ */
+export const getListApiKeysUrl = () => {
+  return `/api/tenants/current/api-keys`;
+};
+
+export const listApiKeys = async (
+  options?: RequestInit,
+): Promise<ApiKeyListResponse> => {
+  return customFetch<ApiKeyListResponse>(getListApiKeysUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListApiKeysQueryKey = () => {
+  return [`/api/tenants/current/api-keys`] as const;
+};
+
+export const getListApiKeysQueryOptions = <
+  TData = Awaited<ReturnType<typeof listApiKeys>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listApiKeys>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListApiKeysQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listApiKeys>>> = ({
+    signal,
+  }) => listApiKeys({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listApiKeys>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListApiKeysQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listApiKeys>>
+>;
+export type ListApiKeysQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List API keys for the current tenant
+ */
+
+export function useListApiKeys<
+  TData = Awaited<ReturnType<typeof listApiKeys>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listApiKeys>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListApiKeysQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Tenant-admin only. Generates a new `fk_live_…` API key and returns
+the plaintext value EXACTLY ONCE. Only a SHA-256 hash is persisted —
+callers must capture and store `plaintextKey` themselves.
+
+ * @summary Mint a new API key (one-time reveal)
+ */
+export const getCreateApiKeyUrl = () => {
+  return `/api/tenants/current/api-keys`;
+};
+
+export const createApiKey = async (
+  createApiKeyBody: CreateApiKeyBody,
+  options?: RequestInit,
+): Promise<CreateApiKeyResult> => {
+  return customFetch<CreateApiKeyResult>(getCreateApiKeyUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createApiKeyBody),
+  });
+};
+
+export const getCreateApiKeyMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createApiKey>>,
+    TError,
+    { data: BodyType<CreateApiKeyBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createApiKey>>,
+  TError,
+  { data: BodyType<CreateApiKeyBody> },
+  TContext
+> => {
+  const mutationKey = ["createApiKey"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createApiKey>>,
+    { data: BodyType<CreateApiKeyBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createApiKey(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateApiKeyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createApiKey>>
+>;
+export type CreateApiKeyMutationBody = BodyType<CreateApiKeyBody>;
+export type CreateApiKeyMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Mint a new API key (one-time reveal)
+ */
+export const useCreateApiKey = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createApiKey>>,
+    TError,
+    { data: BodyType<CreateApiKeyBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createApiKey>>,
+  TError,
+  { data: BodyType<CreateApiKeyBody> },
+  TContext
+> => {
+  return useMutation(getCreateApiKeyMutationOptions(options));
+};
+
+/**
+ * Tenant-admin only. Marks the API key as revoked. Subsequent requests
+carrying the key are rejected with 401.
+
+ * @summary Revoke an API key
+ */
+export const getRevokeApiKeyUrl = (id: number) => {
+  return `/api/tenants/current/api-keys/${id}`;
+};
+
+export const revokeApiKey = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getRevokeApiKeyUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getRevokeApiKeyMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof revokeApiKey>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof revokeApiKey>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["revokeApiKey"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof revokeApiKey>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return revokeApiKey(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RevokeApiKeyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof revokeApiKey>>
+>;
+
+export type RevokeApiKeyMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Revoke an API key
+ */
+export const useRevokeApiKey = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof revokeApiKey>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof revokeApiKey>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRevokeApiKeyMutationOptions(options));
 };
 
 /**

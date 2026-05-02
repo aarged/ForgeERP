@@ -10,6 +10,12 @@ export function requireAuth(
   res: Response,
   next: NextFunction,
 ): void {
+  // If the request was already authenticated via an API key, the
+  // apiKeyAuth middleware has populated clerkUserId/tenantId/etc — skip Clerk.
+  if ((req as { apiKeyAuth?: boolean }).apiKeyAuth) {
+    next();
+    return;
+  }
   const auth = getAuth(req);
   const userId = auth?.userId;
   if (!userId) {

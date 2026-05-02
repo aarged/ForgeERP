@@ -199,6 +199,73 @@ export const RevokeTenantInviteParams = zod.object({
 });
 
 /**
+ * Tenant-admin only. Returns metadata for every API key (active and
+revoked). Plaintext key material is never returned by this endpoint —
+only the prefix (first 14 chars) so admins can identify each key.
+
+ * @summary List API keys for the current tenant
+ */
+export const ListApiKeysResponse = zod.object({
+  data: zod.array(
+    zod
+      .object({
+        id: zod.number(),
+        label: zod.string(),
+        prefix: zod.string(),
+        role: zod.enum([
+          "tenant_admin",
+          "purchaser",
+          "warehouse",
+          "approver",
+          "accountant",
+          "viewer",
+        ]),
+        createdByEmail: zod.string().nullish(),
+        createdAt: zod.coerce.date(),
+        lastUsedAt: zod.coerce.date().nullish(),
+        revokedAt: zod.coerce.date().nullish(),
+        revokedByEmail: zod.string().nullish(),
+      })
+      .describe(
+        "Public-facing API key metadata. Plaintext key material is never\nincluded — only the prefix is shown so admins can identify each key.\n",
+      ),
+  ),
+});
+
+/**
+ * Tenant-admin only. Generates a new `fk_live_…` API key and returns
+the plaintext value EXACTLY ONCE. Only a SHA-256 hash is persisted —
+callers must capture and store `plaintextKey` themselves.
+
+ * @summary Mint a new API key (one-time reveal)
+ */
+export const createApiKeyBodyLabelMax = 100;
+
+export const CreateApiKeyBody = zod.object({
+  label: zod.string().min(1).max(createApiKeyBodyLabelMax),
+  role: zod
+    .enum([
+      "tenant_admin",
+      "purchaser",
+      "warehouse",
+      "approver",
+      "accountant",
+      "viewer",
+    ])
+    .optional(),
+});
+
+/**
+ * Tenant-admin only. Marks the API key as revoked. Subsequent requests
+carrying the key are rejected with 401.
+
+ * @summary Revoke an API key
+ */
+export const RevokeApiKeyParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
  * Creates a new tenant for the authenticated user, assigns them as tenant_admin, and (for paid plans) creates a Stripe Checkout Session whose URL the client should redirect the user to. For the "starter" plan, the response asks the client to send the user to /dashboard. Idempotent: if the user already has an active tenant membership, returns the existing tenant unchanged.
 
  * @summary Self-serve tenant onboarding
@@ -4709,7 +4776,7 @@ export const CreateQuotationHeader = zod.object({
 });
 
 export const CreateQuotationBody = zod.object({
-  customerId: zod.number().optional(),
+  customerId: zod.union([zod.number(), zod.string()]).optional(),
   customerName: zod.string().optional(),
   customerEmail: zod.string().email().optional(),
   customerRef: zod.string().optional(),
@@ -4726,7 +4793,7 @@ export const CreateQuotationBody = zod.object({
         lineType: zod
           .enum(["stock", "service", "charge", "comment"])
           .optional(),
-        itemId: zod.number().optional(),
+        itemId: zod.union([zod.number(), zod.string()]).optional(),
         itemCode: zod.string().optional(),
         itemName: zod.string().optional(),
         description: zod.string().optional(),
@@ -4920,7 +4987,7 @@ export const AddQuotationLineHeader = zod.object({
 export const AddQuotationLineBody = zod.object({
   lineNumber: zod.number().optional(),
   lineType: zod.enum(["stock", "service", "charge", "comment"]).optional(),
-  itemId: zod.number().optional(),
+  itemId: zod.union([zod.number(), zod.string()]).optional(),
   itemCode: zod.string().optional(),
   itemName: zod.string().optional(),
   description: zod.string().optional(),
@@ -4948,7 +5015,7 @@ export const UpdateQuotationLineHeader = zod.object({
 export const UpdateQuotationLineBody = zod.object({
   lineNumber: zod.number().optional(),
   lineType: zod.enum(["stock", "service", "charge", "comment"]).optional(),
-  itemId: zod.number().optional(),
+  itemId: zod.union([zod.number(), zod.string()]).optional(),
   itemCode: zod.string().optional(),
   itemName: zod.string().optional(),
   description: zod.string().optional(),

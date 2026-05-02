@@ -349,6 +349,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/current/api-keys:
+    get:
+      operationId: listApiKeys
+      tags: [integrations]
+      summary: List API keys for the current tenant
+      description: |
+        Tenant-admin only. Returns metadata for every API key (active and
+        revoked). Plaintext key material is never returned by this endpoint —
+        only the prefix (first 14 chars) so admins can identify each key.
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: API keys for the current tenant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiKeyListResponse" }
+    post:
+      operationId: createApiKey
+      tags: [integrations]
+      summary: Mint a new API key (one-time reveal)
+      description: |
+        Tenant-admin only. Generates a new `fk_live_…` API key and returns
+        the plaintext value EXACTLY ONCE. Only a SHA-256 hash is persisted —
+        callers must capture and store `plaintextKey` themselves.
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateApiKeyBody" }
+      responses:
+        "201":
+          description: Created API key (plaintextKey present, never returned again)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateApiKeyResult" }
+
+  /tenants/current/api-keys/{id}:
+    delete:
+      operationId: revokeApiKey
+      tags: [integrations]
+      summary: Revoke an API key
+      description: |
+        Tenant-admin only. Marks the API key as revoked. Subsequent requests
+        carrying the key are rejected with 401.
+      security:
+        - clerkAuth: []
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Revoked
+
   /tenants/onboard:
     post:
       operationId: onboardTenant
@@ -7239,6 +7294,65 @@ components:
         - role
         - delivered
 
+    ApiKeySummary:
+      type: object
+      description: |
+        Public-facing API key metadata. Plaintext key material is never
+        included — only the prefix is shown so admins can identify each key.
+      properties:
+        id: { type: integer }
+        label: { type: string }
+        prefix: { type: string }
+        role:
+          type: string
+          enum: [tenant_admin, purchaser, warehouse, approver, accountant, viewer]
+        createdByEmail: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: ["string", "null"], format: date-time }
+        revokedAt: { type: ["string", "null"], format: date-time }
+        revokedByEmail: { type: ["string", "null"] }
+      required:
+        - id
+        - label
+        - prefix
+        - role
+        - createdAt
+
+    ApiKeyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ApiKeySummary" }
+      required:
+        - data
+
+    CreateApiKeyBody:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+        role:
+          type: string
+          enum: [tenant_admin, purchaser, warehouse, approver, accountant, viewer]
+      required:
+        - label
+
+    CreateApiKeyResult:
+      allOf:
+        - $ref: "#/components/schemas/ApiKeySummary"
+        - type: object
+          properties:
+            plaintextKey:
+              type: string
+              description: |
+                The full `fk_live_…` token. Returned EXACTLY ONCE at creation
+                time and never again — the server only stores its SHA-256 hash.
+          required:
+            - plaintextKey
+
     UpdateTenantMemberBody:
       type: object
       properties:
@@ -9479,7 +9593,13 @@ components:
       properties:
         lineNumber: { type: integer }
         lineType: { type: string, enum: [stock, service, charge, comment] }
-        itemId: { type: integer }
+        # itemId accepts either the numeric primary key or the items.code
+        # string (e.g. "ITEM-001"). itemCode may be supplied separately and
+        # is also resolved against items.code.
+        itemId:
+          oneOf:
+            - { type: integer }
+            - { type: string }
         itemCode: { type: string }
         itemName: { type: string }
         description: { type: string }
@@ -9512,7 +9632,13 @@ components:
     CreateQuotationBody:
       type: object
       properties:
-        customerId: { type: integer }
+        # Accepts either a numeric customer id or the customers.code string
+        # (e.g. "CUST-001") so external systems can reference customers by
+        # their human-readable code.
+        customerId:
+          oneOf:
+            - { type: integer }
+            - { type: string }
         customerName: { type: string }
         customerEmail: { type: string, format: email }
         customerRef: { type: string }
