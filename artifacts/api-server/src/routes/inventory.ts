@@ -537,6 +537,9 @@ router.post("/inventory/adjust", ...tenantWriteMiddleware, async (req: Request, 
       ? (await db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(and(eq(glAccountsTable.id, parsed.data.glAccountId), eq(glAccountsTable.tenantId, tenantId))).limit(1))[0]
       : null;
 
+    // Resolve tenant's configured inventory asset account (shared lookup)
+    const invGlAcc = await lookupInventoryGlAccount(db, tenantId);
+
     // Process each line with costing-method awareness
     const lineIds: number[] = [];
     const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
@@ -583,11 +586,11 @@ router.post("/inventory/adjust", ...tenantWriteMiddleware, async (req: Request, 
       lineIds.push(adjLine.id);
 
       // Accumulate GL lines: stock account Dr/Cr, adjustment account as offset
-      if (glAcc && line.unitCost) {
+      if (glAcc && invGlAcc && line.unitCost) {
         const value = Math.abs(line.qtyAdjusted * line.unitCost);
         const isIncrease = line.qtyAdjusted > 0;
         glLines.push({
-          accountCode: "1300", accountName: "Inventory Asset",
+          accountCode: invGlAcc.code, accountName: invGlAcc.name,
           debit: isIncrease ? value : 0,
           credit: isIncrease ? 0 : value,
           description: `${item?.code ?? "Item"} qty adj ${line.qtyAdjusted}`,
@@ -942,18 +945,21 @@ router.post("/inventory/receive", ...tenantWriteMiddleware, async (req: Request,
 
     await updateStockLevel(db, tenantId, d.itemId, d.warehouseId, d.locationId ?? null, d.quantity, d.unitCost ?? null, d.lotNumber ?? null, movement.id, costingMethod);
 
-    // GL posting: Dr Inventory Asset, Cr AP/Clearing account
+    // GL posting: Dr tenant inventory asset account, Cr AP/Clearing account
     let glPostingId: number | null | undefined;
     if (d.unitCost) {
       const value = d.quantity * d.unitCost;
-      glPostingId = await createInventoryGlPosting(
-        db, tenantId, "inventory_receive", movement.id,
-        d.refCode ?? `RECV-${movement.id}`, clerkUserId, userEmail,
-        [
-          { accountCode: "1300", accountName: "Inventory Asset", debit: value, credit: 0, description: `${item.code} received ${d.quantity} × ${d.unitCost}` },
-          { accountCode: glAcc.code, accountName: glAcc.name, debit: 0, credit: value, description: `Direct receive clearing` },
-        ],
-      );
+      const invGlAcc = await lookupInventoryGlAccount(db, tenantId);
+      if (invGlAcc) {
+        glPostingId = await createInventoryGlPosting(
+          db, tenantId, "inventory_receive", movement.id,
+          d.refCode ?? `RECV-${movement.id}`, clerkUserId, userEmail,
+          [
+            { accountCode: invGlAcc.code, accountName: invGlAcc.name, debit: value, credit: 0, description: `${item.code} received ${d.quantity} × ${d.unitCost}` },
+            { accountCode: glAcc.code, accountName: glAcc.name, debit: 0, credit: value, description: `Direct receive clearing` },
+          ],
+        );
+      }
     }
 
     return { movementId: movement.id, glPostingId };
@@ -1779,6 +1785,9 @@ router.post("/inventory/stocktakes/:id/post", ...tenantWriteMiddleware, async (r
       ? (await db.select({ code: glAccountsTable.code, name: glAccountsTable.name }).from(glAccountsTable).where(and(eq(glAccountsTable.id, glAccountId), eq(glAccountsTable.tenantId, tenantId))).limit(1))[0]
       : null;
 
+    // Resolve tenant's configured inventory asset account (shared lookup)
+    const invGlAcc = await lookupInventoryGlAccount(db, tenantId);
+
     // Build GL lines for all variances, create single GL posting
     const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
 
@@ -1811,11 +1820,11 @@ router.post("/inventory/stocktakes/:id/post", ...tenantWriteMiddleware, async (r
       movementsPosted++;
 
       // Accumulate GL lines for variance posting
-      if (glAcc && unitCost > 0) {
+      if (glAcc && invGlAcc && unitCost > 0) {
         const value = Math.abs(varianceQty * unitCost);
         const isIncrease = varianceQty > 0;
         glLines.push({
-          accountCode: "1300", accountName: "Inventory Asset",
+          accountCode: invGlAcc.code, accountName: invGlAcc.name,
           debit: isIncrease ? value : 0,
           credit: isIncrease ? 0 : value,
           description: `Stocktake ${run.code} – ${line.itemCode ?? ""} variance ${varianceQty > 0 ? "+" : ""}${varianceQty.toFixed(4)}`,
