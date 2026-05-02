@@ -1,25 +1,28 @@
 /**
- * One-task-at-a-time guided picking flow.
+ * Camera-first picking flow.
  *
- * The slip's lines are walked through in order. For each line the picker:
- *   1. Sees the location, expected item & qty (with optional voice readout).
- *   2. Optionally scans the item barcode (verified against `line.barcode`).
- *   3. Enters lot/serial/batch (if required by the item) and the picked qty.
- *   4. Optionally captures a confirmation photo.
- *   5. Hits CONFIRM (full pick) or SHORT (records reason).
+ * The whole slip view is a full-screen rear-camera stream. The picker walks
+ * through lines one at a time:
+ *   • A translucent banner across the top shows item, location and progress.
+ *   • A translucent panel along the bottom holds picked-qty, optional barcode
+ *     and a single shutter/confirm button.
+ *   • Tapping the shutter grabs a still frame from the live video, attaches
+ *     it as the proof-of-pick photo, confirms the line, and advances.
+ *   • Chevrons on the left/right edges move Back / Next without confirming.
+ *   • Top-left "Quit" leaves the slip (with confirmation). A "Finish" button
+ *     appears once all lines are confirmed.
+ *   • A small "Short-pick" action expands a compact reason panel over the
+ *     camera view.
  *
- * On the last line, the slip is auto-completed by the API helper.
+ * The screen is locked to portrait while the slip is open.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useRoute } from "wouter";
-import { PickerLayout } from "./PickerLayout";
-import { BarcodeScanner } from "./components/BarcodeScanner";
-import { PhotoCapture } from "./components/PhotoCapture";
+import { useRoute, useLocation } from "wouter";
 import { pickerGet, pickerMutate } from "./lib/api";
 import type { PickSlip, PickSlipLine } from "./lib/types";
 import { speak } from "./lib/voice";
-import { pendingPhotoLineIdFor, useOfflineQueue } from "./lib/useOfflineQueue";
+import { useOfflineQueue } from "./lib/useOfflineQueue";
 import { useToast } from "@/hooks/use-toast";
 
 const SHORT_REASONS = [
@@ -29,8 +32,11 @@ const SHORT_REASONS = [
   { value: "other", label: "Other" },
 ] as const;
 
+type ShortReason = typeof SHORT_REASONS[number]["value"];
+
 export default function PickerSlipPage() {
   const [, params] = useRoute<{ id: string }>("/picking/slip/:id");
+  const [, setLocation] = useLocation();
   const slipId = Number(params?.id);
   const { toast } = useToast();
 
@@ -42,269 +48,441 @@ export default function PickerSlipPage() {
 
   const slip = slipQuery.data;
   const lines = useMemo(() => slip?.lines ?? [], [slip]);
+  const totalLines = lines.length;
+  const confirmedCount = lines.filter(
+    (l) => l.confirmStatus === "picked" || l.confirmStatus === "short",
+  ).length;
+  const allDone = totalLines > 0 && confirmedCount === totalLines;
 
-  // Index of the next un-confirmed line. Picker UX: always advance forward.
+  // Track the active line index. We move forward automatically after a
+  // confirm, but the chevrons let the picker walk Back / Next freely.
   const [activeIdx, setActiveIdx] = useState(0);
+  const initialisedRef = useRef(false);
   useEffect(() => {
-    const firstPending = lines.findIndex((l) => l.confirmStatus !== "picked" && l.confirmStatus !== "short");
-    setActiveIdx(firstPending === -1 ? Math.max(0, lines.length - 1) : firstPending);
+    if (initialisedRef.current || lines.length === 0) return;
+    const firstPending = lines.findIndex(
+      (l) => l.confirmStatus !== "picked" && l.confirmStatus !== "short",
+    );
+    setActiveIdx(firstPending === -1 ? 0 : firstPending);
+    initialisedRef.current = true;
   }, [lines]);
 
   // Auto-start the slip on first view if it's still pending.
   useEffect(() => {
     if (!slip) return;
     if (slip.status === "pending") {
-      void pickerMutate({ path: `/sales/pick-slips/${slip.id}/start`, method: "POST", body: {}, label: `Start ${slip.code}` })
-        .then(() => slipQuery.refetch());
+      void pickerMutate({
+        path: `/sales/pick-slips/${slip.id}/start`,
+        method: "POST",
+        body: {},
+        label: `Start ${slip.code}`,
+      }).then(() => slipQuery.refetch());
     }
   }, [slip, slipQuery]);
 
-  // Surface pending photo uploads per-line so the picker can see which lines
-  // are still waiting on a photo to sync. Hooks must run unconditionally on
-  // every render — keep this above the early returns below.
-  const { items: queuedItems } = useOfflineQueue();
-  const pendingPhotoLineIds = useMemo(() => {
-    const set = new Set<number>();
-    if (!slip) return set;
-    const prefix = `/sales/pick-slips/${slip.id}/lines/`;
-    for (const item of queuedItems) {
-      if (!item.url.includes(prefix)) continue;
-      const lineId = pendingPhotoLineIdFor(item);
-      if (lineId != null) set.add(lineId);
+  // Lock the screen to portrait for the duration of the slip view. Best
+  // effort — most desktop browsers and non-fullscreen tabs will reject this,
+  // which is fine.
+  useEffect(() => {
+    const orientation = (typeof screen !== "undefined" ? screen.orientation : undefined) as
+      | (ScreenOrientation & { lock?: (o: string) => Promise<void> })
+      | undefined;
+    if (orientation && typeof orientation.lock === "function") {
+      orientation.lock("portrait").catch(() => undefined);
     }
-    return set;
-  }, [queuedItems, slip]);
+    return () => {
+      if (orientation && typeof orientation.unlock === "function") {
+        try {
+          orientation.unlock();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+  }, []);
+
+  // Keep useOfflineQueue mounted so the status bar / sync logic continues to
+  // run while the picker is in the camera view.
+  useOfflineQueue();
 
   if (!Number.isFinite(slipId)) {
-    return (
-      <PickerLayout title="Pick slip" back={{ label: "Queue", to: "/picking" }}>
-        <div className="p-4 text-sm text-red-600">Invalid slip id.</div>
-      </PickerLayout>
-    );
+    return <FullScreenMessage tone="error" message="Invalid slip id." onQuit={() => setLocation("/picking")} />;
   }
   if (slipQuery.isLoading) {
-    return (
-      <PickerLayout title="Loading…" back={{ label: "Queue", to: "/picking" }}>
-        <div className="p-4 text-sm text-slate-500">Loading slip…</div>
-      </PickerLayout>
-    );
+    return <FullScreenMessage tone="info" message="Loading slip…" onQuit={() => setLocation("/picking")} />;
   }
   if (!slip) {
-    return (
-      <PickerLayout title="Not found" back={{ label: "Queue", to: "/picking" }}>
-        <div className="p-4 text-sm text-red-600">Slip not found.</div>
-      </PickerLayout>
-    );
+    return <FullScreenMessage tone="error" message="Slip not found." onQuit={() => setLocation("/picking")} />;
   }
 
-  const totalLines = lines.length;
-  const confirmedCount = lines.filter((l) => l.confirmStatus === "picked" || l.confirmStatus === "short").length;
-  const allDone = totalLines > 0 && confirmedCount === totalLines;
   const activeLine = lines[activeIdx];
 
   return (
-    <PickerLayout
-      title={`${slip.code} · ${confirmedCount}/${totalLines}`}
-      back={{ label: "Queue", to: "/picking" }}
-      right={
-        <span className="rounded bg-white/20 px-2 py-1 text-xs" data-testid="text-slip-status">
-          {slip.status}
-        </span>
-      }
-    >
-      <div className="mx-auto w-full max-w-xl p-4 space-y-4">
-        <ProgressBar value={confirmedCount} total={totalLines} />
-
-        {allDone ? (
-          <CompletePanel slip={slip} onChange={() => slipQuery.refetch()} />
-        ) : activeLine ? (
-          <LineCard
-            key={activeLine.id}
-            slipId={slip.id}
-            line={activeLine}
-            onConfirmed={() => {
-              toast({ title: "Line confirmed" });
-              void slipQuery.refetch();
-            }}
-          />
-        ) : (
-          <p className="text-slate-600">No lines on this slip.</p>
-        )}
-
-        <LineList
-          lines={lines}
-          activeIdx={activeIdx}
-          onPick={(idx) => setActiveIdx(idx)}
-          pendingPhotoLineIds={pendingPhotoLineIds}
-        />
-      </div>
-    </PickerLayout>
+    <CameraSlipView
+      slip={slip}
+      lines={lines}
+      activeIdx={activeIdx}
+      activeLine={activeLine}
+      totalLines={totalLines}
+      confirmedCount={confirmedCount}
+      allDone={allDone}
+      onPrev={() => setActiveIdx((i) => Math.max(0, i - 1))}
+      onNext={() => setActiveIdx((i) => Math.min(lines.length - 1, i + 1))}
+      onConfirmed={() => {
+        toast({ title: "Line confirmed" });
+        // Move forward to the next un-confirmed line if there is one.
+        const nextPending = lines.findIndex((l, idx) => {
+          if (idx <= activeIdx) return false;
+          return l.confirmStatus !== "picked" && l.confirmStatus !== "short";
+        });
+        if (nextPending !== -1) setActiveIdx(nextPending);
+        else if (activeIdx < lines.length - 1) setActiveIdx(activeIdx + 1);
+        void slipQuery.refetch();
+      }}
+      onQuit={() => {
+        if (window.confirm("Leave this pick slip? Any unsaved input on this line will be lost.")) {
+          setLocation("/picking");
+        }
+      }}
+      onFinish={async () => {
+        if (!window.confirm("Mark this slip as picked and send it to despatch?")) return;
+        const result = await pickerMutate<PickSlip>({
+          path: `/sales/pick-slips/${slip.id}/complete`,
+          method: "POST",
+          body: {},
+          label: `Complete ${slip.code}`,
+        });
+        if (result.offline) {
+          toast({ title: "Queued offline", description: `${slip.code} will complete when back online.` });
+        } else {
+          toast({ title: "Slip completed", description: slip.code });
+        }
+        setLocation("/picking");
+      }}
+    />
   );
 }
 
-function ProgressBar({ value, total }: { value: number; total: number }) {
-  const pct = total === 0 ? 0 : Math.round((value / total) * 100);
-  return (
-    <div data-testid="progress-bar">
-      <div className="mb-1 flex justify-between text-xs text-slate-600">
-        <span>Progress</span>
-        <span>{pct}%</span>
-      </div>
-      <div className="h-2 w-full rounded bg-slate-200">
-        <div className="h-full rounded bg-emerald-600 transition-all" style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function CompletePanel({ slip, onChange }: { slip: PickSlip; onChange: () => void }) {
-  const { toast } = useToast();
-  const [busy, setBusy] = useState(false);
-  const isComplete = slip.status === "picked";
-
-  async function complete() {
-    setBusy(true);
-    const result = await pickerMutate<PickSlip>({
-      path: `/sales/pick-slips/${slip.id}/complete`,
-      method: "POST",
-      body: {},
-      label: `Complete ${slip.code}`,
-    });
-    setBusy(false);
-    if (result.offline) {
-      toast({ title: "Queued offline", description: `${slip.code} will complete when back online.` });
-    } else {
-      toast({ title: "Slip completed", description: slip.code });
-    }
-    onChange();
-  }
-
-  return (
-    <div className="rounded-lg border bg-emerald-50 p-4 text-emerald-900" data-testid="panel-complete">
-      <h2 className="text-lg font-semibold">All lines confirmed</h2>
-      <p className="text-sm">Mark the slip as picked to send it to despatch.</p>
-      <button
-        type="button"
-        className="mt-3 w-full rounded bg-emerald-600 px-3 py-3 text-base font-medium text-white disabled:opacity-50"
-        onClick={() => void complete()}
-        disabled={busy || isComplete}
-        data-testid="button-complete-slip"
-      >
-        {isComplete ? "Slip completed" : busy ? "Completing…" : "Complete slip"}
-      </button>
-    </div>
-  );
-}
-
-function LineList({
-  lines,
-  activeIdx,
-  onPick,
-  pendingPhotoLineIds,
-}: {
+interface CameraSlipViewProps {
+  slip: PickSlip;
   lines: PickSlipLine[];
   activeIdx: number;
-  onPick: (idx: number) => void;
-  pendingPhotoLineIds: Set<number>;
-}) {
+  activeLine: PickSlipLine | undefined;
+  totalLines: number;
+  confirmedCount: number;
+  allDone: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+  onConfirmed: () => void;
+  onQuit: () => void;
+  onFinish: () => void;
+}
+
+function CameraSlipView({
+  slip,
+  lines,
+  activeIdx,
+  activeLine,
+  totalLines,
+  confirmedCount,
+  allDone,
+  onPrev,
+  onNext,
+  onConfirmed,
+  onQuit,
+  onFinish,
+}: CameraSlipViewProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+
+  // Keep one rear-camera stream alive for the whole slip session.
+  useEffect(() => {
+    let cancelled = false;
+    let stream: MediaStream | null = null;
+    (async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Camera not available in this browser.");
+        }
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          video.muted = true;
+          video.playsInline = true;
+          await video.play().catch(() => undefined);
+          setCameraReady(true);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : String(err);
+        setCameraError(message || "Camera unavailable");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      const video = videoRef.current;
+      if (video) video.srcObject = null;
+    };
+  }, []);
+
+  const captureFrame = useCallback(async (): Promise<Blob | null> => {
+    const video = videoRef.current;
+    if (!video || !cameraReady) return null;
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (!w || !h) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, w, h);
+    return await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85),
+    );
+  }, [cameraReady]);
+
   return (
-    <details className="rounded-lg border bg-white">
-      <summary className="cursor-pointer px-3 py-2 text-sm font-medium" data-testid="summary-line-list">
-        All lines ({lines.length})
-      </summary>
-      <ol className="divide-y">
-        {lines.map((line, idx) => (
-          <li
-            key={line.id}
-            className={`flex items-center justify-between px-3 py-2 text-sm ${idx === activeIdx ? "bg-blue-50" : ""}`}
+    <div
+      className="fixed inset-0 z-40 flex flex-col bg-black text-white select-none"
+      data-testid="picker-camera-shell"
+    >
+      {/* Live camera feed */}
+      <video
+        ref={videoRef}
+        className="absolute inset-0 h-full w-full object-cover"
+        playsInline
+        muted
+        autoPlay
+        data-testid="picker-camera-video"
+      />
+      {!cameraReady && !cameraError ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-sm text-white/70">
+          Starting camera…
+        </div>
+      ) : null}
+      {cameraError ? (
+        <div
+          className="absolute left-1/2 top-1/2 z-10 w-[80%] -translate-x-1/2 -translate-y-1/2 rounded bg-red-900/90 p-4 text-center text-sm"
+          data-testid="picker-camera-error"
+        >
+          {cameraError}
+          <div className="mt-2 text-xs text-white/70">
+            You can still confirm picks — the photo step will be skipped.
+          </div>
+        </div>
+      ) : null}
+
+      {/* Top translucent banner — item, location, progress */}
+      <TopBanner
+        slip={slip}
+        line={activeLine}
+        confirmedCount={confirmedCount}
+        totalLines={totalLines}
+        activeIdx={activeIdx}
+        onQuit={onQuit}
+      />
+
+      {/* Side chevrons for non-confirming Back / Next */}
+      <SideChevrons
+        canPrev={activeIdx > 0}
+        canNext={activeIdx < lines.length - 1}
+        onPrev={onPrev}
+        onNext={onNext}
+      />
+
+      {/* Bottom panel — picked qty, barcode, shutter, short-pick, finish */}
+      {activeLine ? (
+        <BottomPanel
+          slipId={slip.id}
+          line={activeLine}
+          allDone={allDone}
+          captureFrame={captureFrame}
+          cameraAvailable={cameraReady && !cameraError}
+          onConfirmed={onConfirmed}
+          onFinish={onFinish}
+        />
+      ) : (
+        <div className="absolute inset-x-0 bottom-0 z-10 bg-black/70 p-4 text-center text-sm">
+          No lines on this slip.
+          <button
+            type="button"
+            onClick={onQuit}
+            className="ml-3 rounded bg-white/20 px-3 py-1 text-sm"
+            data-testid="button-quit-empty"
           >
-            <div>
-              <div className="font-medium">{line.itemCode ?? `#${line.itemId}`} — {line.itemName}</div>
-              <div className="text-xs text-slate-500">
-                {line.locationLabel ?? "—"} · qty {line.requiredQty} {line.uom ?? ""}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {pendingPhotoLineIds.has(line.id) ? (
-                <span
-                  className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
-                  title="Photo pending sync"
-                  data-testid={`badge-photo-pending-${line.id}`}
-                >
-                  📷 pending
-                </span>
-              ) : null}
-              <LineStatus status={line.confirmStatus ?? "pending"} />
-              <button
-                type="button"
-                className="text-xs text-blue-600 underline"
-                onClick={() => onPick(idx)}
-                data-testid={`button-jump-line-${line.id}`}
-              >
-                Open
-              </button>
-            </div>
-          </li>
-        ))}
-      </ol>
-    </details>
+            Back to queue
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
-function LineStatus({ status }: { status: NonNullable<PickSlipLine["confirmStatus"]> }) {
-  const map: Record<NonNullable<PickSlipLine["confirmStatus"]>, string> = {
-    pending: "bg-slate-200 text-slate-800",
-    picked: "bg-emerald-600 text-white",
-    short: "bg-amber-500 text-white",
-  };
-  return <span className={`rounded px-2 py-0.5 text-xs capitalize ${map[status]}`}>{status}</span>;
+function TopBanner({
+  slip,
+  line,
+  confirmedCount,
+  totalLines,
+  activeIdx,
+  onQuit,
+}: {
+  slip: PickSlip;
+  line: PickSlipLine | undefined;
+  confirmedCount: number;
+  totalLines: number;
+  activeIdx: number;
+  onQuit: () => void;
+}) {
+  // Voice readout when the active line changes.
+  useEffect(() => {
+    if (!line) return;
+    const required = Number(line.requiredQty);
+    const where = line.locationLabel ? `at ${line.locationLabel}` : "";
+    speak(
+      `Pick ${required} ${line.uom ?? ""} of ${line.itemName ?? line.itemCode ?? "item"} ${where}`.trim(),
+    );
+  }, [line?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div
+      className="absolute inset-x-0 top-0 z-10 bg-black/60 px-3 pt-[env(safe-area-inset-top)] pb-3 text-white backdrop-blur-sm"
+      data-testid="picker-top-banner"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={onQuit}
+          className="rounded bg-white/15 px-3 py-1.5 text-sm font-medium"
+          data-testid="button-quit-slip"
+        >
+          ✕ Quit
+        </button>
+        <div className="flex flex-col items-center text-center">
+          <div className="text-xs uppercase tracking-wide text-white/70" data-testid="text-slip-code">
+            {slip.code}
+          </div>
+          <div className="text-xs text-white/80" data-testid="text-line-progress">
+            Line {Math.min(activeIdx + 1, Math.max(totalLines, 1))} of {totalLines} ·{" "}
+            {confirmedCount} done
+          </div>
+        </div>
+        <div className="w-[68px] text-right">
+          <span
+            className="rounded bg-white/15 px-2 py-1 text-xs uppercase tracking-wide"
+            data-testid="text-slip-status"
+          >
+            {slip.status}
+          </span>
+        </div>
+      </div>
+      {line ? (
+        <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+          <div>
+            <div
+              className="truncate text-lg font-semibold leading-tight"
+              data-testid="text-line-item-name"
+              title={line.itemName ?? line.itemCode ?? ""}
+            >
+              {line.itemName ?? line.itemCode ?? `#${line.itemId}`}
+            </div>
+            <div className="text-xs text-white/70" data-testid="text-line-item-code">
+              SKU {line.itemCode ?? `#${line.itemId}`}
+            </div>
+          </div>
+          <div className="rounded bg-white/15 px-2 py-1 text-right">
+            <div className="text-[10px] uppercase tracking-wide text-white/70">Location</div>
+            <div className="text-sm font-semibold" data-testid="text-line-location">
+              {line.locationLabel ?? "—"}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
-interface LineCardProps {
+function SideChevrons({
+  canPrev,
+  canNext,
+  onPrev,
+  onNext,
+}: {
+  canPrev: boolean;
+  canNext: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={!canPrev}
+        aria-label="Previous line"
+        className="absolute left-2 top-1/2 z-10 flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-3xl text-white backdrop-blur-sm transition disabled:opacity-30"
+        data-testid="button-prev-line"
+      >
+        ‹
+      </button>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={!canNext}
+        aria-label="Next line"
+        className="absolute right-2 top-1/2 z-10 flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-3xl text-white backdrop-blur-sm transition disabled:opacity-30"
+        data-testid="button-next-line"
+      >
+        ›
+      </button>
+    </>
+  );
+}
+
+interface BottomPanelProps {
   slipId: number;
   line: PickSlipLine;
+  allDone: boolean;
+  cameraAvailable: boolean;
+  captureFrame: () => Promise<Blob | null>;
   onConfirmed: () => void;
+  onFinish: () => void;
 }
 
-function LineCard({ slipId, line, onConfirmed }: LineCardProps) {
+function BottomPanel({
+  slipId,
+  line,
+  allDone,
+  cameraAvailable,
+  captureFrame,
+  onConfirmed,
+  onFinish,
+}: BottomPanelProps) {
   const { toast } = useToast();
   const required = Number(line.requiredQty);
-  const [pickedQty, setPickedQty] = useState<string>(String(line.pickedQty ?? required));
-  const [lot, setLot] = useState(line.lotNumber ?? "");
-  const [serial, setSerial] = useState(line.serialNumber ?? "");
-  const [batch, setBatch] = useState(line.batchNumber ?? "");
-  const [scannedBarcode, setScannedBarcode] = useState<string>("");
-  const [scanError, setScanError] = useState<string | null>(null);
-  const [scannerOpen, setScannerOpen] = useState(false);
-  const [photo, setPhoto] = useState<{ previewUrl: string; blob: Blob } | null>(null);
-  const [shortReason, setShortReason] = useState<typeof SHORT_REASONS[number]["value"] | "">("");
-  const [shortNote, setShortNote] = useState("");
+  const [pickedQty, setPickedQty] = useState<string>(String(required));
+  const [barcode, setBarcode] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const [shortOpen, setShortOpen] = useState(false);
 
-  // Voice readout when this line becomes active.
+  // Reset per-line input whenever the active line changes.
   useEffect(() => {
-    const where = line.locationLabel ? `at ${line.locationLabel}` : "";
-    speak(`Pick ${required} ${line.uom ?? ""} of ${line.itemName ?? line.itemCode ?? "item"} ${where}`.trim());
-  }, [line.id, line.locationLabel, line.itemName, line.itemCode, line.uom, required]);
+    setPickedQty(String(Number(line.requiredQty)));
+    setBarcode("");
+    setShortOpen(false);
+  }, [line.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleScan(decoded: string) {
-    setScannedBarcode(decoded);
-    setScannerOpen(false);
-    if (line.barcode && decoded !== line.barcode) {
-      setScanError(`Barcode mismatch: scanned ${decoded}, expected ${line.barcode}`);
-    } else {
-      setScanError(null);
-      toast({ title: "Barcode matched" });
-    }
-  }
-
-  function photoArg() {
-    return photo
-      ? { blob: photo.blob, name: `pick-slip-${slipId}-line-${line.id}.jpg` }
-      : undefined;
-  }
-
-  async function confirmPick() {
+  async function handleShutter() {
     const qty = Number(pickedQty);
     if (!Number.isFinite(qty) || qty < 0) {
       toast({ title: "Enter a valid picked qty", variant: "destructive" });
@@ -314,23 +492,25 @@ function LineCard({ slipId, line, onConfirmed }: LineCardProps) {
       toast({ title: "Picked qty cannot exceed required", variant: "destructive" });
       return;
     }
-    if (line.barcode && scannedBarcode && scannedBarcode !== line.barcode) {
+    if (line.barcode && barcode && barcode !== line.barcode) {
       toast({ title: "Scanned barcode does not match", variant: "destructive" });
       return;
     }
     setBusy(true);
+    let photoArg: { blob: Blob; name: string } | undefined;
+    if (cameraAvailable) {
+      const blob = await captureFrame();
+      if (blob) photoArg = { blob, name: `pick-slip-${slipId}-line-${line.id}.jpg` };
+    }
     const result = await pickerMutate<PickSlipLine>({
       path: `/sales/pick-slips/${slipId}/lines/${line.id}/confirm`,
       method: "POST",
       body: {
         pickedQty: qty,
-        lotNumber: lot || undefined,
-        serialNumber: serial || undefined,
-        batchNumber: batch || undefined,
-        scannedBarcode: scannedBarcode || undefined,
+        scannedBarcode: barcode || undefined,
       },
       label: `Confirm ${line.itemCode ?? line.itemId} on slip ${slipId}`,
-      photo: photoArg(),
+      photo: photoArg,
     });
     setBusy(false);
     if (result.offline) {
@@ -342,25 +522,27 @@ function LineCard({ slipId, line, onConfirmed }: LineCardProps) {
     onConfirmed();
   }
 
-  async function shortPick() {
-    if (!shortReason) {
-      toast({ title: "Pick a reason for the short", variant: "destructive" });
-      return;
-    }
+  async function submitShort(reason: ShortReason, note: string) {
     setBusy(true);
     const qty = Number(pickedQty);
+    let photoArg: { blob: Blob; name: string } | undefined;
+    if (cameraAvailable) {
+      const blob = await captureFrame();
+      if (blob) photoArg = { blob, name: `pick-slip-${slipId}-line-${line.id}.jpg` };
+    }
     const result = await pickerMutate<PickSlipLine>({
       path: `/sales/pick-slips/${slipId}/lines/${line.id}/short-pick`,
       method: "POST",
       body: {
-        reason: shortReason,
+        reason,
         pickedQty: Number.isFinite(qty) ? qty : 0,
-        note: shortNote || undefined,
+        note: note || undefined,
       },
       label: `Short-pick ${line.itemCode ?? line.itemId} on slip ${slipId}`,
-      photo: photoArg(),
+      photo: photoArg,
     });
     setBusy(false);
+    setShortOpen(false);
     if (result.offline) {
       const desc = result.photoQueued
         ? "Short-pick + photo will sync when back online"
@@ -370,162 +552,182 @@ function LineCard({ slipId, line, onConfirmed }: LineCardProps) {
     onConfirmed();
   }
 
+  const lineDone = line.confirmStatus === "picked" || line.confirmStatus === "short";
+
   return (
-    <div className="rounded-lg border bg-white p-4 shadow-sm" data-testid={`card-line-${line.id}`}>
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Pick this</div>
-      <div className="text-2xl font-bold leading-tight" data-testid="text-line-item-name">
-        {line.itemName ?? line.itemCode ?? `#${line.itemId}`}
-      </div>
-      <div className="text-sm text-slate-600">SKU {line.itemCode ?? `#${line.itemId}`}</div>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-        <div className="rounded bg-slate-100 p-2">
-          <div className="text-xs uppercase text-slate-500">Location</div>
-          <div className="text-lg font-semibold" data-testid="text-line-location">
-            {line.locationLabel ?? "—"}
-          </div>
-        </div>
-        <div className="rounded bg-slate-100 p-2">
-          <div className="text-xs uppercase text-slate-500">Required</div>
-          <div className="text-lg font-semibold" data-testid="text-line-required">
-            {required} {line.uom ?? ""}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <div>
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium">Picked qty</label>
-            <button
-              type="button"
-              className="text-xs text-blue-700 underline"
-              onClick={() => setPickedQty(String(required))}
-              data-testid="button-fill-required"
-            >
-              Use required ({required})
-            </button>
-          </div>
-          <input
-            type="number"
-            inputMode="decimal"
-            min={0}
-            max={required}
-            step="any"
-            value={pickedQty}
-            onChange={(e) => setPickedQty(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-3 text-lg"
-            data-testid="input-picked-qty"
-          />
+    <>
+      <div
+        className="absolute inset-x-0 bottom-0 z-10 bg-black/60 px-3 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur-sm"
+        data-testid="picker-bottom-panel"
+      >
+        <div className="grid grid-cols-[1fr_1fr] gap-2">
+          <label className="block">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-white/70">
+              Picked qty (of {required} {line.uom ?? ""})
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={required}
+              step="any"
+              value={pickedQty}
+              onChange={(e) => setPickedQty(e.target.value)}
+              className="mt-1 w-full rounded border border-white/30 bg-white/95 px-3 py-3 text-lg font-semibold text-slate-900"
+              data-testid="input-picked-qty"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-white/70">
+              Barcode (optional)
+            </span>
+            <input
+              type="text"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+              placeholder={line.barcode ?? "—"}
+              className="mt-1 w-full rounded border border-white/30 bg-white/95 px-3 py-3 text-base text-slate-900"
+              data-testid="input-barcode"
+            />
+          </label>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium">Barcode</label>
-            <button
-              type="button"
-              className="rounded bg-slate-900 px-3 py-1 text-xs text-white"
-              onClick={() => setScannerOpen(true)}
-              data-testid="button-open-scanner"
-            >
-              Scan
-            </button>
-          </div>
-          <input
-            type="text"
-            value={scannedBarcode}
-            onChange={(e) => {
-              setScannedBarcode(e.target.value);
-              setScanError(null);
-            }}
-            placeholder={line.barcode ?? "(not required)"}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            data-testid="input-barcode"
-          />
-          {scanError ? <div className="mt-1 text-xs text-red-600" data-testid="text-scan-error">{scanError}</div> : null}
-        </div>
-
-        <div className="grid grid-cols-3 gap-2">
-          <FieldText label="Lot #" value={lot} onChange={setLot} testId="input-lot" />
-          <FieldText label="Serial #" value={serial} onChange={setSerial} testId="input-serial" />
-          <FieldText label="Batch #" value={batch} onChange={setBatch} testId="input-batch" />
-        </div>
-
-        <PhotoCapture value={photo} onChange={setPhoto} />
-
-        <div className="grid grid-cols-2 gap-2 pt-2">
+        <div className="mt-3 flex items-center gap-2">
           <button
             type="button"
+            onClick={() => setShortOpen(true)}
             disabled={busy}
-            onClick={() => void confirmPick()}
-            className="rounded bg-emerald-600 px-3 py-3 text-base font-semibold text-white disabled:opacity-50"
-            data-testid="button-confirm-line"
+            className="rounded bg-amber-500/90 px-3 py-3 text-sm font-medium text-white disabled:opacity-50"
+            data-testid="button-open-short-pick"
           >
-            {busy ? "Saving…" : "Confirm"}
+            Short-pick
           </button>
-          <details className="rounded border border-amber-300 bg-amber-50">
-            <summary className="cursor-pointer px-3 py-3 text-center text-sm font-medium text-amber-900" data-testid="summary-short-pick">
-              Short-pick
-            </summary>
-            <div className="space-y-2 p-3">
-              <select
-                value={shortReason}
-                onChange={(e) => setShortReason(e.target.value as typeof shortReason)}
-                className="w-full rounded border border-amber-300 px-2 py-2 text-sm"
-                data-testid="select-short-reason"
-              >
-                <option value="">Pick reason…</option>
-                {SHORT_REASONS.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
-              <textarea
-                value={shortNote}
-                onChange={(e) => setShortNote(e.target.value)}
-                placeholder="Note (optional)"
-                rows={2}
-                className="w-full rounded border border-amber-300 px-2 py-2 text-sm"
-                data-testid="input-short-note"
-              />
-              <button
-                type="button"
-                onClick={() => void shortPick()}
-                disabled={busy}
-                className="w-full rounded bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                data-testid="button-confirm-short-pick"
-              >
-                {busy ? "Saving…" : "Submit short-pick"}
-              </button>
-            </div>
-          </details>
+          <button
+            type="button"
+            onClick={() => void handleShutter()}
+            disabled={busy}
+            className="flex-1 rounded-full bg-emerald-500 px-4 py-4 text-base font-bold text-white shadow-lg ring-4 ring-white/40 disabled:opacity-50"
+            data-testid="button-shutter"
+          >
+            {busy
+              ? "Saving…"
+              : lineDone
+              ? "Re-capture & confirm"
+              : cameraAvailable
+              ? "📸 Capture & confirm"
+              : "Confirm (no photo)"}
+          </button>
+          {allDone ? (
+            <button
+              type="button"
+              onClick={onFinish}
+              disabled={busy}
+              className="rounded bg-blue-600 px-3 py-3 text-sm font-semibold text-white disabled:opacity-50"
+              data-testid="button-finish-slip"
+            >
+              Finish
+            </button>
+          ) : null}
         </div>
       </div>
 
-      {scannerOpen ? <BarcodeScanner onScan={handleScan} onClose={() => setScannerOpen(false)} /> : null}
+      {shortOpen ? (
+        <ShortPickOverlay
+          line={line}
+          busy={busy}
+          onCancel={() => setShortOpen(false)}
+          onSubmit={(reason, note) => void submitShort(reason, note)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function ShortPickOverlay({
+  line,
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  line: PickSlipLine;
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (reason: ShortReason, note: string) => void;
+}) {
+  const [reason, setReason] = useState<ShortReason | "">("");
+  const [note, setNote] = useState("");
+  return (
+    <div
+      className="absolute inset-0 z-20 flex items-end justify-center bg-black/50 backdrop-blur-sm"
+      data-testid="overlay-short-pick"
+    >
+      <div className="w-full max-w-md rounded-t-2xl bg-slate-900/95 p-4 text-white">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-base font-semibold">Short-pick {line.itemCode ?? line.itemName}</h3>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded bg-white/15 px-2 py-1 text-sm"
+            data-testid="button-close-short-pick"
+          >
+            Close
+          </button>
+        </div>
+        <select
+          value={reason}
+          onChange={(e) => setReason(e.target.value as ShortReason | "")}
+          className="w-full rounded border border-white/20 bg-white/95 px-3 py-2 text-sm text-slate-900"
+          data-testid="select-short-reason"
+        >
+          <option value="">Pick reason…</option>
+          {SHORT_REASONS.map((r) => (
+            <option key={r.value} value={r.value}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Note (optional)"
+          rows={2}
+          className="mt-2 w-full rounded border border-white/20 bg-white/95 px-3 py-2 text-sm text-slate-900"
+          data-testid="input-short-note"
+        />
+        <button
+          type="button"
+          disabled={busy || !reason}
+          onClick={() => reason && onSubmit(reason, note)}
+          className="mt-3 w-full rounded bg-amber-500 px-3 py-3 text-base font-semibold text-white disabled:opacity-50"
+          data-testid="button-confirm-short-pick"
+        >
+          {busy ? "Saving…" : "Submit short-pick"}
+        </button>
+      </div>
     </div>
   );
 }
 
-function FieldText({
-  label,
-  value,
-  onChange,
-  testId,
+function FullScreenMessage({
+  tone,
+  message,
+  onQuit,
 }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  testId: string;
+  tone: "info" | "error";
+  message: string;
+  onQuit: () => void;
 }) {
   return (
-    <label className="block">
-      <span className="text-xs font-medium text-slate-600">{label}</span>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm"
-        data-testid={testId}
-      />
-    </label>
+    <div className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-slate-900 text-white">
+      <div className={tone === "error" ? "text-red-300" : "text-white/80"}>{message}</div>
+      <button
+        type="button"
+        onClick={onQuit}
+        className="rounded bg-white/15 px-4 py-2 text-sm"
+        data-testid="button-quit-message"
+      >
+        Back to queue
+      </button>
+    </div>
   );
 }
