@@ -16,6 +16,7 @@ import {
   useListAdminTenantMembers,
   useUpdateAdminTenantMember,
   useGetAdminAuditLogs,
+  useInviteAdminTenantMember,
   getListAdminTenantsQueryKey,
   getGetAdminKpiQueryKey,
   getGetTenantInvoicesQueryKey,
@@ -29,6 +30,7 @@ import type {
   AuditLog,
   TenantActivity,
   UpdateMemberBody,
+  InviteMemberBody,
 } from "@workspace/api-client-react";
 import {
   ResponsiveContainer,
@@ -115,6 +117,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
+  UserPlus,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -669,15 +673,187 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
+// ── Invite member dialog ──────────────────────────────────────────────────────
+
+const INVITE_ROLE_OPTIONS: Array<InviteMemberBody["role"]> = [
+  "tenant_admin",
+  "purchaser",
+  "warehouse",
+  "approver",
+  "accountant",
+  "viewer",
+];
+
+function InviteMemberDialog({
+  tenantId,
+  tenantName,
+  open,
+  onOpenChange,
+}: {
+  tenantId: number;
+  tenantName: string;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<InviteMemberBody["role"]>("viewer");
+
+  function reset() {
+    setEmail("");
+    setRole("viewer");
+  }
+
+  const inviteMember = useInviteAdminTenantMember({
+    mutation: {
+      onSuccess: (data) => {
+        if (data.invitationDelivered) {
+          toast({
+            title: "Invitation sent",
+            description: `${data.membership.email} will appear as a member once they accept.`,
+          });
+        } else {
+          toast({
+            title: "Pending member added — email NOT sent",
+            description:
+              data.deliveryReason ??
+              "Clerk did not deliver the invite. The user can still be bound by signing up with this email.",
+            variant: "destructive",
+          });
+        }
+        void queryClient.invalidateQueries({
+          queryKey: getListAdminTenantMembersQueryKey(tenantId),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: getListAdminTenantsQueryKey(),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: getGetAdminTenantQueryKey(tenantId),
+        });
+        onOpenChange(false);
+        reset();
+      },
+      onError: (err) => {
+        const e = err as unknown as {
+          response?: { data?: { error?: string; code?: string } };
+          message?: string;
+        };
+        const msg =
+          e.response?.data?.error ?? e.message ?? "Failed to send invitation";
+        toast({
+          title: "Invitation failed",
+          description: msg,
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    inviteMember.mutate({
+      id: tenantId,
+      data: { email: email.trim().toLowerCase(), role },
+    });
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) reset();
+        onOpenChange(v);
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5" />
+            Add member
+          </DialogTitle>
+          <DialogDescription>
+            Invite someone to <span className="font-medium">{tenantName}</span>.
+            They'll get an email from Clerk and become a member when they sign
+            in.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="invite-email">Email *</Label>
+            <Input
+              id="invite-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="person@example.com"
+              required
+              data-testid="invite-member-email-input"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Role *</Label>
+            <Select
+              value={role}
+              onValueChange={(v) => setRole(v as InviteMemberBody["role"])}
+            >
+              <SelectTrigger data-testid="invite-member-role-select">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INVITE_ROLE_OPTIONS.map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {r.replace("_", " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                reset();
+                onOpenChange(false);
+              }}
+              disabled={inviteMember.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={inviteMember.isPending || !email.trim()}
+              data-testid="invite-member-submit"
+            >
+              {inviteMember.isPending ? (
+                "Sending…"
+              ) : (
+                <>
+                  <Mail className="mr-1.5 h-4 w-4" />
+                  Send invitation
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TenantMembersCard({
   tenantId,
+  tenantName,
   open,
 }: {
   tenantId: number;
+  tenantName: string;
   open: boolean;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const { data: members, isLoading } = useListAdminTenantMembers(tenantId, {
     query: {
@@ -727,98 +903,130 @@ function TenantMembersCard({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <Users className="h-4 w-4" />
-          Members
-          {members && (
-            <span className="text-xs font-normal text-muted-foreground">
-              ({members.length})
-            </span>
-          )}
-        </CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Members
+            {members && (
+              <span className="text-xs font-normal text-muted-foreground">
+                ({members.length})
+              </span>
+            )}
+          </CardTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={() => setInviteOpen(true)}
+            data-testid="add-member-button"
+          >
+            <UserPlus className="mr-1 h-3.5 w-3.5" />
+            Add member
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <p className="text-xs text-muted-foreground">Loading…</p>
         ) : !members || members.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            No members yet. Members are added when users complete onboarding.
+            No members yet. Click "Add member" to invite someone, or wait for a
+            user to complete onboarding.
           </p>
         ) : (
           <div className="space-y-2">
-            {members.map((m) => (
-              <div
-                key={m.id}
-                className={cn(
-                  "rounded-md border p-2.5 text-sm space-y-2",
-                  !m.isActive && "opacity-60 bg-muted/40",
-                )}
-                data-testid={`member-row-${m.id}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium truncate">
-                      {[m.firstName, m.lastName].filter(Boolean).join(" ") ||
-                        m.email}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {m.email}
-                    </p>
+            {members.map((m) => {
+              const isPending = m.clerkId.startsWith("pending:");
+              return (
+                <div
+                  key={m.id}
+                  className={cn(
+                    "rounded-md border p-2.5 text-sm space-y-2",
+                    !m.isActive && "opacity-60 bg-muted/40",
+                  )}
+                  data-testid={`member-row-${m.id}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate flex items-center gap-1.5">
+                        {[m.firstName, m.lastName].filter(Boolean).join(" ") ||
+                          m.email}
+                        {isPending && (
+                          <span className="text-[10px] uppercase tracking-wide font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">
+                            Invited
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {m.email}
+                      </p>
+                    </div>
+                    <RoleBadge role={m.role} />
                   </div>
-                  <RoleBadge role={m.role} />
-                </div>
-                <div className="flex items-center gap-2 pt-1">
-                  <Select
-                    value={m.role}
-                    onValueChange={(v) =>
-                      handleUpdate(m.id, {
-                        role: v as AdminTenantMember["role"],
-                      })
-                    }
-                    disabled={updateMember.isPending}
-                  >
-                    <SelectTrigger
-                      className="h-7 text-xs flex-1"
-                      data-testid={`member-role-select-${m.id}`}
+                  <div className="flex items-center gap-2 pt-1">
+                    <Select
+                      value={m.role}
+                      onValueChange={(v) =>
+                        handleUpdate(m.id, {
+                          role: v as AdminTenantMember["role"],
+                        })
+                      }
+                      disabled={updateMember.isPending}
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ROLE_OPTIONS.map((role) => (
-                        <SelectItem key={role} value={role}>
-                          {role.replace("_", " ")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant={m.isActive ? "outline" : "default"}
-                    size="sm"
-                    className="h-7 text-xs whitespace-nowrap"
-                    onClick={() =>
-                      handleUpdate(m.id, { isActive: !m.isActive })
-                    }
-                    disabled={updateMember.isPending}
-                    data-testid={`member-toggle-active-${m.id}`}
-                  >
-                    {m.isActive ? (
-                      <>
-                        <Ban className="mr-1 h-3 w-3" />
-                        Deactivate
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="mr-1 h-3 w-3" />
-                        Reactivate
-                      </>
-                    )}
-                  </Button>
+                      <SelectTrigger
+                        className="h-7 text-xs flex-1"
+                        data-testid={`member-role-select-${m.id}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROLE_OPTIONS.map((role) => (
+                          <SelectItem key={role} value={role}>
+                            {role.replace("_", " ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant={m.isActive ? "outline" : "default"}
+                      size="sm"
+                      className="h-7 text-xs whitespace-nowrap"
+                      onClick={() =>
+                        handleUpdate(m.id, { isActive: !m.isActive })
+                      }
+                      disabled={updateMember.isPending || isPending}
+                      data-testid={`member-toggle-active-${m.id}`}
+                      title={
+                        isPending
+                          ? "Pending invites cannot be activated until accepted"
+                          : undefined
+                      }
+                    >
+                      {m.isActive ? (
+                        <>
+                          <Ban className="mr-1 h-3 w-3" />
+                          Deactivate
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="mr-1 h-3 w-3" />
+                          Reactivate
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>
+      <InviteMemberDialog
+        tenantId={tenantId}
+        tenantName={tenantName}
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+      />
     </Card>
   );
 }
@@ -986,7 +1194,11 @@ function TenantDetailSheet({
 
           <TenantActivitySparkline tenantId={tenant.id} open={open} />
 
-          <TenantMembersCard tenantId={tenant.id} open={open} />
+          <TenantMembersCard
+            tenantId={tenant.id}
+            tenantName={tenant.name}
+            open={open}
+          />
 
           <Card>
             <CardHeader className="pb-2">

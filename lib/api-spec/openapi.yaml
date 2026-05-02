@@ -1048,6 +1048,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: inviteAdminTenantMember
+      tags: [admin]
+      summary: Invite a new member to a tenant
+      description: >
+        Creates a Clerk invitation for the given email and a pending
+        tenant_membership row. When the invitee accepts the invite and signs
+        in, their Clerk id is bound to the existing membership and it is
+        activated. Writes an audit log entry.
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberBody"
+      responses:
+        "201":
+          description: Invitation created and pending membership inserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteMemberResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A membership already exists for that email in this tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Clerk invitation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /admin/tenants/{id}/members/{membershipId}:
     patch:
@@ -7474,6 +7540,42 @@ components:
             - viewer
         isActive:
           type: boolean
+
+    InviteMemberBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum:
+            - tenant_admin
+            - purchaser
+            - warehouse
+            - approver
+            - accountant
+            - viewer
+      required:
+        - email
+        - role
+
+    InviteMemberResult:
+      type: object
+      properties:
+        membership:
+          $ref: "#/components/schemas/AdminTenantMember"
+        invitationDelivered:
+          type: boolean
+          description: True if Clerk accepted and queued the invitation email
+        clerkInvitationId:
+          type: ["string", "null"]
+        deliveryReason:
+          type: ["string", "null"]
+          description: When invitationDelivered is false, the reason from Clerk
+      required:
+        - membership
+        - invitationDelivered
 
     StripeSyncResult:
       type: object

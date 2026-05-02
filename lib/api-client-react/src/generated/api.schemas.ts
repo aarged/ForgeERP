@@ -489,6 +489,36 @@ export interface UpdateMemberBody {
   isActive?: boolean;
 }
 
+export type InviteMemberBodyRole =
+  (typeof InviteMemberBodyRole)[keyof typeof InviteMemberBodyRole];
+
+export const InviteMemberBodyRole = {
+  tenant_admin: "tenant_admin",
+  purchaser: "purchaser",
+  warehouse: "warehouse",
+  approver: "approver",
+  accountant: "accountant",
+  viewer: "viewer",
+} as const;
+
+export interface InviteMemberBody {
+  email: string;
+  role: InviteMemberBodyRole;
+}
+
+export interface InviteMemberResult {
+  membership: AdminTenantMember;
+  /** True if Clerk accepted and queued the invitation email */
+  invitationDelivered: boolean;
+  /** @nullable */
+  clerkInvitationId?: string | null;
+  /**
+   * When invitationDelivered is false, the reason from Clerk
+   * @nullable
+   */
+  deliveryReason?: string | null;
+}
+
 export interface StripeSyncResult {
   stripeCustomerId: string;
 }

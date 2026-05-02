@@ -162,6 +162,8 @@ import type {
   ImportItemsBody,
   InventoryAdjustment,
   InventoryStockList,
+  InviteMemberBody,
+  InviteMemberResult,
   InvoiceList,
   ItemAttribute,
   ItemAttributeInput,
@@ -2714,6 +2716,95 @@ export function useListAdminTenantMembers<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Creates a Clerk invitation for the given email and a pending tenant_membership row. When the invitee accepts the invite and signs in, their Clerk id is bound to the existing membership and it is activated. Writes an audit log entry.
+
+ * @summary Invite a new member to a tenant
+ */
+export const getInviteAdminTenantMemberUrl = (id: number) => {
+  return `/api/admin/tenants/${id}/members`;
+};
+
+export const inviteAdminTenantMember = async (
+  id: number,
+  inviteMemberBody: InviteMemberBody,
+  options?: RequestInit,
+): Promise<InviteMemberResult> => {
+  return customFetch<InviteMemberResult>(getInviteAdminTenantMemberUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(inviteMemberBody),
+  });
+};
+
+export const getInviteAdminTenantMemberMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof inviteAdminTenantMember>>,
+    TError,
+    { id: number; data: BodyType<InviteMemberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof inviteAdminTenantMember>>,
+  TError,
+  { id: number; data: BodyType<InviteMemberBody> },
+  TContext
+> => {
+  const mutationKey = ["inviteAdminTenantMember"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof inviteAdminTenantMember>>,
+    { id: number; data: BodyType<InviteMemberBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return inviteAdminTenantMember(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type InviteAdminTenantMemberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof inviteAdminTenantMember>>
+>;
+export type InviteAdminTenantMemberMutationBody = BodyType<InviteMemberBody>;
+export type InviteAdminTenantMemberMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Invite a new member to a tenant
+ */
+export const useInviteAdminTenantMember = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof inviteAdminTenantMember>>,
+    TError,
+    { id: number; data: BodyType<InviteMemberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof inviteAdminTenantMember>>,
+  TError,
+  { id: number; data: BodyType<InviteMemberBody> },
+  TContext
+> => {
+  return useMutation(getInviteAdminTenantMemberMutationOptions(options));
+};
 
 /**
  * @summary Update a tenant member's role or active status

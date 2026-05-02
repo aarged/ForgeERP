@@ -9,6 +9,7 @@ import {
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db/schema";
 import { z } from "zod";
+import { createClerkClient } from "@clerk/express";
 import { requireAuth } from "../middlewares/requireAuth";
 import {
   tenantContext,
@@ -22,6 +23,66 @@ import type { Request, Response } from "express";
 
 const router: IRouter = Router();
 const adminDb = drizzle(adminPool, { schema });
+
+const clerk = createClerkClient({
+  secretKey: process.env.CLERK_SECRET_KEY,
+});
+
+// Mirrors the placeholder used by the onboarding invite flow so accept-on-
+// signup logic in /auth/me matches both onboarding and direct admin invites.
+function pendingClerkIdForEmail(email: string): string {
+  return `pending:${email.toLowerCase()}`;
+}
+
+function buildAllowedOrigins(): string[] {
+  const out = new Set<string>();
+  const add = (raw: string | undefined) => {
+    if (!raw) return;
+    try {
+      out.add(new URL(raw).origin);
+    } catch {
+      /* ignore */
+    }
+  };
+  add(process.env.FRONTEND_URL);
+  for (const v of (process.env.FRONTEND_URLS ?? "").split(",")) add(v.trim());
+  if (process.env.REPLIT_DEV_DOMAIN)
+    add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
+  return [...out];
+}
+
+function resolveInviteRedirectUrl(req: Request): string | undefined {
+  const allowed = buildAllowedOrigins();
+  const candidates: string[] = [];
+  if (req.headers.origin) candidates.push(req.headers.origin as string);
+  if (req.headers.referer) {
+    try {
+      candidates.push(new URL(req.headers.referer as string).origin);
+    } catch {
+      /* ignore */
+    }
+  }
+  let chosenOrigin: string | undefined;
+  for (const c of candidates) {
+    if (allowed.includes(c)) {
+      chosenOrigin = c;
+      break;
+    }
+  }
+  if (!chosenOrigin && allowed.length > 0 && process.env.FRONTEND_URL) {
+    try {
+      chosenOrigin = new URL(process.env.FRONTEND_URL).origin;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!chosenOrigin) return undefined;
+  try {
+    return new URL("/sign-up", chosenOrigin).toString();
+  } catch {
+    return undefined;
+  }
+}
 
 const superAdminOnly = [
   requireAuth,
@@ -907,6 +968,150 @@ router.get(
         joinedAt: m.joinedAt.toISOString(),
       })),
     );
+  },
+);
+
+// ── POST /admin/tenants/:id/members ───────────────────────────────────────────
+
+const inviteMemberSchema = z.object({
+  email: z.string().email().max(254),
+  role: z.enum([
+    "tenant_admin",
+    "purchaser",
+    "warehouse",
+    "approver",
+    "accountant",
+    "viewer",
+  ]),
+});
+
+router.post(
+  "/admin/tenants/:id/members",
+  ...superAdminOnly,
+  async (req: Request, res: Response): Promise<void> => {
+    const actor = req as TenantRequest;
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid tenant id" });
+      return;
+    }
+
+    const parsed = inviteMemberSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: "Invalid request body",
+        details: parsed.error.issues,
+      });
+      return;
+    }
+
+    const email = parsed.data.email.toLowerCase();
+    const role = parsed.data.role;
+
+    const [tenant] = await adminDb
+      .select({
+        id: tenantsTable.id,
+        name: tenantsTable.name,
+        deletedAt: tenantsTable.deletedAt,
+      })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, id))
+      .limit(1);
+
+    if (!tenant || tenant.deletedAt) {
+      res.status(404).json({ error: "Tenant not found" });
+      return;
+    }
+
+    // Reject if there's already any membership (active, inactive, or pending)
+    // for this email in this tenant. Re-inviting an existing member should be
+    // done via PATCH on the existing row.
+    const [existing] = await adminDb
+      .select({ id: tenantMembershipsTable.id })
+      .from(tenantMembershipsTable)
+      .where(
+        and(
+          eq(tenantMembershipsTable.tenantId, id),
+          eq(tenantMembershipsTable.email, email),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      res.status(409).json({
+        error: `A membership for "${email}" already exists in this tenant.`,
+        code: "MEMBERSHIP_EXISTS",
+      });
+      return;
+    }
+
+    const [membership] = await adminDb
+      .insert(tenantMembershipsTable)
+      .values({
+        tenantId: id,
+        clerkId: pendingClerkIdForEmail(email),
+        email,
+        role,
+        isActive: "false",
+      })
+      .returning();
+
+    let invitationDelivered = false;
+    let clerkInvitationId: string | null = null;
+    let deliveryReason: string | null = null;
+
+    try {
+      const redirectUrl = resolveInviteRedirectUrl(req);
+      const invitation = await clerk.invitations.createInvitation({
+        emailAddress: email,
+        redirectUrl,
+        publicMetadata: { pendingTenantId: id, pendingRole: role },
+        ignoreExisting: true,
+        notify: true,
+      });
+      invitationDelivered = true;
+      clerkInvitationId = invitation.id;
+    } catch (err) {
+      deliveryReason =
+        err instanceof Error ? err.message : "Unknown invite error";
+      logger.error(
+        { err, tenantId: id, inviteEmail: email },
+        "Admin invite: Clerk invitation failed",
+      );
+    }
+
+    await writeAuditLog({
+      req,
+      actorClerkId: actor.clerkUserId,
+      actorEmail: actor.userEmail,
+      tenantId: id,
+      action: "tenant_member.invited",
+      entityType: "tenant_membership",
+      entityId: membership!.id,
+      newValues: {
+        email,
+        role,
+        invitationDelivered,
+        clerkInvitationId,
+        deliveryReason,
+      },
+    });
+
+    res.status(201).json({
+      membership: {
+        id: membership!.id,
+        clerkId: membership!.clerkId,
+        email: membership!.email,
+        firstName: membership!.firstName ?? null,
+        lastName: membership!.lastName ?? null,
+        role: membership!.role,
+        isActive: membership!.isActive === "true",
+        joinedAt: membership!.joinedAt.toISOString(),
+      },
+      invitationDelivered,
+      clerkInvitationId,
+      deliveryReason,
+    });
   },
 );
 

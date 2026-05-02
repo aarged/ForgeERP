@@ -913,6 +913,27 @@ export const ListAdminTenantMembersResponse = zod.array(
 );
 
 /**
+ * Creates a Clerk invitation for the given email and a pending tenant_membership row. When the invitee accepts the invite and signs in, their Clerk id is bound to the existing membership and it is activated. Writes an audit log entry.
+
+ * @summary Invite a new member to a tenant
+ */
+export const InviteAdminTenantMemberParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const InviteAdminTenantMemberBody = zod.object({
+  email: zod.string().email(),
+  role: zod.enum([
+    "tenant_admin",
+    "purchaser",
+    "warehouse",
+    "approver",
+    "accountant",
+    "viewer",
+  ]),
+});
+
+/**
  * @summary Update a tenant member's role or active status
  */
 export const UpdateAdminTenantMemberParams = zod.object({
