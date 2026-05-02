@@ -23,6 +23,7 @@ import Reports from "@/pages/reports";
 import SuperAdmin from "@/pages/super-admin";
 import MasterData from "@/pages/master-data";
 import PickerApp from "@/pages/picking/PickerApp";
+import DocsPage from "@/pages/docs";
 import NotFound from "@/pages/not-found";
 
 export const queryClient = new QueryClient();
@@ -292,6 +293,8 @@ function ClerkProviderWithRoutes() {
           <Route path="/finance"><ProtectedRoute component={Finance} /></Route>
           <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
           <Route path="/super-admin"><SuperAdminRoute component={SuperAdmin} /></Route>
+          <Route path="/docs"><ProtectedRoute component={DocsPage} /></Route>
+          <Route path="/docs/:slug"><ProtectedRoute component={DocsPage} /></Route>
           <Route path="/picking" component={PickerApp} />
           <Route path="/picking/slip/:id" component={PickerApp} />
           <Route path="/onboarding"><OnboardingRoute component={OnboardingPage} /></Route>

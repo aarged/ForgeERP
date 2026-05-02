@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   BarChart3,
   Bell,
+  BookOpen,
   Calculator,
   ChevronDown,
   Command,
@@ -131,6 +132,7 @@ const COMMAND_ITEMS = [
   { label: "Go to Inventory", href: "/inventory" },
   { label: "Go to Finance", href: "/finance" },
   { label: "Go to Reports", href: "/reports" },
+  { label: "Go to Help & Docs", href: "/docs" },
   { label: "Go to Settings", href: "/settings" },
 ];
 
@@ -226,6 +228,7 @@ function AppSidebar({
     { name: "Inventory", href: "/inventory", icon: PackageSearch, roles: ["super_admin", "tenant_admin", "warehouse"] },
     { name: "Finance", href: "/finance", icon: Calculator, roles: ["super_admin", "tenant_admin", "accountant"] },
     { name: "Reports", href: "/reports", icon: BarChart3, roles: ["super_admin", "tenant_admin", "accountant", "approver"] },
+    { name: "Help & Docs", href: "/docs", icon: BookOpen, roles: ["all"] },
     { name: "Settings", href: "/settings", icon: Settings, roles: ["all"] },
   ];
 
