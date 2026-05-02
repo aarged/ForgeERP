@@ -191,6 +191,20 @@ export const pickSlipsTable = pgTable("pick_slips", {
   warehouseId: integer("warehouse_id").references(() => warehousesTable.id),
   warehouseZone: text("warehouse_zone"), // optional zone filter — only lines in this zone are included
   status: text("status").notNull().default("pending"), // pending | picking | picked | cancelled
+  /** Picker assigned to this slip — Clerk user id of the warehouse picker */
+  assignedToClerkId: text("assigned_to_clerk_id"),
+  /** Display name of the assigned picker (denormalised for the supervisor board) */
+  assignedToName: text("assigned_to_name"),
+  /** Email of the assigned picker (handy for the supervisor board) */
+  assignedToEmail: text("assigned_to_email"),
+  /** When the picker first opened/started the slip in the PWA */
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  /** When the slip moved to picked / fully completed */
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  /** Optional priority for the supervisor view (low | normal | high | urgent) */
+  priority: text("priority").notNull().default("normal"),
+  /** When the slip is due to be picked by — used to highlight overdue slips */
+  dueAt: timestamp("due_at", { withTimezone: true }),
   notes: text("notes"),
   createdByClerkId: text("created_by_clerk_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -212,11 +226,26 @@ export const pickSlipLinesTable = pgTable("pick_slip_lines", {
   itemCode: text("item_code"),
   itemName: text("item_name"),
   locationId: integer("location_id").references(() => warehouseLocationsTable.id),
+  /** Bin / location label the picker should walk to (e.g. "ZONE-A / RACK-3 / BIN-12") */
+  locationLabel: text("location_label"),
+  /** Optional barcode value used to validate the pick (item or location) */
+  barcode: text("barcode"),
   requiredQty: numeric("required_qty", { precision: 18, scale: 4 }).notNull(),
   pickedQty: numeric("picked_qty", { precision: 18, scale: 4 }).notNull().default("0"),
   lotNumber: text("lot_number"),
   serialNumber: text("serial_number"),
   batchNumber: text("batch_number"),
+  /** Confirmation lifecycle status — pending | picked | short | skipped */
+  confirmStatus: text("confirm_status").notNull().default("pending"),
+  /** Picker who recorded the confirmation (Clerk user id) */
+  confirmedByClerkId: text("confirmed_by_clerk_id"),
+  confirmedByName: text("confirmed_by_name"),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  /** Optional photo reference — object-storage objectPath such as `/objects/uploads/<uuid>` */
+  photoObjectPath: text("photo_object_path"),
+  /** Reason when the line was short-picked — out_of_stock | wrong_location | damaged | other */
+  shortReason: text("short_reason"),
+  shortNote: text("short_note"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

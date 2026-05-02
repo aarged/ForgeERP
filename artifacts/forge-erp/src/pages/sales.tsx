@@ -21,6 +21,9 @@ import {
   useListPickSlips,
   useGetPickSlip,
   getListPickSlipsQueryKey,
+  useGetPickProgress,
+  getGetPickProgressQueryKey,
+  type PickProgressResponse,
   useListDespatches,
   useGetDespatch,
   useCreateDespatch,
@@ -84,7 +87,7 @@ import type {
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -3252,6 +3255,7 @@ function PickSlipsTab() {
 
   return (
     <div className="space-y-4">
+      <SupervisorPickBoard />
       <div className="flex items-center gap-2">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-36">
@@ -3368,6 +3372,136 @@ function PickSlipsTab() {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Supervisor Pick Board (real-time progress for warehouse supervisors) ──────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function SupervisorPickBoard() {
+  const qc = useQueryClient();
+  // Poll every 10s so the board feels real-time without needing websockets.
+  const { data, isLoading } = useGetPickProgress({
+    query: {
+      queryKey: getGetPickProgressQueryKey(),
+      refetchInterval: 10_000,
+    },
+  });
+  const progress = data as PickProgressResponse | undefined;
+  const slips = progress?.slips ?? [];
+  const inFlight = slips.filter((s) => s.status === "picking" || (s.status === "pending" && s.assignedToName));
+  const pickerBaseUrl = `${(import.meta.env.BASE_URL || "/").replace(/\/$/, "")}/picking`;
+
+  return (
+    <Card className="border-dashed">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-base">Picking floor</CardTitle>
+            <CardDescription>Live status across the warehouse — refreshes every 10s.</CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => qc.invalidateQueries({ queryKey: getGetPickProgressQueryKey() })}
+              data-testid="button-refresh-pick-board"
+            >
+              <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => window.open(pickerBaseUrl, "_blank", "noopener")}
+              data-testid="button-open-picker-pwa"
+            >
+              Open Picker app
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KPI label="Unassigned" value={progress?.unassigned ?? 0} tone="amber" testId="kpi-unassigned" />
+          <KPI label="In progress" value={progress?.inProgress ?? 0} tone="blue" testId="kpi-in-progress" />
+          <KPI label="Completed today" value={progress?.completedToday ?? 0} tone="emerald" testId="kpi-completed-today" />
+          <KPI label="Short-picked today" value={progress?.shortPickedToday ?? 0} tone="rose" testId="kpi-short-today" />
+        </div>
+        {isLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : inFlight.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No slips currently in progress.</p>
+        ) : (
+          <div className="border rounded-md">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Slip</TableHead>
+                  <TableHead>Picker</TableHead>
+                  <TableHead>Progress</TableHead>
+                  <TableHead className="text-right">Lines</TableHead>
+                  <TableHead className="text-right">Short</TableHead>
+                  <TableHead>Started</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {inFlight.map((s) => (
+                  <TableRow key={s.id} data-testid={`row-progress-${s.id}`}>
+                    <TableCell className="font-mono text-xs">{s.code}</TableCell>
+                    <TableCell className="text-sm">{s.assignedToName ?? "—"}</TableCell>
+                    <TableCell className="w-48">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 flex-1 rounded bg-slate-200">
+                          <div
+                            className="h-full rounded bg-emerald-600"
+                            style={{ width: `${s.progressPct}%` }}
+                          />
+                        </div>
+                        <span className="text-xs tabular-nums w-10 text-right">{s.progressPct}%</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {s.confirmedLines}/{s.totalLines}
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {(s.shortLines ?? 0) > 0 ? <span className="text-amber-700 font-semibold">{s.shortLines}</span> : 0}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {s.startedAt ? fmtDate(s.startedAt) : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function KPI({
+  label,
+  value,
+  tone,
+  testId,
+}: {
+  label: string;
+  value: number;
+  tone: "amber" | "blue" | "emerald" | "rose";
+  testId: string;
+}) {
+  const map = {
+    amber: "bg-amber-50 text-amber-900 border-amber-200",
+    blue: "bg-blue-50 text-blue-900 border-blue-200",
+    emerald: "bg-emerald-50 text-emerald-900 border-emerald-200",
+    rose: "bg-rose-50 text-rose-900 border-rose-200",
+  } as const;
+  return (
+    <div className={`rounded-md border p-3 ${map[tone]}`} data-testid={testId}>
+      <div className="text-xs uppercase tracking-wide opacity-70">{label}</div>
+      <div className="mt-1 text-2xl font-bold tabular-nums">{value}</div>
     </div>
   );
 }

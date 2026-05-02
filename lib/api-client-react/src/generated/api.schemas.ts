@@ -2115,7 +2115,15 @@ export interface PickSlip {
   code?: string;
   soId?: number;
   warehouseId?: number | null;
+  warehouseZone?: string | null;
   status?: string;
+  priority?: string | null;
+  assignedToClerkId?: string | null;
+  assignedToName?: string | null;
+  assignedToEmail?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  dueAt?: string | null;
   notes?: string | null;
   createdAt?: string;
 }
@@ -2128,9 +2136,89 @@ export interface PickSlipLine {
   itemCode?: string | null;
   itemName?: string | null;
   locationId?: number | null;
+  locationLabel?: string | null;
+  barcode?: string | null;
   requiredQty?: string;
   pickedQty?: string;
   lotNumber?: string | null;
+  serialNumber?: string | null;
+  batchNumber?: string | null;
+  confirmStatus?: string | null;
+  confirmedByClerkId?: string | null;
+  confirmedByName?: string | null;
+  confirmedAt?: string | null;
+  photoObjectPath?: string | null;
+  shortReason?: string | null;
+  shortNote?: string | null;
+  notes?: string | null;
+}
+
+export interface ConfirmPickLineBody {
+  pickedQty: number;
+  lotNumber?: string;
+  serialNumber?: string;
+  batchNumber?: string;
+  photoObjectPath?: string;
+  notes?: string;
+  scannedBarcode?: string;
+}
+
+export type ShortPickLineBodyReason =
+  (typeof ShortPickLineBodyReason)[keyof typeof ShortPickLineBodyReason];
+
+export const ShortPickLineBodyReason = {
+  out_of_stock: "out_of_stock",
+  wrong_location: "wrong_location",
+  damaged: "damaged",
+  other: "other",
+} as const;
+
+export interface ShortPickLineBody {
+  reason: ShortPickLineBodyReason;
+  pickedQty?: number;
+  note?: string;
+  photoObjectPath?: string;
+}
+
+export interface PickProgressSlip {
+  id?: number;
+  code?: string;
+  soId?: number;
+  status?: string;
+  priority?: string | null;
+  assignedToName?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  dueAt?: string | null;
+  totalLines?: number;
+  confirmedLines?: number;
+  shortLines?: number;
+  pendingLines?: number;
+  progressPct?: number;
+  createdAt?: string;
+}
+
+export interface PickProgressResponse {
+  unassigned?: number;
+  inProgress?: number;
+  completedToday?: number;
+  shortPickedToday?: number;
+  slips?: PickProgressSlip[];
+}
+
+export interface UploadUrlRequest {
+  /** @minLength 1 */
+  name: string;
+  /** @minimum 1 */
+  size: number;
+  /** @minLength 1 */
+  contentType: string;
+}
+
+export interface UploadUrlResponse {
+  uploadURL: string;
+  objectPath: string;
+  metadata?: UploadUrlRequest;
 }
 
 export type PickSlipDetail = PickSlip & {
@@ -3075,6 +3163,22 @@ export type ListPickSlipsParams = {
   status?: string;
   page?: number;
   limit?: number;
+};
+
+export type ListMyPickSlipsParams = {
+  status?: string;
+  limit?: number;
+};
+
+export type ListPickQueueParams = {
+  warehouseId?: number;
+  limit?: number;
+};
+
+export type AssignPickSlipBody = {
+  clerkUserId?: string;
+  name?: string;
+  email?: string;
 };
 
 export type ListDespatchesParams = {

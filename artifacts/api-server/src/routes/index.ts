@@ -10,6 +10,7 @@ import salesRouter from "./sales";
 import inventoryRouter from "./inventory";
 import financeRouter from "./finance";
 import dashboardRouter from "./dashboard";
+import storageRouter from "./storage";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(salesRouter);
 router.use(inventoryRouter);
 router.use(financeRouter);
 router.use(dashboardRouter);
+router.use(storageRouter);
 
 export default router;

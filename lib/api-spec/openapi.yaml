@@ -24,6 +24,8 @@ tags:
     description: Sales module — quotations, sales orders, despatch, invoicing, credit notes, RMA
   - name: Inventory
     description: Inventory management — stock levels, movements, adjustments, transfers, stocktake, cycle counts, lot traceability
+  - name: Storage
+    description: Object storage upload and serving endpoints
 paths:
   /healthz:
     get:
@@ -3951,6 +3953,175 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PickSlipDetail" }
         "404": { description: Not found }
+
+  /sales/pick-slips/mine:
+    get:
+      operationId: listMyPickSlips
+      summary: List pick slips assigned to the current picker
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: limit, schema: { type: integer, default: 50 } }
+      responses:
+        "200":
+          description: Slips assigned to me
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PickSlipListResponse" }
+
+  /sales/pick-slips/queue:
+    get:
+      operationId: listPickQueue
+      summary: List unassigned / pending pick slips available to claim
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: query, name: warehouseId, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer, default: 50 } }
+      responses:
+        "200":
+          description: Unassigned pick slip queue
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PickSlipListResponse" }
+
+  /sales/pick-slips/{id}/assign:
+    post:
+      operationId: assignPickSlip
+      summary: Claim or reassign a pick slip
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                clerkUserId: { type: string }
+                name: { type: string }
+                email: { type: string }
+      responses:
+        "200":
+          description: Slip with assignment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PickSlipDetail" }
+
+  /sales/pick-slips/{id}/start:
+    post:
+      operationId: startPickSlip
+      summary: Mark a pick slip as started (picker has begun walking)
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Started slip
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PickSlipDetail" }
+
+  /sales/pick-slips/{id}/complete:
+    post:
+      operationId: completePickSlip
+      summary: Mark a pick slip as fully picked
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Completed slip
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PickSlipDetail" }
+
+  /sales/pick-slips/{id}/lines/{lineId}/confirm:
+    post:
+      operationId: confirmPickLine
+      summary: Confirm a picked line (qty + lot/serial + photo)
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: lineId, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfirmPickLineBody" }
+      responses:
+        "200":
+          description: Confirmed line
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PickSlipLine" }
+
+  /sales/pick-slips/{id}/lines/{lineId}/short-pick:
+    post:
+      operationId: shortPickLine
+      summary: Mark a pick line as short-picked with reason
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: lineId, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShortPickLineBody" }
+      responses:
+        "200":
+          description: Short-picked line
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PickSlipLine" }
+
+  /sales/pick-progress:
+    get:
+      operationId: getPickProgress
+      summary: Aggregated pick progress for supervisor board
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Progress summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PickProgressResponse" }
+
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      tags: [Storage]
+      security: [{ clerkAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UploadUrlRequest" }
+      responses:
+        "200":
+          description: Presigned upload URL generated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadUrlResponse" }
 
   /sales/despatches:
     get:
@@ -8806,7 +8977,15 @@ components:
         code: { type: string }
         soId: { type: integer }
         warehouseId: { type: integer, nullable: true }
+        warehouseZone: { type: string, nullable: true }
         status: { type: string }
+        priority: { type: string, nullable: true }
+        assignedToClerkId: { type: string, nullable: true }
+        assignedToName: { type: string, nullable: true }
+        assignedToEmail: { type: string, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        dueAt: { type: string, format: date-time, nullable: true }
         notes: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
 
@@ -8820,9 +8999,91 @@ components:
         itemCode: { type: string, nullable: true }
         itemName: { type: string, nullable: true }
         locationId: { type: integer, nullable: true }
+        locationLabel: { type: string, nullable: true }
+        barcode: { type: string, nullable: true }
         requiredQty: { type: string }
         pickedQty: { type: string }
         lotNumber: { type: string, nullable: true }
+        serialNumber: { type: string, nullable: true }
+        batchNumber: { type: string, nullable: true }
+        confirmStatus: { type: string, nullable: true }
+        confirmedByClerkId: { type: string, nullable: true }
+        confirmedByName: { type: string, nullable: true }
+        confirmedAt: { type: string, format: date-time, nullable: true }
+        photoObjectPath: { type: string, nullable: true }
+        shortReason: { type: string, nullable: true }
+        shortNote: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+
+    ConfirmPickLineBody:
+      type: object
+      required: [pickedQty]
+      properties:
+        pickedQty: { type: number }
+        lotNumber: { type: string }
+        serialNumber: { type: string }
+        batchNumber: { type: string }
+        photoObjectPath: { type: string }
+        notes: { type: string }
+        scannedBarcode: { type: string }
+
+    ShortPickLineBody:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [out_of_stock, wrong_location, damaged, other]
+        pickedQty: { type: number }
+        note: { type: string }
+        photoObjectPath: { type: string }
+
+    PickProgressSlip:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        soId: { type: integer }
+        status: { type: string }
+        priority: { type: string, nullable: true }
+        assignedToName: { type: string, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        dueAt: { type: string, format: date-time, nullable: true }
+        totalLines: { type: integer }
+        confirmedLines: { type: integer }
+        shortLines: { type: integer }
+        pendingLines: { type: integer }
+        progressPct: { type: number }
+        createdAt: { type: string, format: date-time }
+
+    PickProgressResponse:
+      type: object
+      properties:
+        unassigned: { type: integer }
+        inProgress: { type: integer }
+        completedToday: { type: integer }
+        shortPickedToday: { type: integer }
+        slips:
+          type: array
+          items: { $ref: "#/components/schemas/PickProgressSlip" }
+
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name: { type: string, minLength: 1 }
+        size: { type: integer, minimum: 1 }
+        contentType: { type: string, minLength: 1 }
+
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL: { type: string, format: uri }
+        objectPath: { type: string }
+        metadata:
+          $ref: "#/components/schemas/UploadUrlRequest"
 
     PickSlipDetail:
       allOf:

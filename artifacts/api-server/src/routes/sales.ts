@@ -1218,6 +1218,276 @@ router.post("/sales/pick-slips", ...tenantWriteMiddleware, async (req: Request, 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ── Pick Slips — Picker workflow (PWA) + Supervisor board ─────════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Slips assigned to the current picker (by Clerk user id).
+// IMPORTANT: this route must come BEFORE `/sales/pick-slips/:id` so Express
+// does not interpret "mine" / "queue" as an :id.
+router.get("/sales/pick-slips/mine", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId } = req as TenantRequest;
+  const { status, limit = "50" } = req.query as Record<string, string>;
+  const lim = Math.min(200, Math.max(1, Number(limit)));
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select().from(pickSlipsTable)
+      .where(and(
+        eq(pickSlipsTable.tenantId, tenantId),
+        eq(pickSlipsTable.assignedToClerkId, clerkUserId),
+        status ? eq(pickSlipsTable.status, status) : undefined,
+      ))
+      .orderBy(desc(pickSlipsTable.priority), desc(pickSlipsTable.createdAt))
+      .limit(lim));
+  res.json({ data: rows, hasMore: false, page: 1 });
+});
+
+// Unassigned / pending pick slips available for any picker to claim.
+router.get("/sales/pick-slips/queue", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { warehouseId, limit = "50" } = req.query as Record<string, string>;
+  const lim = Math.min(200, Math.max(1, Number(limit)));
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select().from(pickSlipsTable)
+      .where(and(
+        eq(pickSlipsTable.tenantId, tenantId),
+        isNull(pickSlipsTable.assignedToClerkId),
+        inArray(pickSlipsTable.status, ["pending", "picking"]),
+        warehouseId ? eq(pickSlipsTable.warehouseId, Number(warehouseId)) : undefined,
+      ))
+      .orderBy(desc(pickSlipsTable.priority), desc(pickSlipsTable.createdAt))
+      .limit(lim));
+  res.json({ data: rows, hasMore: false, page: 1 });
+});
+
+// Aggregated pick progress summary for the supervisor board.
+router.get("/sales/pick-progress", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const slips = await withTenantDb(tenantId, (db) =>
+    db.select().from(pickSlipsTable)
+      .where(and(eq(pickSlipsTable.tenantId, tenantId)))
+      .orderBy(desc(pickSlipsTable.createdAt))
+      .limit(100));
+  const slipIds = slips.map((s) => s.id);
+  const linesBySlip = new Map<number, { total: number; confirmed: number; short: number; pending: number }>();
+  if (slipIds.length > 0) {
+    const lineRows = await withTenantDb(tenantId, (db) =>
+      db.select({
+        pickSlipId: pickSlipLinesTable.pickSlipId,
+        confirmStatus: pickSlipLinesTable.confirmStatus,
+      }).from(pickSlipLinesTable)
+        .where(and(eq(pickSlipLinesTable.tenantId, tenantId), inArray(pickSlipLinesTable.pickSlipId, slipIds))));
+    for (const l of lineRows) {
+      const bucket = linesBySlip.get(l.pickSlipId) ?? { total: 0, confirmed: 0, short: 0, pending: 0 };
+      bucket.total += 1;
+      if (l.confirmStatus === "picked") bucket.confirmed += 1;
+      else if (l.confirmStatus === "short") bucket.short += 1;
+      else bucket.pending += 1;
+      linesBySlip.set(l.pickSlipId, bucket);
+    }
+  }
+  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+  let unassigned = 0, inProgress = 0, completedToday = 0, shortPickedToday = 0;
+  const slipSummaries = slips.map((s) => {
+    const counts = linesBySlip.get(s.id) ?? { total: 0, confirmed: 0, short: 0, pending: 0 };
+    if (!s.assignedToClerkId && (s.status === "pending" || s.status === "picking")) unassigned += 1;
+    if (s.status === "picking") inProgress += 1;
+    if (s.completedAt && s.completedAt >= startOfDay) {
+      completedToday += 1;
+      if (counts.short > 0) shortPickedToday += 1;
+    }
+    const denom = counts.total || 1;
+    return {
+      id: s.id, code: s.code, soId: s.soId, status: s.status,
+      priority: s.priority ?? null,
+      assignedToName: s.assignedToName ?? null,
+      startedAt: s.startedAt ?? null,
+      completedAt: s.completedAt ?? null,
+      dueAt: s.dueAt ?? null,
+      totalLines: counts.total,
+      confirmedLines: counts.confirmed,
+      shortLines: counts.short,
+      pendingLines: counts.pending,
+      progressPct: Math.round((counts.confirmed / denom) * 100),
+      createdAt: s.createdAt,
+    };
+  });
+  res.json({ unassigned, inProgress, completedToday, shortPickedToday, slips: slipSummaries });
+});
+
+// Claim or reassign a pick slip. With no body, the caller claims the slip themselves.
+router.post("/sales/pick-slips/:id/assign", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const schema = z.object({
+    clerkUserId: z.string().optional(),
+    name: z.string().optional(),
+    email: z.string().email().optional(),
+  });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+  const targetClerk = parsed.data.clerkUserId ?? clerkUserId;
+  const targetEmail = parsed.data.email ?? (parsed.data.clerkUserId ? null : userEmail);
+  const targetName = parsed.data.name ?? targetEmail ?? targetClerk;
+  const [slip] = await withTenantDb(tenantId, (db) =>
+    db.select().from(pickSlipsTable).where(and(eq(pickSlipsTable.id, id), eq(pickSlipsTable.tenantId, tenantId))).limit(1));
+  if (!slip) { res.status(404).json({ error: "Pick slip not found" }); return; }
+  if (slip.status === "picked" || slip.status === "cancelled") {
+    res.status(400).json({ error: `Cannot assign slip in status: ${slip.status}` }); return;
+  }
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(pickSlipsTable)
+      .set({
+        assignedToClerkId: targetClerk,
+        assignedToName: targetName,
+        assignedToEmail: targetEmail,
+      })
+      .where(and(eq(pickSlipsTable.id, id), eq(pickSlipsTable.tenantId, tenantId)))
+      .returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "pick_slip.assigned", entityType: "pick_slip", entityId: String(id), newValues: { assignedTo: targetClerk } });
+  const lines = await withTenantDb(tenantId, (db) =>
+    db.select().from(pickSlipLinesTable).where(and(eq(pickSlipLinesTable.pickSlipId, id), eq(pickSlipLinesTable.tenantId, tenantId))));
+  res.json({ ...updated, lines });
+});
+
+// Mark slip as started — the picker has begun walking the route.
+router.post("/sales/pick-slips/:id/start", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [slip] = await withTenantDb(tenantId, (db) =>
+    db.select().from(pickSlipsTable).where(and(eq(pickSlipsTable.id, id), eq(pickSlipsTable.tenantId, tenantId))).limit(1));
+  if (!slip) { res.status(404).json({ error: "Pick slip not found" }); return; }
+  if (slip.status === "picked" || slip.status === "cancelled") {
+    res.status(400).json({ error: `Cannot start slip in status: ${slip.status}` }); return;
+  }
+  const update: Record<string, unknown> = { status: "picking" };
+  if (!slip.startedAt) update.startedAt = new Date();
+  if (!slip.assignedToClerkId) {
+    update.assignedToClerkId = clerkUserId;
+    update.assignedToEmail = userEmail;
+    update.assignedToName = userEmail;
+  }
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(pickSlipsTable).set(update).where(and(eq(pickSlipsTable.id, id), eq(pickSlipsTable.tenantId, tenantId))).returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "pick_slip.started", entityType: "pick_slip", entityId: String(id) });
+  const lines = await withTenantDb(tenantId, (db) =>
+    db.select().from(pickSlipLinesTable).where(and(eq(pickSlipLinesTable.pickSlipId, id), eq(pickSlipLinesTable.tenantId, tenantId))));
+  res.json({ ...updated, lines });
+});
+
+// Confirm a single picked line — quantity, lot/serial/batch, optional photo.
+router.post("/sales/pick-slips/:id/lines/:lineId/confirm", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const lineId = Number(req.params.lineId);
+  const schema = z.object({
+    pickedQty: z.number().nonnegative(),
+    lotNumber: z.string().optional(),
+    serialNumber: z.string().optional(),
+    batchNumber: z.string().optional(),
+    photoObjectPath: z.string().optional(),
+    notes: z.string().optional(),
+    scannedBarcode: z.string().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+  const [line] = await withTenantDb(tenantId, (db) =>
+    db.select().from(pickSlipLinesTable)
+      .where(and(eq(pickSlipLinesTable.id, lineId), eq(pickSlipLinesTable.pickSlipId, id), eq(pickSlipLinesTable.tenantId, tenantId)))
+      .limit(1));
+  if (!line) { res.status(404).json({ error: "Pick slip line not found" }); return; }
+  if (parsed.data.scannedBarcode && line.barcode && parsed.data.scannedBarcode !== line.barcode) {
+    res.status(409).json({ error: "Scanned barcode does not match the expected item barcode" }); return;
+  }
+  const required = Number(line.requiredQty);
+  const picked = parsed.data.pickedQty;
+  if (picked > required) {
+    res.status(400).json({ error: `Picked qty ${picked} exceeds required qty ${required}` }); return;
+  }
+  const isShort = picked < required;
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(pickSlipLinesTable).set({
+      pickedQty: String(picked),
+      lotNumber: parsed.data.lotNumber ?? line.lotNumber,
+      serialNumber: parsed.data.serialNumber ?? line.serialNumber,
+      batchNumber: parsed.data.batchNumber ?? line.batchNumber,
+      photoObjectPath: parsed.data.photoObjectPath ?? line.photoObjectPath,
+      notes: parsed.data.notes ?? line.notes,
+      confirmStatus: isShort ? "short" : "picked",
+      confirmedByClerkId: clerkUserId,
+      confirmedByName: userEmail,
+      confirmedAt: new Date(),
+    } as Record<string, unknown>).where(and(eq(pickSlipLinesTable.id, lineId), eq(pickSlipLinesTable.tenantId, tenantId))).returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "pick_slip_line.confirmed", entityType: "pick_slip_line", entityId: String(lineId), newValues: { pickedQty: picked, lotNumber: parsed.data.lotNumber } });
+  await maybeMarkSlipPicked(tenantId, id);
+  res.json(updated);
+});
+
+// Mark a line as short-picked with reason.
+router.post("/sales/pick-slips/:id/lines/:lineId/short-pick", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const lineId = Number(req.params.lineId);
+  const schema = z.object({
+    reason: z.enum(["out_of_stock", "wrong_location", "damaged", "other"]),
+    pickedQty: z.number().nonnegative().optional(),
+    note: z.string().optional(),
+    photoObjectPath: z.string().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+  const [line] = await withTenantDb(tenantId, (db) =>
+    db.select().from(pickSlipLinesTable)
+      .where(and(eq(pickSlipLinesTable.id, lineId), eq(pickSlipLinesTable.pickSlipId, id), eq(pickSlipLinesTable.tenantId, tenantId)))
+      .limit(1));
+  if (!line) { res.status(404).json({ error: "Pick slip line not found" }); return; }
+  const picked = parsed.data.pickedQty ?? 0;
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(pickSlipLinesTable).set({
+      pickedQty: String(picked),
+      shortReason: parsed.data.reason,
+      shortNote: parsed.data.note ?? null,
+      photoObjectPath: parsed.data.photoObjectPath ?? line.photoObjectPath,
+      confirmStatus: "short",
+      confirmedByClerkId: clerkUserId,
+      confirmedByName: userEmail,
+      confirmedAt: new Date(),
+    } as Record<string, unknown>).where(and(eq(pickSlipLinesTable.id, lineId), eq(pickSlipLinesTable.tenantId, tenantId))).returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "pick_slip_line.short_picked", entityType: "pick_slip_line", entityId: String(lineId), newValues: parsed.data });
+  await maybeMarkSlipPicked(tenantId, id);
+  res.json(updated);
+});
+
+// Mark the slip as fully picked.
+router.post("/sales/pick-slips/:id/complete", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [slip] = await withTenantDb(tenantId, (db) =>
+    db.select().from(pickSlipsTable).where(and(eq(pickSlipsTable.id, id), eq(pickSlipsTable.tenantId, tenantId))).limit(1));
+  if (!slip) { res.status(404).json({ error: "Pick slip not found" }); return; }
+  if (slip.status === "cancelled") { res.status(400).json({ error: "Slip is cancelled" }); return; }
+  const [updated] = await withTenantDb(tenantId, (db) =>
+    db.update(pickSlipsTable).set({ status: "picked", completedAt: new Date() })
+      .where(and(eq(pickSlipsTable.id, id), eq(pickSlipsTable.tenantId, tenantId))).returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "pick_slip.completed", entityType: "pick_slip", entityId: String(id) });
+  const lines = await withTenantDb(tenantId, (db) =>
+    db.select().from(pickSlipLinesTable).where(and(eq(pickSlipLinesTable.pickSlipId, id), eq(pickSlipLinesTable.tenantId, tenantId))));
+  res.json({ ...updated, lines });
+});
+
+// Helper — auto-mark slip as picked when every line has been confirmed/short.
+async function maybeMarkSlipPicked(tenantId: number, slipId: number): Promise<void> {
+  const lines = await withTenantDb(tenantId, (db) =>
+    db.select({ confirmStatus: pickSlipLinesTable.confirmStatus })
+      .from(pickSlipLinesTable)
+      .where(and(eq(pickSlipLinesTable.pickSlipId, slipId), eq(pickSlipLinesTable.tenantId, tenantId))));
+  if (lines.length === 0) return;
+  const allDone = lines.every((l) => l.confirmStatus === "picked" || l.confirmStatus === "short");
+  if (!allDone) return;
+  await withTenantDb(tenantId, (db) =>
+    db.update(pickSlipsTable).set({ status: "picked", completedAt: new Date() })
+      .where(and(eq(pickSlipsTable.id, slipId), eq(pickSlipsTable.tenantId, tenantId), sql`${pickSlipsTable.status} <> 'picked'`)));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ── Despatches ────────────────────────────────════════════════════════════════
 // ═══════════════════════════════════════════════════════════════════════════════
 

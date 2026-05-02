@@ -5036,7 +5036,15 @@ export const ListPickSlipsResponse = zod.object({
         code: zod.string().optional(),
         soId: zod.number().optional(),
         warehouseId: zod.number().nullish(),
+        warehouseZone: zod.string().nullish(),
         status: zod.string().optional(),
+        priority: zod.string().nullish(),
+        assignedToClerkId: zod.string().nullish(),
+        assignedToName: zod.string().nullish(),
+        assignedToEmail: zod.string().nullish(),
+        startedAt: zod.coerce.date().nullish(),
+        completedAt: zod.coerce.date().nullish(),
+        dueAt: zod.coerce.date().nullish(),
         notes: zod.string().nullish(),
         createdAt: zod.coerce.date().optional(),
       }),
@@ -5092,7 +5100,15 @@ export const GetPickSlipResponse = zod
     code: zod.string().optional(),
     soId: zod.number().optional(),
     warehouseId: zod.number().nullish(),
+    warehouseZone: zod.string().nullish(),
     status: zod.string().optional(),
+    priority: zod.string().nullish(),
+    assignedToClerkId: zod.string().nullish(),
+    assignedToName: zod.string().nullish(),
+    assignedToEmail: zod.string().nullish(),
+    startedAt: zod.coerce.date().nullish(),
+    completedAt: zod.coerce.date().nullish(),
+    dueAt: zod.coerce.date().nullish(),
     notes: zod.string().nullish(),
     createdAt: zod.coerce.date().optional(),
   })
@@ -5108,14 +5124,446 @@ export const GetPickSlipResponse = zod
             itemCode: zod.string().nullish(),
             itemName: zod.string().nullish(),
             locationId: zod.number().nullish(),
+            locationLabel: zod.string().nullish(),
+            barcode: zod.string().nullish(),
             requiredQty: zod.string().optional(),
             pickedQty: zod.string().optional(),
             lotNumber: zod.string().nullish(),
+            serialNumber: zod.string().nullish(),
+            batchNumber: zod.string().nullish(),
+            confirmStatus: zod.string().nullish(),
+            confirmedByClerkId: zod.string().nullish(),
+            confirmedByName: zod.string().nullish(),
+            confirmedAt: zod.coerce.date().nullish(),
+            photoObjectPath: zod.string().nullish(),
+            shortReason: zod.string().nullish(),
+            shortNote: zod.string().nullish(),
+            notes: zod.string().nullish(),
           }),
         )
         .optional(),
     }),
   );
+
+/**
+ * @summary List pick slips assigned to the current picker
+ */
+export const listMyPickSlipsQueryLimitDefault = 50;
+
+export const ListMyPickSlipsQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+  limit: zod.coerce.number().default(listMyPickSlipsQueryLimitDefault),
+});
+
+export const ListMyPickSlipsHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListMyPickSlipsResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        soId: zod.number().optional(),
+        warehouseId: zod.number().nullish(),
+        warehouseZone: zod.string().nullish(),
+        status: zod.string().optional(),
+        priority: zod.string().nullish(),
+        assignedToClerkId: zod.string().nullish(),
+        assignedToName: zod.string().nullish(),
+        assignedToEmail: zod.string().nullish(),
+        startedAt: zod.coerce.date().nullish(),
+        completedAt: zod.coerce.date().nullish(),
+        dueAt: zod.coerce.date().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary List unassigned / pending pick slips available to claim
+ */
+export const listPickQueueQueryLimitDefault = 50;
+
+export const ListPickQueueQueryParams = zod.object({
+  warehouseId: zod.coerce.number().optional(),
+  limit: zod.coerce.number().default(listPickQueueQueryLimitDefault),
+});
+
+export const ListPickQueueHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ListPickQueueResponse = zod.object({
+  data: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        soId: zod.number().optional(),
+        warehouseId: zod.number().nullish(),
+        warehouseZone: zod.string().nullish(),
+        status: zod.string().optional(),
+        priority: zod.string().nullish(),
+        assignedToClerkId: zod.string().nullish(),
+        assignedToName: zod.string().nullish(),
+        assignedToEmail: zod.string().nullish(),
+        startedAt: zod.coerce.date().nullish(),
+        completedAt: zod.coerce.date().nullish(),
+        dueAt: zod.coerce.date().nullish(),
+        notes: zod.string().nullish(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+  hasMore: zod.boolean().optional(),
+  page: zod.number().optional(),
+});
+
+/**
+ * @summary Claim or reassign a pick slip
+ */
+export const AssignPickSlipParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AssignPickSlipHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const AssignPickSlipBody = zod.object({
+  clerkUserId: zod.string().optional(),
+  name: zod.string().optional(),
+  email: zod.string().optional(),
+});
+
+export const AssignPickSlipResponse = zod
+  .object({
+    id: zod.number().optional(),
+    code: zod.string().optional(),
+    soId: zod.number().optional(),
+    warehouseId: zod.number().nullish(),
+    warehouseZone: zod.string().nullish(),
+    status: zod.string().optional(),
+    priority: zod.string().nullish(),
+    assignedToClerkId: zod.string().nullish(),
+    assignedToName: zod.string().nullish(),
+    assignedToEmail: zod.string().nullish(),
+    startedAt: zod.coerce.date().nullish(),
+    completedAt: zod.coerce.date().nullish(),
+    dueAt: zod.coerce.date().nullish(),
+    notes: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            pickSlipId: zod.number().optional(),
+            soLineId: zod.number().optional(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            locationId: zod.number().nullish(),
+            locationLabel: zod.string().nullish(),
+            barcode: zod.string().nullish(),
+            requiredQty: zod.string().optional(),
+            pickedQty: zod.string().optional(),
+            lotNumber: zod.string().nullish(),
+            serialNumber: zod.string().nullish(),
+            batchNumber: zod.string().nullish(),
+            confirmStatus: zod.string().nullish(),
+            confirmedByClerkId: zod.string().nullish(),
+            confirmedByName: zod.string().nullish(),
+            confirmedAt: zod.coerce.date().nullish(),
+            photoObjectPath: zod.string().nullish(),
+            shortReason: zod.string().nullish(),
+            shortNote: zod.string().nullish(),
+            notes: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Mark a pick slip as started (picker has begun walking)
+ */
+export const StartPickSlipParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const StartPickSlipHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const StartPickSlipResponse = zod
+  .object({
+    id: zod.number().optional(),
+    code: zod.string().optional(),
+    soId: zod.number().optional(),
+    warehouseId: zod.number().nullish(),
+    warehouseZone: zod.string().nullish(),
+    status: zod.string().optional(),
+    priority: zod.string().nullish(),
+    assignedToClerkId: zod.string().nullish(),
+    assignedToName: zod.string().nullish(),
+    assignedToEmail: zod.string().nullish(),
+    startedAt: zod.coerce.date().nullish(),
+    completedAt: zod.coerce.date().nullish(),
+    dueAt: zod.coerce.date().nullish(),
+    notes: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            pickSlipId: zod.number().optional(),
+            soLineId: zod.number().optional(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            locationId: zod.number().nullish(),
+            locationLabel: zod.string().nullish(),
+            barcode: zod.string().nullish(),
+            requiredQty: zod.string().optional(),
+            pickedQty: zod.string().optional(),
+            lotNumber: zod.string().nullish(),
+            serialNumber: zod.string().nullish(),
+            batchNumber: zod.string().nullish(),
+            confirmStatus: zod.string().nullish(),
+            confirmedByClerkId: zod.string().nullish(),
+            confirmedByName: zod.string().nullish(),
+            confirmedAt: zod.coerce.date().nullish(),
+            photoObjectPath: zod.string().nullish(),
+            shortReason: zod.string().nullish(),
+            shortNote: zod.string().nullish(),
+            notes: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Mark a pick slip as fully picked
+ */
+export const CompletePickSlipParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CompletePickSlipHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const CompletePickSlipResponse = zod
+  .object({
+    id: zod.number().optional(),
+    code: zod.string().optional(),
+    soId: zod.number().optional(),
+    warehouseId: zod.number().nullish(),
+    warehouseZone: zod.string().nullish(),
+    status: zod.string().optional(),
+    priority: zod.string().nullish(),
+    assignedToClerkId: zod.string().nullish(),
+    assignedToName: zod.string().nullish(),
+    assignedToEmail: zod.string().nullish(),
+    startedAt: zod.coerce.date().nullish(),
+    completedAt: zod.coerce.date().nullish(),
+    dueAt: zod.coerce.date().nullish(),
+    notes: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      lines: zod
+        .array(
+          zod.object({
+            id: zod.number().optional(),
+            pickSlipId: zod.number().optional(),
+            soLineId: zod.number().optional(),
+            itemId: zod.number().nullish(),
+            itemCode: zod.string().nullish(),
+            itemName: zod.string().nullish(),
+            locationId: zod.number().nullish(),
+            locationLabel: zod.string().nullish(),
+            barcode: zod.string().nullish(),
+            requiredQty: zod.string().optional(),
+            pickedQty: zod.string().optional(),
+            lotNumber: zod.string().nullish(),
+            serialNumber: zod.string().nullish(),
+            batchNumber: zod.string().nullish(),
+            confirmStatus: zod.string().nullish(),
+            confirmedByClerkId: zod.string().nullish(),
+            confirmedByName: zod.string().nullish(),
+            confirmedAt: zod.coerce.date().nullish(),
+            photoObjectPath: zod.string().nullish(),
+            shortReason: zod.string().nullish(),
+            shortNote: zod.string().nullish(),
+            notes: zod.string().nullish(),
+          }),
+        )
+        .optional(),
+    }),
+  );
+
+/**
+ * @summary Confirm a picked line (qty + lot/serial + photo)
+ */
+export const ConfirmPickLineParams = zod.object({
+  id: zod.coerce.number(),
+  lineId: zod.coerce.number(),
+});
+
+export const ConfirmPickLineHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ConfirmPickLineBody = zod.object({
+  pickedQty: zod.number(),
+  lotNumber: zod.string().optional(),
+  serialNumber: zod.string().optional(),
+  batchNumber: zod.string().optional(),
+  photoObjectPath: zod.string().optional(),
+  notes: zod.string().optional(),
+  scannedBarcode: zod.string().optional(),
+});
+
+export const ConfirmPickLineResponse = zod.object({
+  id: zod.number().optional(),
+  pickSlipId: zod.number().optional(),
+  soLineId: zod.number().optional(),
+  itemId: zod.number().nullish(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  locationId: zod.number().nullish(),
+  locationLabel: zod.string().nullish(),
+  barcode: zod.string().nullish(),
+  requiredQty: zod.string().optional(),
+  pickedQty: zod.string().optional(),
+  lotNumber: zod.string().nullish(),
+  serialNumber: zod.string().nullish(),
+  batchNumber: zod.string().nullish(),
+  confirmStatus: zod.string().nullish(),
+  confirmedByClerkId: zod.string().nullish(),
+  confirmedByName: zod.string().nullish(),
+  confirmedAt: zod.coerce.date().nullish(),
+  photoObjectPath: zod.string().nullish(),
+  shortReason: zod.string().nullish(),
+  shortNote: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Mark a pick line as short-picked with reason
+ */
+export const ShortPickLineParams = zod.object({
+  id: zod.coerce.number(),
+  lineId: zod.coerce.number(),
+});
+
+export const ShortPickLineHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ShortPickLineBody = zod.object({
+  reason: zod.enum(["out_of_stock", "wrong_location", "damaged", "other"]),
+  pickedQty: zod.number().optional(),
+  note: zod.string().optional(),
+  photoObjectPath: zod.string().optional(),
+});
+
+export const ShortPickLineResponse = zod.object({
+  id: zod.number().optional(),
+  pickSlipId: zod.number().optional(),
+  soLineId: zod.number().optional(),
+  itemId: zod.number().nullish(),
+  itemCode: zod.string().nullish(),
+  itemName: zod.string().nullish(),
+  locationId: zod.number().nullish(),
+  locationLabel: zod.string().nullish(),
+  barcode: zod.string().nullish(),
+  requiredQty: zod.string().optional(),
+  pickedQty: zod.string().optional(),
+  lotNumber: zod.string().nullish(),
+  serialNumber: zod.string().nullish(),
+  batchNumber: zod.string().nullish(),
+  confirmStatus: zod.string().nullish(),
+  confirmedByClerkId: zod.string().nullish(),
+  confirmedByName: zod.string().nullish(),
+  confirmedAt: zod.coerce.date().nullish(),
+  photoObjectPath: zod.string().nullish(),
+  shortReason: zod.string().nullish(),
+  shortNote: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Aggregated pick progress for supervisor board
+ */
+export const GetPickProgressHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetPickProgressResponse = zod.object({
+  unassigned: zod.number().optional(),
+  inProgress: zod.number().optional(),
+  completedToday: zod.number().optional(),
+  shortPickedToday: zod.number().optional(),
+  slips: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        soId: zod.number().optional(),
+        status: zod.string().optional(),
+        priority: zod.string().nullish(),
+        assignedToName: zod.string().nullish(),
+        startedAt: zod.coerce.date().nullish(),
+        completedAt: zod.coerce.date().nullish(),
+        dueAt: zod.coerce.date().nullish(),
+        totalLines: zod.number().optional(),
+        confirmedLines: zod.number().optional(),
+        shortLines: zod.number().optional(),
+        pendingLines: zod.number().optional(),
+        progressPct: zod.number().optional(),
+        createdAt: zod.coerce.date().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Request a presigned URL for file upload
+ */
+
+export const RequestUploadUrlBody = zod.object({
+  name: zod.string().min(1),
+  size: zod.number().min(1),
+  contentType: zod.string().min(1),
+});
+
+export const RequestUploadUrlResponse = zod.object({
+  uploadURL: zod.string().url(),
+  objectPath: zod.string(),
+  metadata: zod
+    .object({
+      name: zod.string().min(1),
+      size: zod.number().min(1),
+      contentType: zod.string().min(1),
+    })
+    .optional(),
+});
 
 /**
  * @summary List despatches

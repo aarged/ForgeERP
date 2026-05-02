@@ -25,11 +25,13 @@ import type {
   ApprovalDecisionBody,
   ApprovalStep,
   ApprovalWorkflow,
+  AssignPickSlipBody,
   AuditLog,
   AuditTrailResponse,
   Backorder,
   BulkImportResult,
   CompleteOnboardingInput,
+  ConfirmPickLineBody,
   ConvertItemUomParams,
   ConvertQuotationToSo201,
   CreateApprovalStepBody,
@@ -192,8 +194,10 @@ import type {
   ListLandedCostsParams,
   ListLotNumbers200,
   ListLotNumbersParams,
+  ListMyPickSlipsParams,
   ListNotifications200,
   ListNotificationsParams,
+  ListPickQueueParams,
   ListPickSlipsParams,
   ListPurchaseOrdersParams,
   ListQuotationsParams,
@@ -230,7 +234,9 @@ import type {
   OnboardingSessionUpdate,
   OnboardingTenantInput,
   PendingApprovalsReport,
+  PickProgressResponse,
   PickSlipDetail,
+  PickSlipLine,
   PickSlipListResponse,
   PoLine,
   PoLineInput,
@@ -295,6 +301,7 @@ import type {
   SendCustomerInvoiceBody,
   SendQuotationBody,
   SetupPaymentResult,
+  ShortPickLineBody,
   SoLine,
   SoLineInput,
   StocktakeLine,
@@ -323,6 +330,8 @@ import type {
   UpdateTenantBody,
   UpdateUserBody,
   UploadOnboardingCsvBody,
+  UploadUrlRequest,
+  UploadUrlResponse,
   ValidateTaxIdInput,
   ValidateTaxIdResult,
   WarehouseListResponse,
@@ -14551,6 +14560,786 @@ export function useGetPickSlip<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List pick slips assigned to the current picker
+ */
+export const getListMyPickSlipsUrl = (params?: ListMyPickSlipsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/sales/pick-slips/mine?${stringifiedParams}`
+    : `/api/sales/pick-slips/mine`;
+};
+
+export const listMyPickSlips = async (
+  params?: ListMyPickSlipsParams,
+  options?: RequestInit,
+): Promise<PickSlipListResponse> => {
+  return customFetch<PickSlipListResponse>(getListMyPickSlipsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListMyPickSlipsQueryKey = (params?: ListMyPickSlipsParams) => {
+  return [`/api/sales/pick-slips/mine`, ...(params ? [params] : [])] as const;
+};
+
+export const getListMyPickSlipsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listMyPickSlips>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListMyPickSlipsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listMyPickSlips>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListMyPickSlipsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listMyPickSlips>>> = ({
+    signal,
+  }) => listMyPickSlips(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listMyPickSlips>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListMyPickSlipsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listMyPickSlips>>
+>;
+export type ListMyPickSlipsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List pick slips assigned to the current picker
+ */
+
+export function useListMyPickSlips<
+  TData = Awaited<ReturnType<typeof listMyPickSlips>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListMyPickSlipsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listMyPickSlips>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListMyPickSlipsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List unassigned / pending pick slips available to claim
+ */
+export const getListPickQueueUrl = (params?: ListPickQueueParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/sales/pick-slips/queue?${stringifiedParams}`
+    : `/api/sales/pick-slips/queue`;
+};
+
+export const listPickQueue = async (
+  params?: ListPickQueueParams,
+  options?: RequestInit,
+): Promise<PickSlipListResponse> => {
+  return customFetch<PickSlipListResponse>(getListPickQueueUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPickQueueQueryKey = (params?: ListPickQueueParams) => {
+  return [`/api/sales/pick-slips/queue`, ...(params ? [params] : [])] as const;
+};
+
+export const getListPickQueueQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPickQueue>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPickQueueParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPickQueue>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPickQueueQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPickQueue>>> = ({
+    signal,
+  }) => listPickQueue(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPickQueue>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPickQueueQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPickQueue>>
+>;
+export type ListPickQueueQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List unassigned / pending pick slips available to claim
+ */
+
+export function useListPickQueue<
+  TData = Awaited<ReturnType<typeof listPickQueue>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPickQueueParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPickQueue>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPickQueueQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Claim or reassign a pick slip
+ */
+export const getAssignPickSlipUrl = (id: number) => {
+  return `/api/sales/pick-slips/${id}/assign`;
+};
+
+export const assignPickSlip = async (
+  id: number,
+  assignPickSlipBody?: AssignPickSlipBody,
+  options?: RequestInit,
+): Promise<PickSlipDetail> => {
+  return customFetch<PickSlipDetail>(getAssignPickSlipUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(assignPickSlipBody),
+  });
+};
+
+export const getAssignPickSlipMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof assignPickSlip>>,
+    TError,
+    { id: number; data: BodyType<AssignPickSlipBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof assignPickSlip>>,
+  TError,
+  { id: number; data: BodyType<AssignPickSlipBody> },
+  TContext
+> => {
+  const mutationKey = ["assignPickSlip"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof assignPickSlip>>,
+    { id: number; data: BodyType<AssignPickSlipBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return assignPickSlip(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AssignPickSlipMutationResult = NonNullable<
+  Awaited<ReturnType<typeof assignPickSlip>>
+>;
+export type AssignPickSlipMutationBody = BodyType<AssignPickSlipBody>;
+export type AssignPickSlipMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Claim or reassign a pick slip
+ */
+export const useAssignPickSlip = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof assignPickSlip>>,
+    TError,
+    { id: number; data: BodyType<AssignPickSlipBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof assignPickSlip>>,
+  TError,
+  { id: number; data: BodyType<AssignPickSlipBody> },
+  TContext
+> => {
+  return useMutation(getAssignPickSlipMutationOptions(options));
+};
+
+/**
+ * @summary Mark a pick slip as started (picker has begun walking)
+ */
+export const getStartPickSlipUrl = (id: number) => {
+  return `/api/sales/pick-slips/${id}/start`;
+};
+
+export const startPickSlip = async (
+  id: number,
+  options?: RequestInit,
+): Promise<PickSlipDetail> => {
+  return customFetch<PickSlipDetail>(getStartPickSlipUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getStartPickSlipMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startPickSlip>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof startPickSlip>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["startPickSlip"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof startPickSlip>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return startPickSlip(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StartPickSlipMutationResult = NonNullable<
+  Awaited<ReturnType<typeof startPickSlip>>
+>;
+
+export type StartPickSlipMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Mark a pick slip as started (picker has begun walking)
+ */
+export const useStartPickSlip = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startPickSlip>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof startPickSlip>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getStartPickSlipMutationOptions(options));
+};
+
+/**
+ * @summary Mark a pick slip as fully picked
+ */
+export const getCompletePickSlipUrl = (id: number) => {
+  return `/api/sales/pick-slips/${id}/complete`;
+};
+
+export const completePickSlip = async (
+  id: number,
+  options?: RequestInit,
+): Promise<PickSlipDetail> => {
+  return customFetch<PickSlipDetail>(getCompletePickSlipUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCompletePickSlipMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completePickSlip>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof completePickSlip>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["completePickSlip"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof completePickSlip>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return completePickSlip(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CompletePickSlipMutationResult = NonNullable<
+  Awaited<ReturnType<typeof completePickSlip>>
+>;
+
+export type CompletePickSlipMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Mark a pick slip as fully picked
+ */
+export const useCompletePickSlip = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completePickSlip>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof completePickSlip>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getCompletePickSlipMutationOptions(options));
+};
+
+/**
+ * @summary Confirm a picked line (qty + lot/serial + photo)
+ */
+export const getConfirmPickLineUrl = (id: number, lineId: number) => {
+  return `/api/sales/pick-slips/${id}/lines/${lineId}/confirm`;
+};
+
+export const confirmPickLine = async (
+  id: number,
+  lineId: number,
+  confirmPickLineBody: ConfirmPickLineBody,
+  options?: RequestInit,
+): Promise<PickSlipLine> => {
+  return customFetch<PickSlipLine>(getConfirmPickLineUrl(id, lineId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(confirmPickLineBody),
+  });
+};
+
+export const getConfirmPickLineMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmPickLine>>,
+    TError,
+    { id: number; lineId: number; data: BodyType<ConfirmPickLineBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof confirmPickLine>>,
+  TError,
+  { id: number; lineId: number; data: BodyType<ConfirmPickLineBody> },
+  TContext
+> => {
+  const mutationKey = ["confirmPickLine"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof confirmPickLine>>,
+    { id: number; lineId: number; data: BodyType<ConfirmPickLineBody> }
+  > = (props) => {
+    const { id, lineId, data } = props ?? {};
+
+    return confirmPickLine(id, lineId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ConfirmPickLineMutationResult = NonNullable<
+  Awaited<ReturnType<typeof confirmPickLine>>
+>;
+export type ConfirmPickLineMutationBody = BodyType<ConfirmPickLineBody>;
+export type ConfirmPickLineMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Confirm a picked line (qty + lot/serial + photo)
+ */
+export const useConfirmPickLine = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmPickLine>>,
+    TError,
+    { id: number; lineId: number; data: BodyType<ConfirmPickLineBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof confirmPickLine>>,
+  TError,
+  { id: number; lineId: number; data: BodyType<ConfirmPickLineBody> },
+  TContext
+> => {
+  return useMutation(getConfirmPickLineMutationOptions(options));
+};
+
+/**
+ * @summary Mark a pick line as short-picked with reason
+ */
+export const getShortPickLineUrl = (id: number, lineId: number) => {
+  return `/api/sales/pick-slips/${id}/lines/${lineId}/short-pick`;
+};
+
+export const shortPickLine = async (
+  id: number,
+  lineId: number,
+  shortPickLineBody: ShortPickLineBody,
+  options?: RequestInit,
+): Promise<PickSlipLine> => {
+  return customFetch<PickSlipLine>(getShortPickLineUrl(id, lineId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(shortPickLineBody),
+  });
+};
+
+export const getShortPickLineMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof shortPickLine>>,
+    TError,
+    { id: number; lineId: number; data: BodyType<ShortPickLineBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof shortPickLine>>,
+  TError,
+  { id: number; lineId: number; data: BodyType<ShortPickLineBody> },
+  TContext
+> => {
+  const mutationKey = ["shortPickLine"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof shortPickLine>>,
+    { id: number; lineId: number; data: BodyType<ShortPickLineBody> }
+  > = (props) => {
+    const { id, lineId, data } = props ?? {};
+
+    return shortPickLine(id, lineId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ShortPickLineMutationResult = NonNullable<
+  Awaited<ReturnType<typeof shortPickLine>>
+>;
+export type ShortPickLineMutationBody = BodyType<ShortPickLineBody>;
+export type ShortPickLineMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Mark a pick line as short-picked with reason
+ */
+export const useShortPickLine = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof shortPickLine>>,
+    TError,
+    { id: number; lineId: number; data: BodyType<ShortPickLineBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof shortPickLine>>,
+  TError,
+  { id: number; lineId: number; data: BodyType<ShortPickLineBody> },
+  TContext
+> => {
+  return useMutation(getShortPickLineMutationOptions(options));
+};
+
+/**
+ * @summary Aggregated pick progress for supervisor board
+ */
+export const getGetPickProgressUrl = () => {
+  return `/api/sales/pick-progress`;
+};
+
+export const getPickProgress = async (
+  options?: RequestInit,
+): Promise<PickProgressResponse> => {
+  return customFetch<PickProgressResponse>(getGetPickProgressUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPickProgressQueryKey = () => {
+  return [`/api/sales/pick-progress`] as const;
+};
+
+export const getGetPickProgressQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPickProgress>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPickProgress>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPickProgressQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPickProgress>>> = ({
+    signal,
+  }) => getPickProgress({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPickProgress>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPickProgressQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPickProgress>>
+>;
+export type GetPickProgressQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Aggregated pick progress for supervisor board
+ */
+
+export function useGetPickProgress<
+  TData = Awaited<ReturnType<typeof getPickProgress>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPickProgress>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPickProgressQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Request a presigned URL for file upload
+ */
+export const getRequestUploadUrlUrl = () => {
+  return `/api/storage/uploads/request-url`;
+};
+
+export const requestUploadUrl = async (
+  uploadUrlRequest: UploadUrlRequest,
+  options?: RequestInit,
+): Promise<UploadUrlResponse> => {
+  return customFetch<UploadUrlResponse>(getRequestUploadUrlUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(uploadUrlRequest),
+  });
+};
+
+export const getRequestUploadUrlMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestUploadUrl>>,
+    TError,
+    { data: BodyType<UploadUrlRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestUploadUrl>>,
+  TError,
+  { data: BodyType<UploadUrlRequest> },
+  TContext
+> => {
+  const mutationKey = ["requestUploadUrl"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestUploadUrl>>,
+    { data: BodyType<UploadUrlRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestUploadUrl(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestUploadUrlMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestUploadUrl>>
+>;
+export type RequestUploadUrlMutationBody = BodyType<UploadUrlRequest>;
+export type RequestUploadUrlMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Request a presigned URL for file upload
+ */
+export const useRequestUploadUrl = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestUploadUrl>>,
+    TError,
+    { data: BodyType<UploadUrlRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestUploadUrl>>,
+  TError,
+  { data: BodyType<UploadUrlRequest> },
+  TContext
+> => {
+  return useMutation(getRequestUploadUrlMutationOptions(options));
+};
 
 /**
  * @summary List despatches
