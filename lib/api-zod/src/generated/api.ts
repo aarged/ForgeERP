@@ -4129,6 +4129,54 @@ export const ExportSupplierPerformancePdfHeader = zod.object({
 });
 
 /**
+ * @summary PO aging report grouped into delivery-date buckets (open POs only)
+ */
+export const ReportPoAgingQueryParams = zod.object({
+  supplierId: zod.coerce.number().optional(),
+});
+
+export const ReportPoAgingHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ReportPoAgingResponse = zod.object({
+  rows: zod
+    .array(
+      zod.object({
+        id: zod.number().optional(),
+        code: zod.string().optional(),
+        supplierName: zod.string().nullish(),
+        status: zod.string().optional(),
+        total: zod.number().optional(),
+        deliveryDate: zod.string().nullish(),
+        daysOverdue: zod.number().nullish(),
+        agingBucket: zod.string().optional(),
+      }),
+    )
+    .optional(),
+  summary: zod
+    .record(
+      zod.string(),
+      zod.object({
+        count: zod.number().optional(),
+        total: zod.number().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Export PO aging report as CSV
+ */
+export const ExportPoAgingCsvQueryParams = zod.object({
+  supplierId: zod.coerce.number().optional(),
+});
+
+export const ExportPoAgingCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
  * @summary Report — goods in transit (sent POs not yet fully received)
  */
 export const ReportGoodsInTransitQueryParams = zod.object({
@@ -6143,6 +6191,30 @@ export const ReportSalesByCustomerResponseItem = zod.object({
 export const ReportSalesByCustomerResponse = zod.array(
   ReportSalesByCustomerResponseItem,
 );
+
+/**
+ * @summary Export sales by customer as CSV
+ */
+export const ExportSalesByCustomerCsvQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ExportSalesByCustomerCsvHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
+
+/**
+ * @summary Export sales by customer as PDF
+ */
+export const ExportSalesByCustomerPdfQueryParams = zod.object({
+  fromDate: zod.date().optional(),
+  toDate: zod.date().optional(),
+});
+
+export const ExportSalesByCustomerPdfHeader = zod.object({
+  "x-tenant-id": zod.string(),
+});
 
 /**
  * @summary Sales analysis by month/year period

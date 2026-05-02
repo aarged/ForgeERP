@@ -3317,6 +3317,65 @@ paths:
             application/pdf:
               schema: { type: string, format: binary }
 
+  /procurement/reports/po-aging:
+    get:
+      operationId: reportPoAging
+      summary: PO aging report grouped into delivery-date buckets (open POs only)
+      tags: [Procurement]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: supplierId
+          schema: { type: integer }
+      responses:
+        "200":
+          description: PO aging with summary buckets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        code: { type: string }
+                        supplierName: { type: string, nullable: true }
+                        status: { type: string }
+                        total: { type: number }
+                        deliveryDate: { type: string, nullable: true }
+                        daysOverdue: { type: integer, nullable: true }
+                        agingBucket: { type: string }
+                  summary:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        count: { type: integer }
+                        total: { type: number }
+
+  /procurement/reports/po-aging/export/csv:
+    get:
+      operationId: exportPoAgingCsv
+      summary: Export PO aging report as CSV
+      tags: [Procurement]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { name: x-tenant-id, in: header, required: true, schema: { type: string } }
+        - { in: query, name: supplierId, schema: { type: integer } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
   /procurement/reports/goods-in-transit:
     get:
       operationId: reportGoodsInTransit
@@ -4587,6 +4646,40 @@ paths:
                     totalRevenue: { type: string }
                     invoiceCount: { type: integer }
                     avgInvoiceValue: { type: string }
+
+  /sales/reports/by-customer/export/csv:
+    get:
+      operationId: exportSalesByCustomerCsv
+      summary: Export sales by customer as CSV
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: string } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /sales/reports/by-customer/export/pdf:
+    get:
+      operationId: exportSalesByCustomerPdf
+      summary: Export sales by customer as PDF
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: string } }
+        - { in: query, name: fromDate, schema: { type: string, format: date } }
+        - { in: query, name: toDate, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
 
   /sales/reports/by-period:
     get:

@@ -3310,4 +3310,83 @@ router.get("/procurement/reports/goods-in-transit/export/pdf", ...tenantUserMidd
   doc.end();
 });
 
+/** PO Aging report — open POs grouped by delivery-date age buckets */
+router.get("/procurement/reports/po-aging", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { supplierId } = req.query as Record<string, string>;
+
+  const qr = await withTenantDb(tenantId, (db) =>
+    db.execute(sql`
+      SELECT po.id, po.code, po.supplier_name AS "supplierName", po.status,
+             po.total::numeric AS "total", po.delivery_date AS "deliveryDate",
+             CASE WHEN po.delivery_date IS NULL THEN NULL
+                  ELSE (CURRENT_DATE - po.delivery_date::date)::int END AS "daysOverdue",
+             CASE
+               WHEN po.delivery_date IS NULL OR po.delivery_date::date >= CURRENT_DATE THEN 'current'
+               WHEN CURRENT_DATE - po.delivery_date::date <= 30 THEN '1_to_30'
+               WHEN CURRENT_DATE - po.delivery_date::date <= 60 THEN '31_to_60'
+               WHEN CURRENT_DATE - po.delivery_date::date <= 90 THEN '61_to_90'
+               ELSE 'over_90'
+             END AS "agingBucket"
+      FROM purchase_orders po
+      WHERE po.tenant_id = ${tenantId}
+        AND po.deleted_at IS NULL
+        AND po.status IN ('approved', 'sent', 'receiving', 'partially_received')
+        ${supplierId ? sql`AND po.supplier_id = ${Number(supplierId)}` : sql``}
+      ORDER BY po.delivery_date ASC NULLS LAST
+      LIMIT 5000
+    `)
+  );
+  const rows = qr.rows as Array<{ id: number; code: string; supplierName: string | null; status: string; total: number; deliveryDate: string | null; daysOverdue: number | null; agingBucket: string }>;
+
+  const summary: Record<string, { count: number; total: number }> = {};
+  for (const r of rows) {
+    const b = r.agingBucket;
+    if (!summary[b]) summary[b] = { count: 0, total: 0 };
+    summary[b].count += 1;
+    summary[b].total += Number(r.total ?? 0);
+  }
+
+  res.json({ rows, summary });
+});
+
+/** PO Aging CSV Export */
+router.get("/procurement/reports/po-aging/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { supplierId } = req.query as Record<string, string>;
+
+  const qr = await withTenantDb(tenantId, (db) =>
+    db.execute(sql`
+      SELECT po.code, po.supplier_name AS "supplierName", po.status,
+             po.total::numeric AS "total", po.delivery_date AS "deliveryDate",
+             CASE WHEN po.delivery_date IS NULL THEN NULL
+                  ELSE (CURRENT_DATE - po.delivery_date::date)::int END AS "daysOverdue",
+             CASE
+               WHEN po.delivery_date IS NULL OR po.delivery_date::date >= CURRENT_DATE THEN 'Current'
+               WHEN CURRENT_DATE - po.delivery_date::date <= 30 THEN '1-30 Days'
+               WHEN CURRENT_DATE - po.delivery_date::date <= 60 THEN '31-60 Days'
+               WHEN CURRENT_DATE - po.delivery_date::date <= 90 THEN '61-90 Days'
+               ELSE '90+ Days'
+             END AS "agingBucket"
+      FROM purchase_orders po
+      WHERE po.tenant_id = ${tenantId}
+        AND po.deleted_at IS NULL
+        AND po.status IN ('approved', 'sent', 'receiving', 'partially_received')
+        ${supplierId ? sql`AND po.supplier_id = ${Number(supplierId)}` : sql``}
+      ORDER BY po.delivery_date ASC NULLS LAST
+      LIMIT 5000
+    `)
+  );
+  const rows = qr.rows as Array<{ code: string; supplierName: string | null; status: string; total: number; deliveryDate: string | null; daysOverdue: number | null; agingBucket: string }>;
+
+  const escape = (v: unknown) => { const s = v == null ? "" : String(v); return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [
+    ["PO Code", "Supplier", "Status", "Total", "Delivery Date", "Days Overdue", "Aging Bucket"].join(","),
+    ...rows.map(r => [r.code, r.supplierName ?? "", r.status, Number(r.total ?? 0).toFixed(2), r.deliveryDate ? String(r.deliveryDate).split("T")[0] : "", r.daysOverdue ?? 0, r.agingBucket].map(escape).join(",")),
+  ];
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="po-aging.csv"`);
+  res.send(lines.join("\r\n"));
+});
+
 export default router;

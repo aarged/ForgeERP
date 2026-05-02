@@ -26,6 +26,13 @@ import {
   useReportSalesByItem,
   getExportSalesByItemCsvUrl,
   getExportSalesByItemPdfUrl,
+  useReportSalesByCustomer,
+  getReportSalesByCustomerQueryKey,
+  getExportSalesByCustomerCsvUrl,
+  getExportSalesByCustomerPdfUrl,
+  useReportPoAging,
+  getReportPoAgingQueryKey,
+  getExportPoAgingCsvUrl,
   useReportBackorders,
   useReportGoodsInTransit,
   getExportGoodsInTransitCsvUrl,
@@ -87,6 +94,9 @@ interface GoodsInTransitRow { id: number; code: string; supplierName: string | n
 
 interface SalesPeriodRow { period: string; totalRevenue: string | number; invoiceCount: number; orderCount: number; }
 interface SalesItemRow { itemId: number | null; itemCode: string | null; itemName: string | null; totalQty: string | number; totalRevenue: string | number; invoiceCount: number; }
+interface SalesCustomerRow { customerId: number | null; customerName: string | null; totalRevenue: string | number; invoiceCount: number; avgInvoiceValue: string | number; }
+interface PoAgingRow { id: number; code: string; supplierName: string | null; status: string; total: number | string; deliveryDate: string | null; daysOverdue: number | null; agingBucket: string; }
+interface PoAgingResponse { rows: PoAgingRow[]; summary: Record<string, { count: number; total: number }>; }
 interface BackorderRow { soId: number; soLineId: number; itemCode: string | null; itemName: string | null; qty: string | number; despatched: string | number; backorderQty: string | number; }
 interface InvoiceAgingInvoice { id: number; code: string; customerName: string | null; invoiceDate: string | null; dueDate: string | null; total: number; paidAmount: number; balance: number; daysOverdue: number | null; agingBucket: string; }
 interface AgingBucketSummary { count: number; total: number; }
@@ -654,6 +664,91 @@ function GoodsInTransitTab() {
   );
 }
 
+const PO_AGING_BUCKETS: { key: string; label: string; color: string }[] = [
+  { key: "current",  label: "Current",    color: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+  { key: "1_to_30",  label: "1–30 Days",  color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+  { key: "31_to_60", label: "31–60 Days", color: "bg-orange-100 text-orange-800 border-orange-200" },
+  { key: "61_to_90", label: "61–90 Days", color: "bg-red-100 text-red-800 border-red-200" },
+  { key: "over_90",  label: "90+ Days",   color: "bg-red-200 text-red-900 border-red-300" },
+];
+
+function PoAgingTab() {
+  const { data, isLoading } = useReportPoAging({}, {
+    query: { queryKey: getReportPoAgingQueryKey({}) },
+  });
+  const agingData = data as unknown as PoAgingResponse | undefined;
+  const rows = agingData?.rows ?? [];
+  const summary = agingData?.summary ?? {};
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => exportCsv(getExportPoAgingCsvUrl({}))}>
+          <Download className="h-4 w-4 mr-2" />CSV
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-5 gap-3">
+        {PO_AGING_BUCKETS.map(({ key, label, color }) => {
+          const bucket = summary[key] ?? { count: 0, total: 0 };
+          return (
+            <Card key={key} className={`border ${color}`}>
+              <CardContent className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-1">{label}</p>
+                <p className="text-xl font-bold">{fmt(bucket.total, true)}</p>
+                <p className="text-xs mt-1">{bucket.count} PO{bucket.count !== 1 ? "s" : ""}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>PO Code</TableHead>
+              <TableHead>Supplier</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Delivery Date</TableHead>
+              <TableHead className="text-right">Days Overdue</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+              <TableHead>Bucket</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={7} className="text-center py-8">Loading PO aging report...</TableCell></TableRow>
+            ) : !rows.length ? (
+              <TableRow><TableCell colSpan={7} className="text-center py-8">No open purchase orders</TableCell></TableRow>
+            ) : rows.map((r) => {
+              const bucket = PO_AGING_BUCKETS.find(b => b.key === r.agingBucket);
+              const overdue = (r.daysOverdue ?? 0) > 0;
+              return (
+                <TableRow key={r.id}>
+                  <TableCell className="font-mono font-medium">{r.code}</TableCell>
+                  <TableCell>{r.supplierName ?? "—"}</TableCell>
+                  <TableCell><Badge variant="outline" className="capitalize">{r.status.replace(/_/g, " ")}</Badge></TableCell>
+                  <TableCell>{fmtDate(r.deliveryDate)}</TableCell>
+                  <TableCell className={`text-right font-mono ${overdue ? "text-destructive font-medium" : ""}`}>
+                    {r.daysOverdue == null ? "—" : overdue ? r.daysOverdue : 0}
+                  </TableCell>
+                  <TableCell className="text-right font-mono font-medium">{fmt(r.total, true)}</TableCell>
+                  <TableCell>
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold border ${bucket?.color ?? ""}`}>
+                      {bucket?.label ?? r.agingBucket}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 // ── Sales Tabs ────────────────────────────────────────────────────────────────
 
 function SalesByPeriodTab() {
@@ -771,6 +866,71 @@ function SalesByItemTab() {
                 <TableCell className="text-right font-mono font-medium">{fmt(r.totalRevenue, true)}</TableCell>
               </TableRow>
             ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function SalesByCustomerTab() {
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const params = { fromDate: fromDate || undefined, toDate: toDate || undefined };
+  const { data, isLoading } = useReportSalesByCustomer(params, {
+    query: { queryKey: getReportSalesByCustomerQueryKey(params) },
+  });
+  const rows = (data as unknown as SalesCustomerRow[] | undefined) ?? [];
+  const grandRevenue = rows.reduce((s, r) => s + Number(r.totalRevenue ?? 0), 0);
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2 items-center">
+          <Label className="whitespace-nowrap">From</Label>
+          <Input type="date" className="w-40" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <Label className="whitespace-nowrap">To</Label>
+          <Input type="date" className="w-40" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => exportCsv(getExportSalesByCustomerCsvUrl(params))}>
+            <Download className="h-4 w-4 mr-2" />CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportCsv(getExportSalesByCustomerPdfUrl(params))}>
+            <Download className="h-4 w-4 mr-2" />PDF
+          </Button>
+        </div>
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Customer</TableHead>
+              <TableHead className="text-right">Invoices</TableHead>
+              <TableHead className="text-right">Avg Invoice</TableHead>
+              <TableHead className="text-right">Total Revenue</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={4} className="text-center py-8">Loading report...</TableCell></TableRow>
+            ) : !rows.length ? (
+              <TableRow><TableCell colSpan={4} className="text-center py-8">No customer sales data found</TableCell></TableRow>
+            ) : (
+              <>
+                {rows.map((r, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-medium">{r.customerName ?? "—"}</TableCell>
+                    <TableCell className="text-right font-mono">{r.invoiceCount}</TableCell>
+                    <TableCell className="text-right font-mono">{fmt(r.avgInvoiceValue, true)}</TableCell>
+                    <TableCell className="text-right font-mono font-medium">{fmt(r.totalRevenue, true)}</TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="bg-muted/50 font-bold">
+                  <TableCell colSpan={3} className="text-right">Total Revenue</TableCell>
+                  <TableCell className="text-right font-mono text-lg text-primary">{fmt(grandRevenue, true)}</TableCell>
+                </TableRow>
+              </>
+            )}
           </TableBody>
         </Table>
       </div>
@@ -958,13 +1118,15 @@ export default function Reports() {
         <TabsContent value="procurement">
           <Tabs defaultValue="po-summary">
             <TabsList className="mb-4">
-              <TabsTrigger value="po-summary">PO Summary</TabsTrigger>
-              <TabsTrigger value="supplier-spend">Supplier Spend</TabsTrigger>
+              <TabsTrigger value="po-summary">Purchase Summary</TabsTrigger>
+              <TabsTrigger value="supplier-spend">Supplier Analysis</TabsTrigger>
+              <TabsTrigger value="po-aging">PO Ageing</TabsTrigger>
               <TabsTrigger value="grn">Goods Received</TabsTrigger>
               <TabsTrigger value="in-transit">Goods in Transit</TabsTrigger>
             </TabsList>
             <TabsContent value="po-summary"><ProcurementPoSummaryTab /></TabsContent>
             <TabsContent value="supplier-spend"><SupplierSpendTab /></TabsContent>
+            <TabsContent value="po-aging"><PoAgingTab /></TabsContent>
             <TabsContent value="grn"><GrnTab /></TabsContent>
             <TabsContent value="in-transit"><GoodsInTransitTab /></TabsContent>
           </Tabs>
@@ -973,12 +1135,14 @@ export default function Reports() {
         <TabsContent value="sales">
           <Tabs defaultValue="by-period">
             <TabsList className="mb-4">
-              <TabsTrigger value="by-period">Revenue by Period</TabsTrigger>
+              <TabsTrigger value="by-period">Revenue Summary</TabsTrigger>
+              <TabsTrigger value="by-customer">Customer Analysis</TabsTrigger>
               <TabsTrigger value="by-item">Top Products</TabsTrigger>
               <TabsTrigger value="backorders">Backorders</TabsTrigger>
               <TabsTrigger value="invoice-aging">Invoice Aging</TabsTrigger>
             </TabsList>
             <TabsContent value="by-period"><SalesByPeriodTab /></TabsContent>
+            <TabsContent value="by-customer"><SalesByCustomerTab /></TabsContent>
             <TabsContent value="by-item"><SalesByItemTab /></TabsContent>
             <TabsContent value="backorders"><BackordersTab /></TabsContent>
             <TabsContent value="invoice-aging"><InvoiceAgingTab /></TabsContent>

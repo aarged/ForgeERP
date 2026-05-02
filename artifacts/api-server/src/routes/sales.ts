@@ -2408,4 +2408,87 @@ router.get("/sales/reports/by-item/export/pdf", ...tenantUserMiddleware, async (
   doc.end();
 });
 
+/** Sales by Customer CSV Export */
+router.get("/sales/reports/by-customer/export/csv", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      customerName: customerInvoicesTable.customerName,
+      totalRevenue: sql<string>`coalesce(sum(${customerInvoicesTable.total}::numeric), 0)`,
+      invoiceCount: sql<number>`count(*)`,
+      avgInvoiceValue: sql<string>`coalesce(avg(${customerInvoicesTable.total}::numeric), 0)`,
+    })
+      .from(customerInvoicesTable)
+      .where(and(
+        eq(customerInvoicesTable.tenantId, tenantId),
+        isNull(customerInvoicesTable.deletedAt),
+        sql`${customerInvoicesTable.status} NOT IN ('voided')`,
+        fromDate ? sql`${customerInvoicesTable.invoiceDate} >= ${fromDate}` : undefined,
+        toDate ? sql`${customerInvoicesTable.invoiceDate} <= ${toDate}` : undefined,
+      ))
+      .groupBy(customerInvoicesTable.customerId, customerInvoicesTable.customerName)
+      .orderBy(sql`sum(${customerInvoicesTable.total}::numeric) desc`)
+  );
+
+  const escape = (v: unknown) => { const s = v == null ? "" : String(v); return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [
+    ["Customer", "Total Revenue", "Invoice Count", "Avg Invoice Value"].join(","),
+    ...rows.map(r => [r.customerName ?? "", Number(r.totalRevenue).toFixed(2), r.invoiceCount, Number(r.avgInvoiceValue).toFixed(2)].map(escape).join(",")),
+  ];
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="sales-by-customer.csv"`);
+  res.send(lines.join("\r\n"));
+});
+
+/** Sales by Customer PDF Export */
+router.get("/sales/reports/by-customer/export/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const { fromDate, toDate } = req.query as Record<string, string>;
+  const rows = await withTenantDb(tenantId, (db) =>
+    db.select({
+      customerName: customerInvoicesTable.customerName,
+      totalRevenue: sql<string>`coalesce(sum(${customerInvoicesTable.total}::numeric), 0)`,
+      invoiceCount: sql<number>`count(*)`,
+      avgInvoiceValue: sql<string>`coalesce(avg(${customerInvoicesTable.total}::numeric), 0)`,
+    })
+      .from(customerInvoicesTable)
+      .where(and(
+        eq(customerInvoicesTable.tenantId, tenantId),
+        isNull(customerInvoicesTable.deletedAt),
+        sql`${customerInvoicesTable.status} NOT IN ('voided')`,
+        fromDate ? sql`${customerInvoicesTable.invoiceDate} >= ${fromDate}` : undefined,
+        toDate ? sql`${customerInvoicesTable.invoiceDate} <= ${toDate}` : undefined,
+      ))
+      .groupBy(customerInvoicesTable.customerId, customerInvoicesTable.customerName)
+      .orderBy(sql`sum(${customerInvoicesTable.total}::numeric) desc`)
+  );
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="sales-by-customer.pdf"`);
+  doc.pipe(res);
+  doc.fontSize(16).text("Sales by Customer Report", { align: "center" });
+  doc.moveDown(0.5);
+  doc.fontSize(9).text(`Generated: ${new Date().toISOString().split("T")[0]}`, { align: "right" });
+  doc.moveDown();
+  const cols = [240, 110, 80, 110];
+  const headers = ["Customer", "Total Revenue", "Invoices", "Avg Invoice"];
+  let x = doc.page.margins.left;
+  headers.forEach((h, i) => { doc.fontSize(9).font("Helvetica-Bold").text(h, x, doc.y, { width: cols[i], lineBreak: false }); x += cols[i]; });
+  doc.moveDown(0.5);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.3);
+  for (const r of rows) {
+    x = doc.page.margins.left;
+    const rowY = doc.y;
+    [String(r.customerName ?? "").slice(0, 50), Number(r.totalRevenue).toFixed(2), String(r.invoiceCount), Number(r.avgInvoiceValue).toFixed(2)].forEach((v, i) => {
+      doc.fontSize(9).font("Helvetica").text(v, x, rowY, { width: cols[i], lineBreak: false }); x += cols[i];
+    });
+    doc.moveDown(0.7);
+    if (doc.y > doc.page.height - 80) { doc.addPage(); }
+  }
+  doc.end();
+});
+
 export default router;

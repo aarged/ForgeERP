@@ -2936,6 +2936,37 @@ export type ExportPoSummaryPdfParams = {
   to?: string;
 };
 
+export type ReportPoAgingParams = {
+  supplierId?: number;
+};
+
+export type ReportPoAging200RowsItem = {
+  id?: number;
+  code?: string;
+  supplierName?: string | null;
+  status?: string;
+  total?: number;
+  deliveryDate?: string | null;
+  daysOverdue?: number | null;
+  agingBucket?: string;
+};
+
+export type ReportPoAging200Summary = {
+  [key: string]: {
+    count?: number;
+    total?: number;
+  };
+};
+
+export type ReportPoAging200 = {
+  rows?: ReportPoAging200RowsItem[];
+  summary?: ReportPoAging200Summary;
+};
+
+export type ExportPoAgingCsvParams = {
+  supplierId?: number;
+};
+
 export type ReportGoodsInTransitParams = {
   supplierId?: number;
   from?: string;
@@ -3194,6 +3225,16 @@ export type ReportSalesByCustomer200Item = {
   totalRevenue?: string;
   invoiceCount?: number;
   avgInvoiceValue?: string;
+};
+
+export type ExportSalesByCustomerCsvParams = {
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type ExportSalesByCustomerPdfParams = {
+  fromDate?: string;
+  toDate?: string;
 };
 
 export type ReportSalesByPeriodParams = {
