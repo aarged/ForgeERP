@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm, Controller } from "react-hook-form";
 import {
@@ -2649,7 +2649,11 @@ type TabId = (typeof TABS)[number]["id"];
 
 export default function MasterData() {
   const [, setLocation] = useLocation();
-  const urlParams = new URLSearchParams(window.location.search);
+  // Subscribe reactively to the query string. wouter's useLocation only
+  // tracks the pathname, so reading window.location.search at render time
+  // would not trigger a re-render when the user clicks a tab.
+  const search = useSearch();
+  const urlParams = new URLSearchParams(search);
   const rawTab = urlParams.get("tab");
   const activeTab: TabId = (TABS.find((t) => t.id === rawTab)?.id ?? "items");
   const initialId = urlParams.get("id") ? Number(urlParams.get("id")) : undefined;
