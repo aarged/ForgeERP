@@ -1,5 +1,16 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { useForm, Controller, useFieldArray, Control } from "react-hook-form";
 import {
   useListQuotations,
@@ -46,9 +57,7 @@ import {
   useReceiveRma,
   useProcessRma,
   getListRmaOrdersQueryKey,
-  useReportSalesSummary,
-  useReportBackorders,
-  useReportOutstandingInvoices,
+  useGetSalesDashboard,
   useListBackorders,
   useReleaseBackorder,
   useCancelBackorder,
@@ -58,13 +67,7 @@ import {
   useCancelDespatch,
   useVoidInvoice,
   useCancelRma,
-  useReportSalesByItem,
-  useReportSalesByCustomer,
-  useReportSalesByPeriod,
   useReportCustomerStatement,
-  getReportSalesByItemQueryKey,
-  getReportSalesByCustomerQueryKey,
-  getReportSalesByPeriodQueryKey,
   getReportCustomerStatementQueryKey,
   useListCustomers,
   useListWarehouses,
@@ -143,7 +146,6 @@ import {
   AlertCircle,
   Printer,
   BarChart2,
-  Users,
 } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -390,115 +392,200 @@ function LineItemEditor({
 // ── Dashboard Tab ─────────────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function DashboardTab() {
-  const { data: summary, isLoading } = useReportSalesSummary({});
-  const { data: backorders } = useReportBackorders({});
-  const { data: outstanding } = useReportOutstandingInvoices({});
-  const { data: byItem } = useReportSalesByItem({}, { query: { queryKey: getReportSalesByItemQueryKey({}) } });
-  const { data: byCustomer } = useReportSalesByCustomer({}, { query: { queryKey: getReportSalesByCustomerQueryKey({}) } });
-  const { data: byPeriod } = useReportSalesByPeriod({}, { query: { queryKey: getReportSalesByPeriodQueryKey({}) } });
+function fmtCurrencyCompact(n: number): string {
+  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(1)}k`;
+  return `$${n.toFixed(0)}`;
+}
 
-  if (isLoading)
+function KpiCard({
+  title,
+  value,
+  hint,
+  icon,
+  tone,
+}: {
+  title: string;
+  value: string;
+  hint?: string;
+  icon: React.ReactNode;
+  tone?: "default" | "warning" | "danger" | "success";
+}) {
+  const toneCls =
+    tone === "danger"
+      ? "text-red-600"
+      : tone === "warning"
+        ? "text-orange-600"
+        : tone === "success"
+          ? "text-emerald-600"
+          : "text-foreground";
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+          {icon} {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className={`text-2xl font-bold ${toneCls}`}>{value}</div>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DashboardTab({ onNavigate }: { onNavigate: (tab: string) => void }) {
+  const { data, isLoading, isError, refetch, isFetching } = useGetSalesDashboard();
+
+  const series = useMemo(() => {
+    const rows = data?.monthlySeries ?? [];
+    return rows.map((r) => {
+      // Display "MMM YY" for compact axis labels.
+      const [y, m] = String(r.period ?? "").split("-");
+      const dt = y && m ? new Date(Number(y), Number(m) - 1, 1) : null;
+      const label = dt
+        ? dt.toLocaleString(undefined, { month: "short", year: "2-digit" })
+        : String(r.period ?? "");
+      return {
+        period: label,
+        revenue: Number(r.revenue ?? 0),
+        orderCount: Number(r.orderCount ?? 0),
+        invoiceCount: Number(r.invoiceCount ?? 0),
+      };
+    });
+  }, [data]);
+
+  if (isLoading) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-24" />
+          ))}
+        </div>
+        <Skeleton className="h-64" />
+        <Skeleton className="h-64" />
       </div>
     );
+  }
 
-  type SummaryData = {
-    orders?: { count?: number; total?: number };
-    despatches?: { count?: number };
-    invoices?: { count?: number; total?: number };
-    openQuotations?: number;
-    pendingRma?: number;
-  };
-  const s = (summary as SummaryData) ?? {};
+  if (isError || !data) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center space-y-3">
+          <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
+          <p className="text-sm text-muted-foreground">
+            Could not load the sales dashboard.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="w-4 h-4 mr-1.5" /> Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const hasOverdue = data.overdueInvoices.count > 0;
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" /> Sales Orders
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{s.orders?.count ?? 0}</div>
-            <p className="text-xs text-muted-foreground">${fmt(s.orders?.total)} total</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Truck className="w-4 h-4" /> Despatches
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{s.despatches?.count ?? 0}</div>
-            <p className="text-xs text-muted-foreground">Confirmed shipments</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <ReceiptText className="w-4 h-4" /> Invoiced
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{s.invoices?.count ?? 0}</div>
-            <p className="text-xs text-muted-foreground">${fmt(s.invoices?.total)} billed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <RotateCcw className="w-4 h-4" /> Pending RMA
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{s.pendingRma ?? 0}</div>
-            <p className="text-xs text-muted-foreground">{s.openQuotations ?? 0} open quotes</p>
-          </CardContent>
-        </Card>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <KpiCard
+          title="Open Quotations"
+          value={String(data.openQuotationsCount)}
+          hint="Draft + sent, awaiting decision"
+          icon={<FileText className="w-4 h-4" />}
+        />
+        <KpiCard
+          title="Open SO Value"
+          value={fmtCurrencyCompact(data.openSalesOrders.value)}
+          hint={`${data.openSalesOrders.count} active order${data.openSalesOrders.count === 1 ? "" : "s"}`}
+          icon={<ClipboardList className="w-4 h-4" />}
+        />
+        <KpiCard
+          title="Pending Despatch"
+          value={String(data.pendingDespatchCount)}
+          hint="Confirmed orders to ship"
+          icon={<Truck className="w-4 h-4" />}
+          tone={data.pendingDespatchCount > 0 ? "warning" : "default"}
+        />
+        <KpiCard
+          title="Outstanding Invoices"
+          value={fmtCurrencyCompact(data.outstandingInvoices.total)}
+          hint={`${data.outstandingInvoices.count} unpaid`}
+          icon={<ReceiptText className="w-4 h-4" />}
+        />
+        <KpiCard
+          title="Overdue Invoices"
+          value={fmtCurrencyCompact(data.overdueInvoices.total)}
+          hint={`${data.overdueInvoices.count} past due`}
+          icon={<AlertCircle className="w-4 h-4" />}
+          tone={hasOverdue ? "danger" : "success"}
+        />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Quick actions */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-medium">Quick actions</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isFetching}
+          >
+            <RefreshCw className={`w-4 h-4 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => onNavigate("quotations")}>
+              <FileText className="w-4 h-4 mr-1.5" /> View Quotations
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => onNavigate("orders")}>
+              <ClipboardList className="w-4 h-4 mr-1.5" /> Sales Orders
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => onNavigate("despatches")}>
+              <Truck className="w-4 h-4 mr-1.5" /> Despatches
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => onNavigate("invoices")}>
+              <ReceiptText className="w-4 h-4 mr-1.5" /> Invoices
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => onNavigate("backorders")}>
+              <AlertCircle className="w-4 h-4 mr-1.5" /> Backorders
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-orange-500" /> Backorders
+              <TrendingUp className="w-4 h-4 text-indigo-500" /> Monthly Revenue
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
-            {!backorders || (backorders as unknown[]).length === 0 ? (
-              <p className="text-sm text-muted-foreground p-4">
-                No backorders — all lines despatched.
+          <CardContent>
+            {series.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-12 text-center">
+                No invoice history yet.
               </p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item</TableHead>
-                    <TableHead className="text-right">Backorder Qty</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(backorders as Array<Record<string, unknown>>)
-                    .slice(0, 8)
-                    .map((row, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-xs">
-                          {String(row.itemCode ?? row.itemName ?? "—")}
-                        </TableCell>
-                        <TableCell className="text-xs text-right text-orange-600">
-                          {fmt(row.backorderQty as string)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                  <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => fmtCurrencyCompact(v)} width={56} />
+                  <Tooltip
+                    formatter={(v: number) => [`$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })}`, "Revenue"]}
+                    contentStyle={{ fontSize: 12 }}
+                  />
+                  <Bar dataKey="revenue" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
@@ -506,133 +593,40 @@ function DashboardTab() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <BadgeDollarSign className="w-4 h-4 text-blue-500" /> Outstanding Invoices
+              <BarChart2 className="w-4 h-4 text-emerald-500" /> Monthly Order Volume
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
-            {!outstanding || (outstanding as unknown[]).length === 0 ? (
-              <p className="text-sm text-muted-foreground p-4">No outstanding invoices.</p>
+          <CardContent>
+            {series.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-12 text-center">
+                No order history yet.
+              </p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Invoice</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead>Due</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(outstanding as CustomerInvoice[]).slice(0, 8).map((inv) => (
-                    <TableRow key={inv.id ?? 0}>
-                      <TableCell className="text-xs font-mono">{inv.code ?? ""}</TableCell>
-                      <TableCell className="text-xs">{inv.customerName ?? "—"}</TableCell>
-                      <TableCell className="text-xs text-right font-medium">
-                        ${fmt(inv.total)}
-                      </TableCell>
-                      <TableCell className="text-xs">{fmtDate(inv.dueDate)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-indigo-500" /> Top Items by Revenue
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {!byItem || (byItem as unknown[]).length === 0 ? (
-              <p className="text-sm text-muted-foreground p-4">No invoice data yet.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(byItem as Array<Record<string, unknown>>).slice(0, 6).map((row, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="text-xs">{String(row.itemCode ?? row.itemName ?? "—")}</TableCell>
-                      <TableCell className="text-xs text-right font-medium">${fmt(String(row.totalRevenue ?? 0))}</TableCell>
-                      <TableCell className="text-xs text-right text-muted-foreground">{fmt(String(row.totalQty ?? 0))}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Users className="w-4 h-4 text-green-500" /> Top Customers
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {!byCustomer || (byCustomer as unknown[]).length === 0 ? (
-              <p className="text-sm text-muted-foreground p-4">No invoice data yet.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Customer</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">Inv.</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(byCustomer as Array<Record<string, unknown>>).slice(0, 6).map((row, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="text-xs">{String(row.customerName ?? "—")}</TableCell>
-                      <TableCell className="text-xs text-right font-medium">${fmt(String(row.totalRevenue ?? 0))}</TableCell>
-                      <TableCell className="text-xs text-right text-muted-foreground">{Number(row.invoiceCount ?? 0)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <BarChart2 className="w-4 h-4 text-purple-500" /> Revenue by Period
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {!byPeriod || (byPeriod as unknown[]).length === 0 ? (
-              <p className="text-sm text-muted-foreground p-4">No invoice data yet.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Period</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">Inv.</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(byPeriod as Array<Record<string, unknown>>).slice(-8).reverse().map((row, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="text-xs font-mono">{String(row.period ?? "—")}</TableCell>
-                      <TableCell className="text-xs text-right font-medium">${fmt(String(row.totalRevenue ?? 0))}</TableCell>
-                      <TableCell className="text-xs text-right text-muted-foreground">{Number(row.invoiceCount ?? 0)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                  <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} width={32} />
+                  <Tooltip contentStyle={{ fontSize: 12 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="orderCount"
+                    name="Orders"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="invoiceCount"
+                    name="Invoices"
+                    stroke="#6366f1"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                    dot={{ r: 3 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
@@ -3623,6 +3617,7 @@ type BackorderRow = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function Sales() {
+  const [tab, setTab] = useState("dashboard");
   return (
     <div className="space-y-6">
       <div>
@@ -3632,7 +3627,7 @@ export default function Sales() {
         </p>
       </div>
 
-      <Tabs defaultValue="dashboard">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="dashboard" className="gap-1.5">
             <TrendingUp className="w-4 h-4" /> Dashboard
@@ -3664,7 +3659,7 @@ export default function Sales() {
         </TabsList>
 
         <TabsContent value="dashboard" className="mt-4">
-          <DashboardTab />
+          <DashboardTab onNavigate={setTab} />
         </TabsContent>
         <TabsContent value="quotations" className="mt-4">
           <QuotationsTab />

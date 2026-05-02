@@ -2423,6 +2423,144 @@ router.patch("/sales/backorders/:id/cancel", ...tenantWriteMiddleware, async (re
 // ── Reports ───────────────────────────────────────────────────════════════════
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ── Sales Dashboard ────────────────────────────────────────────────────────────
+
+/**
+ * Consolidated dashboard endpoint for the Sales module. Returns:
+ *  - openQuotationsCount        quotations not yet accepted/rejected/converted
+ *  - openSalesOrders            count + dollar value of SOs still in pipeline
+ *  - pendingDespatchCount       confirmed/picking/partially_despatched SOs
+ *  - outstandingInvoices        count + remaining balance of unpaid invoices
+ *  - overdueInvoices            count + remaining balance past dueDate
+ *  - monthlySeries              last 12 months of revenue + invoice/order counts
+ */
+router.get("/sales/dashboard", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [
+    openQuotes,
+    openSos,
+    pendingDespatch,
+    outstandingInv,
+    overdueInv,
+    monthly,
+  ] = await Promise.all([
+    withTenantDb(tenantId, (db) =>
+      db.select({ count: sql<number>`count(*)` })
+        .from(quotationsTable)
+        .where(and(
+          eq(quotationsTable.tenantId, tenantId),
+          isNull(quotationsTable.deletedAt),
+          sql`${quotationsTable.status} IN ('draft','sent')`,
+        ))),
+    withTenantDb(tenantId, (db) =>
+      db.select({ count: sql<number>`count(*)`, total: sql<string>`coalesce(sum(${salesOrdersTable.total}::numeric),0)` })
+        .from(salesOrdersTable)
+        .where(and(
+          eq(salesOrdersTable.tenantId, tenantId),
+          isNull(salesOrdersTable.deletedAt),
+          sql`${salesOrdersTable.status} IN ('confirmed','picking','partially_despatched','despatched')`,
+        ))),
+    withTenantDb(tenantId, (db) =>
+      db.select({ count: sql<number>`count(*)` })
+        .from(salesOrdersTable)
+        .where(and(
+          eq(salesOrdersTable.tenantId, tenantId),
+          isNull(salesOrdersTable.deletedAt),
+          sql`${salesOrdersTable.status} IN ('confirmed','picking','partially_despatched')`,
+        ))),
+    withTenantDb(tenantId, (db) =>
+      db.select({
+        count: sql<number>`count(*)`,
+        balance: sql<string>`coalesce(sum((${customerInvoicesTable.total}::numeric - ${customerInvoicesTable.paidAmount}::numeric)),0)`,
+      })
+        .from(customerInvoicesTable)
+        .where(and(
+          eq(customerInvoicesTable.tenantId, tenantId),
+          isNull(customerInvoicesTable.deletedAt),
+          sql`${customerInvoicesTable.status} IN ('draft','sent')`,
+          sql`(${customerInvoicesTable.total}::numeric - ${customerInvoicesTable.paidAmount}::numeric) > 0`,
+        ))),
+    withTenantDb(tenantId, (db) =>
+      db.select({
+        count: sql<number>`count(*)`,
+        balance: sql<string>`coalesce(sum((${customerInvoicesTable.total}::numeric - ${customerInvoicesTable.paidAmount}::numeric)),0)`,
+      })
+        .from(customerInvoicesTable)
+        .where(and(
+          eq(customerInvoicesTable.tenantId, tenantId),
+          isNull(customerInvoicesTable.deletedAt),
+          sql`${customerInvoicesTable.status} IN ('draft','sent')`,
+          sql`(${customerInvoicesTable.total}::numeric - ${customerInvoicesTable.paidAmount}::numeric) > 0`,
+          sql`${customerInvoicesTable.dueDate} IS NOT NULL`,
+          lte(customerInvoicesTable.dueDate, today),
+        ))),
+    withTenantDb(tenantId, async (db) => {
+      const qr = await db.execute(sql`
+        WITH months AS (
+          SELECT to_char(date_trunc('month', (CURRENT_DATE - (n || ' months')::interval)), 'YYYY-MM') AS period
+          FROM generate_series(0, 11) AS n
+        ),
+        invoice_agg AS (
+          SELECT to_char(invoice_date::date, 'YYYY-MM') AS period,
+                 COALESCE(SUM(total::numeric), 0)        AS revenue,
+                 COUNT(*)                                AS invoice_count
+          FROM customer_invoices
+          WHERE tenant_id = ${tenantId}
+            AND deleted_at IS NULL
+            AND status NOT IN ('voided','cancelled')
+            AND invoice_date IS NOT NULL
+            AND invoice_date >= (date_trunc('month', CURRENT_DATE) - INTERVAL '11 months')
+          GROUP BY 1
+        ),
+        order_agg AS (
+          SELECT to_char(created_at::date, 'YYYY-MM') AS period,
+                 COUNT(*) AS order_count
+          FROM sales_orders
+          WHERE tenant_id = ${tenantId}
+            AND deleted_at IS NULL
+            AND status NOT IN ('cancelled')
+            AND created_at >= (date_trunc('month', CURRENT_DATE) - INTERVAL '11 months')
+          GROUP BY 1
+        )
+        SELECT m.period,
+               COALESCE(i.revenue, 0)         AS revenue,
+               COALESCE(o.order_count, 0)     AS "orderCount",
+               COALESCE(i.invoice_count, 0)   AS "invoiceCount"
+        FROM months m
+        LEFT JOIN invoice_agg i ON i.period = m.period
+        LEFT JOIN order_agg o ON o.period = m.period
+        ORDER BY m.period ASC
+      `);
+      return qr.rows as unknown as Array<{ period: string; revenue: string; orderCount: string; invoiceCount: string }>;
+    }),
+  ]);
+
+  res.json({
+    openQuotationsCount: Number(openQuotes[0]?.count ?? 0),
+    openSalesOrders: {
+      count: Number(openSos[0]?.count ?? 0),
+      value: Number(openSos[0]?.total ?? 0),
+    },
+    pendingDespatchCount: Number(pendingDespatch[0]?.count ?? 0),
+    outstandingInvoices: {
+      count: Number(outstandingInv[0]?.count ?? 0),
+      total: Number(outstandingInv[0]?.balance ?? 0),
+    },
+    overdueInvoices: {
+      count: Number(overdueInv[0]?.count ?? 0),
+      total: Number(overdueInv[0]?.balance ?? 0),
+    },
+    monthlySeries: monthly.map((r) => ({
+      period: r.period,
+      revenue: Number(r.revenue ?? 0),
+      orderCount: Number(r.orderCount ?? 0),
+      invoiceCount: Number(r.invoiceCount ?? 0),
+    })),
+  });
+});
+
 router.get("/sales/reports/summary", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
   const { fromDate, toDate } = req.query as Record<string, string>;

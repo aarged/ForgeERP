@@ -2584,6 +2584,45 @@ export interface SalesSummaryReport {
   pendingRma?: number;
 }
 
+export type SalesDashboardOpenSalesOrders = {
+  /** Sales orders not yet fully invoiced or cancelled. */
+  count: number;
+  /** Total dollar value of those orders. */
+  value: number;
+};
+
+export type SalesDashboardOutstandingInvoices = {
+  count: number;
+  /** Sum of remaining (unpaid) balance. */
+  total: number;
+};
+
+export type SalesDashboardOverdueInvoices = {
+  count: number;
+  /** Sum of remaining balance for invoices past dueDate. */
+  total: number;
+};
+
+export type SalesDashboardMonthlySeriesItem = {
+  /** YYYY-MM */
+  period: string;
+  revenue: number;
+  orderCount: number;
+  invoiceCount: number;
+};
+
+export interface SalesDashboard {
+  /** Quotations with status draft or sent (i.e. not yet accepted/rejected/converted). */
+  openQuotationsCount: number;
+  openSalesOrders: SalesDashboardOpenSalesOrders;
+  /** Confirmed sales orders that still have stock lines to ship. */
+  pendingDespatchCount: number;
+  outstandingInvoices: SalesDashboardOutstandingInvoices;
+  overdueInvoices: SalesDashboardOverdueInvoices;
+  /** Last 12 months of revenue and invoice/order counts (oldest first). */
+  monthlySeries: SalesDashboardMonthlySeriesItem[];
+}
+
 export type BackorderStatus =
   (typeof BackorderStatus)[keyof typeof BackorderStatus];
 

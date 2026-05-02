@@ -4379,6 +4379,54 @@ export const ExportGrnPdfHeader = zod.object({
 });
 
 /**
+ * Returns at-a-glance sales pipeline KPIs (open quotations, open SO value, orders pending despatch, outstanding and overdue invoices) along with monthly revenue and order-volume series for the last 12 months.
+
+ * @summary Sales dashboard KPIs and trend series
+ */
+export const GetSalesDashboardHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const GetSalesDashboardResponse = zod.object({
+  openQuotationsCount: zod
+    .number()
+    .describe(
+      "Quotations with status draft or sent (i.e. not yet accepted\/rejected\/converted).",
+    ),
+  openSalesOrders: zod.object({
+    count: zod
+      .number()
+      .describe("Sales orders not yet fully invoiced or cancelled."),
+    value: zod.number().describe("Total dollar value of those orders."),
+  }),
+  pendingDespatchCount: zod
+    .number()
+    .describe("Confirmed sales orders that still have stock lines to ship."),
+  outstandingInvoices: zod.object({
+    count: zod.number(),
+    total: zod.number().describe("Sum of remaining (unpaid) balance."),
+  }),
+  overdueInvoices: zod.object({
+    count: zod.number(),
+    total: zod
+      .number()
+      .describe("Sum of remaining balance for invoices past dueDate."),
+  }),
+  monthlySeries: zod
+    .array(
+      zod.object({
+        period: zod.string().describe("YYYY-MM"),
+        revenue: zod.number(),
+        orderCount: zod.number(),
+        invoiceCount: zod.number(),
+      }),
+    )
+    .describe(
+      "Last 12 months of revenue and invoice\/order counts (oldest first).",
+    ),
+});
+
+/**
  * @summary Available-to-promise quantity for an item
  */
 export const GetAtpQueryParams = zod.object({

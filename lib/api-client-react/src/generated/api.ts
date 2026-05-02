@@ -296,6 +296,7 @@ import type {
   RmaDetail,
   RmaListResponse,
   RmaOrder,
+  SalesDashboard,
   SalesOrder,
   SalesOrderDetail,
   SalesOrderListResponse,
@@ -12686,6 +12687,83 @@ export function useExportGrnPdf<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getExportGrnPdfQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns at-a-glance sales pipeline KPIs (open quotations, open SO value, orders pending despatch, outstanding and overdue invoices) along with monthly revenue and order-volume series for the last 12 months.
+
+ * @summary Sales dashboard KPIs and trend series
+ */
+export const getGetSalesDashboardUrl = () => {
+  return `/api/sales/dashboard`;
+};
+
+export const getSalesDashboard = async (
+  options?: RequestInit,
+): Promise<SalesDashboard> => {
+  return customFetch<SalesDashboard>(getGetSalesDashboardUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSalesDashboardQueryKey = () => {
+  return [`/api/sales/dashboard`] as const;
+};
+
+export const getGetSalesDashboardQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSalesDashboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSalesDashboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSalesDashboardQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSalesDashboard>>
+  > = ({ signal }) => getSalesDashboard({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSalesDashboard>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSalesDashboardQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSalesDashboard>>
+>;
+export type GetSalesDashboardQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Sales dashboard KPIs and trend series
+ */
+
+export function useGetSalesDashboard<
+  TData = Awaited<ReturnType<typeof getSalesDashboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSalesDashboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSalesDashboardQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

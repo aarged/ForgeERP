@@ -3621,6 +3621,25 @@ paths:
 
   # ── Sales ──────────────────────────────────────────────────────────────────
 
+  /sales/dashboard:
+    get:
+      operationId: getSalesDashboard
+      summary: Sales dashboard KPIs and trend series
+      description: >
+        Returns at-a-glance sales pipeline KPIs (open quotations, open SO value,
+        orders pending despatch, outstanding and overdue invoices) along with
+        monthly revenue and order-volume series for the last 12 months.
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Sales dashboard payload
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesDashboard" }
+
   /sales/atp:
     get:
       operationId: getAtp
@@ -9613,6 +9632,52 @@ components:
             total: { type: number }
         openQuotations: { type: integer }
         pendingRma: { type: integer }
+
+    SalesDashboard:
+      type: object
+      required:
+        - openQuotationsCount
+        - openSalesOrders
+        - pendingDespatchCount
+        - outstandingInvoices
+        - overdueInvoices
+        - monthlySeries
+      properties:
+        openQuotationsCount:
+          type: integer
+          description: Quotations with status draft or sent (i.e. not yet accepted/rejected/converted).
+        openSalesOrders:
+          type: object
+          required: [count, value]
+          properties:
+            count: { type: integer, description: Sales orders not yet fully invoiced or cancelled. }
+            value: { type: number, description: Total dollar value of those orders. }
+        pendingDespatchCount:
+          type: integer
+          description: Confirmed sales orders that still have stock lines to ship.
+        outstandingInvoices:
+          type: object
+          required: [count, total]
+          properties:
+            count: { type: integer }
+            total: { type: number, description: Sum of remaining (unpaid) balance. }
+        overdueInvoices:
+          type: object
+          required: [count, total]
+          properties:
+            count: { type: integer }
+            total: { type: number, description: Sum of remaining balance for invoices past dueDate. }
+        monthlySeries:
+          type: array
+          description: Last 12 months of revenue and invoice/order counts (oldest first).
+          items:
+            type: object
+            required: [period, revenue, orderCount, invoiceCount]
+            properties:
+              period: { type: string, description: "YYYY-MM" }
+              revenue: { type: number }
+              orderCount: { type: integer }
+              invoiceCount: { type: integer }
 
     Backorder:
       type: object
