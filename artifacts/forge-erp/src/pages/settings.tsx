@@ -124,12 +124,12 @@ export default function Settings() {
                 />
               </div>
               <div className="space-y-2">
-                <FormLabel>Email</FormLabel>
+                <label className="text-sm font-medium leading-none">Email</label>
                 <Input value={currentUser?.email || ""} disabled readOnly className="bg-muted" />
                 <p className="text-xs text-muted-foreground">Your email address is managed by your identity provider.</p>
               </div>
               <div className="space-y-2">
-                <FormLabel>Role</FormLabel>
+                <label className="text-sm font-medium leading-none">Role</label>
                 <Input value={currentUser?.role || "Viewer"} disabled readOnly className="bg-muted capitalize" />
               </div>
               <Button type="submit" disabled={updateProfile.isPending} data-testid="button-save-profile">
