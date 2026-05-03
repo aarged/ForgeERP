@@ -220,7 +220,7 @@ type LineField = {
 /** Minimal form shape accepted by LineItemEditor — both QuotForm and SoForm satisfy this. */
 type LineEditorFormBase = { lines: LineField[] };
 
-type ItemOption = { id: number; code: string; name: string };
+type ItemOption = { id: number; code: string; name: string; description?: string | null; salesPrice?: string | null; unitCost?: string | null };
 
 /** Shows real-time Available-to-Promise qty for a line item. */
 function AtpBadge({ itemId, warehouseId }: { itemId?: number; warehouseId?: number }) {
@@ -251,6 +251,7 @@ function LineItemEditor({
   onRemove,
   items,
   warehouseId,
+  setValue,
 }: {
   fields: LineField[];
   control: Control<LineEditorFormBase>;
@@ -258,6 +259,7 @@ function LineItemEditor({
   onRemove: (idx: number) => void;
   items: ItemOption[];
   warehouseId?: number;
+  setValue?: (idx: number, patch: { description?: string; unitPrice?: number }) => void;
 }) {
   return (
     <div className="space-y-2">
@@ -290,7 +292,20 @@ function LineItemEditor({
                       <div>
                         <Select
                           value={f.value ? String(f.value) : ""}
-                          onValueChange={(v) => f.onChange(v ? Number(v) : undefined)}
+                          onValueChange={(v) => {
+                            const id = v ? Number(v) : undefined;
+                            f.onChange(id);
+                            if (id && setValue) {
+                              const it = items.find((i) => i.id === id);
+                              if (it) {
+                                const price = it.salesPrice ?? it.unitCost;
+                                setValue(idx, {
+                                  description: it.description ?? it.name,
+                                  unitPrice: price != null ? Number(price) : undefined,
+                                });
+                              }
+                            }
+                          }}
                         >
                           <SelectTrigger className="h-7 text-xs">
                             <SelectValue placeholder="Item..." />
@@ -967,6 +982,10 @@ function QuotationsTab() {
                 append({ quantity: 1, unitPrice: 0, discountPct: 0, taxPct: 10 })
               }
               onRemove={remove}
+              setValue={(idx, patch) => {
+                if (patch.description !== undefined) form.setValue(`lines.${idx}.description`, patch.description);
+                if (patch.unitPrice !== undefined) form.setValue(`lines.${idx}.unitPrice`, patch.unitPrice);
+              }}
             />
             <DialogFooter>
               <Button
