@@ -1,0 +1,63 @@
+code,name,accountType,isActive
+1000,Cash on Hand,asset,true
+1010,Operating Bank Account,asset,true
+1020,Payroll Bank Account,asset,true
+1030,Petty Cash,asset,true
+1100,Accounts Receivable,asset,true
+1110,Allowance for Doubtful Accounts,asset,true
+1200,Inventory - Raw Materials,asset,true
+1210,Inventory - Work in Progress,asset,true
+1220,Inventory - Finished Goods,asset,true
+1300,Prepaid Expenses,asset,true
+1400,Property Plant and Equipment,asset,true
+1410,Accumulated Depreciation,asset,true
+1500,Intangible Assets,asset,true
+2000,Accounts Payable,liability,true
+2010,Accrued Expenses,liability,true
+2020,Accrued Payroll,liability,true
+2100,Sales Tax Payable,liability,true
+2110,Income Tax Payable,liability,true
+2200,Short-Term Loans Payable,liability,true
+2300,Customer Deposits,liability,true
+2400,Long-Term Debt,liability,true
+2500,Deferred Revenue,liability,true
+3000,Common Stock,equity,true
+3010,Additional Paid-In Capital,equity,true
+3100,Retained Earnings,equity,true
+3200,Owner's Drawings,equity,true
+3300,Dividends Paid,equity,true
+4000,Product Sales Revenue,revenue,true
+4010,Service Revenue,revenue,true
+4020,Subscription Revenue,revenue,true
+4100,Sales Returns and Allowances,revenue,true
+4110,Sales Discounts,revenue,true
+4200,Shipping Revenue,revenue,true
+5000,Cost of Goods Sold,expense,true
+5010,Direct Materials,expense,true
+5020,Direct Labor,expense,true
+5030,Manufacturing Overhead,expense,true
+5040,Inbound Freight,expense,true
+5050,Inventory Adjustments,expense,true
+6000,Salaries and Wages,expense,true
+6010,Employee Benefits,expense,true
+6020,Payroll Taxes,expense,true
+6100,Rent Expense,expense,true
+6110,Utilities,expense,true
+6120,Office Supplies,expense,true
+6130,Software and Subscriptions,expense,true
+6140,Telephone and Internet,expense,true
+6200,Marketing and Advertising,expense,true
+6210,Travel and Entertainment,expense,true
+6220,Professional Fees,expense,true
+6230,Insurance,expense,true
+6240,Repairs and Maintenance,expense,true
+6250,Depreciation Expense,expense,true
+6260,Bank Fees,expense,true
+6270,Bad Debt Expense,expense,true
+7000,Interest Income,revenue,true
+7010,Foreign Exchange Gain,revenue,true
+7020,Gain on Sale of Assets,revenue,true
+7100,Interest Expense,expense,true
+7110,Foreign Exchange Loss,expense,true
+7120,Loss on Sale of Assets,expense,true
+7200,Income Tax Expense,expense,true

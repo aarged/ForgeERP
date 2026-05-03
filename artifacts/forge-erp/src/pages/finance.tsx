@@ -776,9 +776,23 @@ function ChartOfAccountsTab() {
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={() => { setEditAccount(undefined); setModalOpen(true); }}>
-          <Plus className="h-4 w-4 mr-2" />New Account
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            asChild
+            title="Download a sample CSV with a standard chart of accounts"
+          >
+            <a
+              href={`${import.meta.env.BASE_URL}gl-accounts-sample.csv`}
+              download="gl-accounts-sample.csv"
+            >
+              <Download className="h-4 w-4 mr-2" />Download sample CSV
+            </a>
+          </Button>
+          <Button onClick={() => { setEditAccount(undefined); setModalOpen(true); }}>
+            <Plus className="h-4 w-4 mr-2" />New Account
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-md border">
