@@ -635,6 +635,9 @@ function ConfirmDialog({
 
 // ── Tenant members card ───────────────────────────────────────────────────────
 
+// Tenant-scoped roles selectable from the per-row dropdown.
+// `super_admin` is intentionally excluded — it's a platform-wide role and is
+// granted/revoked via the dedicated "Make/Revoke super admin" button below.
 const ROLE_OPTIONS: Array<AdminTenantMember["role"]> = [
   "tenant_admin",
   "purchaser",
@@ -642,7 +645,6 @@ const ROLE_OPTIONS: Array<AdminTenantMember["role"]> = [
   "approver",
   "accountant",
   "viewer",
-  "super_admin",
 ];
 
 function RoleBadge({ role }: { role: string }) {
@@ -1015,6 +1017,40 @@ function TenantMembersCard({
                       )}
                     </Button>
                   </div>
+                  {/* Dedicated platform-wide super_admin grant/revoke. */}
+                  {!isPending && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        variant={
+                          m.role === "super_admin" ? "destructive" : "secondary"
+                        }
+                        size="sm"
+                        className="h-7 text-xs whitespace-nowrap"
+                        onClick={() =>
+                          handleUpdate(m.id, {
+                            role:
+                              m.role === "super_admin"
+                                ? "tenant_admin"
+                                : "super_admin",
+                          })
+                        }
+                        disabled={updateMember.isPending || !m.isActive}
+                        data-testid={`member-toggle-super-admin-${m.id}`}
+                        title={
+                          !m.isActive
+                            ? "Reactivate the member before changing super_admin status"
+                            : m.role === "super_admin"
+                              ? "Demote this user back to tenant_admin"
+                              : "Grant platform-wide super_admin access"
+                        }
+                      >
+                        <Shield className="mr-1 h-3 w-3" />
+                        {m.role === "super_admin"
+                          ? "Revoke super admin"
+                          : "Make super admin"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               );
             })}
