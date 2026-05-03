@@ -769,9 +769,9 @@ function QuotationsTab() {
   }
 
   const custList =
-    (customers as { data?: Array<{ id: number; name: string; email?: string | null }> })?.data ?? [];
+    (customers as { customers?: Array<{ id: number; name: string; email?: string | null }> })?.customers ?? [];
   const itemsList =
-    (itemsData as { data?: ItemOption[] })?.data ?? [];
+    (itemsData as { items?: ItemOption[] })?.items ?? [];
   const quotations = (list as { data?: Quotation[] })?.data ?? [];
   const det = detail as QuotationDetail | undefined;
 
@@ -1260,10 +1260,10 @@ function SalesOrdersTab() {
   }
 
   const custList =
-    (customers as { data?: Array<{ id: number; name: string; email?: string | null }> })?.data ?? [];
+    (customers as { customers?: Array<{ id: number; name: string; email?: string | null }> })?.customers ?? [];
   const warehouseList =
-    (warehouses as { data?: Array<{ id: number; name: string }> })?.data ?? [];
-  const itemsList = (itemsData as { data?: ItemOption[] })?.data ?? [];
+    (warehouses as { warehouses?: Array<{ id: number; name: string }> })?.warehouses ?? [];
+  const itemsList = (itemsData as { items?: ItemOption[] })?.items ?? [];
   const orders = (list as { data?: SalesOrder[] })?.data ?? [];
   const det = detail as SalesOrderDetail | undefined;
 
@@ -2476,7 +2476,7 @@ function RmaTab() {
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "lines" });
 
   const custList =
-    (customers as { data?: Array<{ id: number; name: string; email?: string | null }> })?.data ?? [];
+    (customers as { customers?: Array<{ id: number; name: string; email?: string | null }> })?.customers ?? [];
   const rmaOrders = (list as { data?: RmaOrder[] })?.data ?? [];
   const det = detail as RmaDetail | undefined;
 
