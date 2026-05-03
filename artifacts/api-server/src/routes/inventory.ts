@@ -491,15 +491,20 @@ router.get("/inventory/movements", ...tenantUserMiddleware, async (req: Request,
 // ── Manual Adjustment ─────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
 
+const nullableNumber = z.preprocess(
+  (v) => (v === null || v === "" ? undefined : v),
+  z.number().optional(),
+);
+
 const adjustmentLineSchema = z.object({
   itemId: z.number().int().positive(),
   itemCode: z.string().optional(),
   itemName: z.string().optional(),
   warehouseId: z.number().int().positive(),
-  locationId: z.number().int().optional(),
+  locationId: nullableNumber,
   lotNumber: z.string().optional(),
   qtyAdjusted: z.number(), // positive = increase, negative = decrease
-  unitCost: z.number().optional(),
+  unitCost: nullableNumber,
 });
 
 const createAdjustmentSchema = z.object({
