@@ -17,6 +17,7 @@ import {
   useGetQuotation,
   useCreateQuotation,
   useDeleteQuotation,
+  useUpdateQuotation,
   useSendQuotation,
   useConvertQuotationToSo,
   getListQuotationsQueryKey,
@@ -150,6 +151,8 @@ import {
   User,
   Clock,
   Image as ImageIcon,
+  Pencil,
+  Download,
 } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -689,6 +692,9 @@ function QuotationsTab() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [sendId, setSendId] = useState<number | null>(null);
+  const [sendEmail, setSendEmail] = useState("");
+  const [editId, setEditId] = useState<number | null>(null);
 
   const { data: list, isLoading } = useListQuotations({
     search: search || undefined,
@@ -705,9 +711,17 @@ function QuotationsTab() {
   const { data: itemsData } = useListItems({ limit: 500 });
 
   const createMut = useCreateQuotation();
+  const updateMut = useUpdateQuotation();
   const sendMut = useSendQuotation();
   const convertMut = useConvertQuotationToSo();
   const deleteMut = useDeleteQuotation();
+  const editForm = useForm<{
+    customerName?: string;
+    customerEmail?: string;
+    expiryDate?: string;
+    paymentTerms?: string;
+    notes?: string;
+  }>();
 
   const form = useForm<QuotForm>({ defaultValues: { lines: [] } });
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "lines" });
@@ -746,14 +760,75 @@ function QuotationsTab() {
     }
   }
 
-  async function handleSend(id: number) {
+  function openSendDialog(id: number, defaultEmail?: string | null) {
+    setSendId(id);
+    setSendEmail(defaultEmail ?? "");
+  }
+
+  async function handleSendConfirm() {
+    if (!sendId) return;
+    if (!sendEmail || !/^\S+@\S+\.\S+$/.test(sendEmail)) {
+      toast({ title: "Enter a valid email address", variant: "destructive" });
+      return;
+    }
     try {
-      await sendMut.mutateAsync({ id, data: {} });
-      toast({ title: "Quotation sent" });
+      await sendMut.mutateAsync({ id: sendId, data: { email: sendEmail } as never });
+      toast({ title: "Quotation sent", description: `Sent to ${sendEmail}` });
       invalidate();
-      qc.invalidateQueries({ queryKey: getGetQuotationQueryKey(id) });
+      qc.invalidateQueries({ queryKey: getGetQuotationQueryKey(sendId) });
+      setSendId(null);
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? "Failed to send";
+      toast({ title: msg, variant: "destructive" });
+    }
+  }
+
+  function openEditDialog(q: Quotation) {
+    setEditId(q.id ?? null);
+    editForm.reset({
+      customerName: q.customerName ?? "",
+      customerEmail: q.customerEmail ?? "",
+      expiryDate: q.expiryDate ?? "",
+      paymentTerms: q.paymentTerms ?? "",
+      notes: q.notes ?? "",
+    });
+  }
+
+  async function handleEditSubmit(values: {
+    customerName?: string;
+    customerEmail?: string;
+    expiryDate?: string;
+    paymentTerms?: string;
+    notes?: string;
+  }) {
+    if (!editId) return;
+    try {
+      await updateMut.mutateAsync({ id: editId, data: values });
+      toast({ title: "Quotation updated" });
+      invalidate();
+      qc.invalidateQueries({ queryKey: getGetQuotationQueryKey(editId) });
+      setEditId(null);
     } catch {
-      toast({ title: "Failed to send", variant: "destructive" });
+      toast({ title: "Failed to update quotation", variant: "destructive" });
+    }
+  }
+
+  async function handleDownload(id: number, code?: string) {
+    try {
+      const res = await fetch(`/api/sales/quotations/${id}/pdf`, { credentials: "include" });
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${code ?? "quotation"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Failed to download PDF", variant: "destructive" });
     }
   }
 
@@ -876,7 +951,15 @@ function QuotationsTab() {
                         View Details
                       </DropdownMenuItem>
                       {["draft", "sent"].includes(q.status ?? "") && (
-                        <DropdownMenuItem onClick={() => handleSend(q.id!)}>
+                        <DropdownMenuItem onClick={() => openEditDialog(q)}>
+                          <Pencil className="w-4 h-4 mr-2" /> Edit Quote
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => handleDownload(q.id!, q.code)}>
+                        <Download className="w-4 h-4 mr-2" /> Download PDF
+                      </DropdownMenuItem>
+                      {["draft", "sent"].includes(q.status ?? "") && (
+                        <DropdownMenuItem onClick={() => openSendDialog(q.id!, q.customerEmail)}>
                           <Send className="w-4 h-4 mr-2" /> Send to Customer
                         </DropdownMenuItem>
                       )}
@@ -1063,11 +1146,18 @@ function QuotationsTab() {
                 Total: ${fmt(det.total)}
               </div>
               <div className="flex gap-2 justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleDownload(detailId!, det.code)}
+                >
+                  <Download className="w-3 h-3 mr-1" /> PDF
+                </Button>
                 {["draft", "sent"].includes(det.status ?? "") && (
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleSend(detailId!)}
+                    onClick={() => openSendDialog(detailId!, det.customerEmail)}
                   >
                     <Send className="w-3 h-3 mr-1" /> Send
                   </Button>
@@ -1081,6 +1171,82 @@ function QuotationsTab() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Quote Dialog */}
+      <Dialog open={sendId !== null} onOpenChange={(v) => { if (!v) setSendId(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send Quotation</DialogTitle>
+            <DialogDescription>
+              The quotation PDF will be emailed to the address below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="send-email">Customer Email</Label>
+            <Input
+              id="send-email"
+              type="email"
+              value={sendEmail}
+              onChange={(e) => setSendEmail(e.target.value)}
+              placeholder="customer@example.com"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSendId(null)}>Cancel</Button>
+            <Button onClick={handleSendConfirm} disabled={sendMut.isPending}>
+              <Send className="w-4 h-4 mr-2" />
+              {sendMut.isPending ? "Sending..." : "Send"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Quote Dialog */}
+      <Dialog open={editId !== null} onOpenChange={(v) => { if (!v) setEditId(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Quotation</DialogTitle>
+            <DialogDescription>
+              Update header details. To edit lines, use View Details.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={editForm.handleSubmit(handleEditSubmit)}
+            className="space-y-3"
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Customer Name</Label>
+                <Input {...editForm.register("customerName")} />
+              </div>
+              <div>
+                <Label>Customer Email</Label>
+                <Input type="email" {...editForm.register("customerEmail")} />
+              </div>
+              <div>
+                <Label>Expiry Date</Label>
+                <Input type="date" {...editForm.register("expiryDate")} />
+              </div>
+              <div>
+                <Label>Payment Terms</Label>
+                <Input {...editForm.register("paymentTerms")} placeholder="Net 30" />
+              </div>
+            </div>
+            <div>
+              <Label>Notes</Label>
+              <Textarea {...editForm.register("notes")} rows={3} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditId(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={updateMut.isPending}>
+                {updateMut.isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

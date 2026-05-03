@@ -802,6 +802,30 @@ router.delete("/sales/quotations/:id", ...tenantWriteMiddleware, async (req: Req
   res.status(204).send();
 });
 
+router.get("/sales/quotations/:id/pdf", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = req as TenantRequest;
+  const id = Number(req.params.id);
+  const [quot] = await withTenantDb(tenantId, (db) => db.select().from(quotationsTable).where(and(eq(quotationsTable.id, id), eq(quotationsTable.tenantId, tenantId), isNull(quotationsTable.deletedAt))).limit(1));
+  if (!quot) { res.status(404).json({ error: "Quotation not found" }); return; }
+  const [lines, tenant] = await Promise.all([
+    withTenantDb(tenantId, (db) => db.select().from(quotationLinesTable)
+      .where(and(eq(quotationLinesTable.quotationId, id), eq(quotationLinesTable.tenantId, tenantId)))
+      .orderBy(quotationLinesTable.lineNumber)),
+    loadTenantHeader(tenantId),
+  ]);
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await generateQuotationPdf(quot, lines, tenant);
+  } catch (err) {
+    logger.warn({ err, quotationId: id }, "Quotation PDF generation failed");
+    res.status(500).json({ error: "Failed to render quotation PDF" });
+    return;
+  }
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${quot.code}.pdf"`);
+  res.send(pdfBuffer);
+});
+
 router.post("/sales/quotations/:id/send", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
