@@ -33,6 +33,7 @@ import {
 import { writeAuditLog } from "../lib/audit";
 import { buildExportFilename } from "../lib/exportFilename";
 import { z } from "zod";
+import { logger } from "../lib/logger";
 
 const router = Router();
 const tenantUserMiddleware = [requireAuth, tenantContext] as const;
@@ -515,7 +516,11 @@ const createAdjustmentSchema = z.object({
 router.post("/inventory/adjust", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const parsed = createAdjustmentSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+  if (!parsed.success) {
+    logger.warn({ tenantId, body: req.body, issues: parsed.error.issues }, "[adjust] validation failed");
+    res.status(400).json({ error: "Validation failed", details: parsed.error.issues });
+    return;
+  }
 
   const result = await withTenantDb(tenantId, async (db) => {
     // Create adjustment document header
