@@ -662,7 +662,7 @@ router.post("/sales/quotations", ...tenantWriteMiddleware, async (req: Request, 
     // their human-readable code.
     customerId: z.union([z.number().int(), z.string().min(1)]).optional(),
     customerName: z.string().optional(),
-    customerEmail: z.string().email().optional(),
+    customerEmail: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
     customerRef: z.string().optional(),
     expiryDate: z.string().optional(),
     requestedDate: z.string().optional(),
@@ -773,7 +773,7 @@ router.patch("/sales/quotations/:id", ...tenantWriteMiddleware, async (req: Requ
   const id = Number(req.params.id);
   const schema = z.object({
     customerName: z.string().optional(),
-    customerEmail: z.string().email().optional(),
+    customerEmail: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
     customerRef: z.string().optional(),
     expiryDate: z.string().optional().nullable(),
     requestedDate: z.string().optional().nullable(),
@@ -990,7 +990,7 @@ router.post("/sales/orders", ...tenantWriteMiddleware, async (req: Request, res:
   const schema = z.object({
     customerId: z.number().int().optional(),
     customerName: z.string().optional(),
-    customerEmail: z.string().email().optional(),
+    customerEmail: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
     customerRef: z.string().optional(),
     salesRepId: z.string().optional(),
     salesRepName: z.string().optional(),
@@ -1085,7 +1085,7 @@ router.patch("/sales/orders/:id", ...tenantWriteMiddleware, async (req: Request,
   const id = Number(req.params.id);
   const schema = z.object({
     customerName: z.string().optional(),
-    customerEmail: z.string().email().optional(),
+    customerEmail: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
     customerRef: z.string().optional(),
     warehouseId: z.number().int().optional().nullable(),
     requestedDate: z.string().optional().nullable(),
@@ -2331,7 +2331,7 @@ router.post("/sales/rma", ...tenantWriteMiddleware, async (req: Request, res: Re
     invoiceId: z.number().int().optional(),
     customerId: z.number().int().optional(),
     customerName: z.string().optional(),
-    customerEmail: z.string().email().optional(),
+    customerEmail: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
     warehouseId: z.number().int().optional(),
     reason: z.string().optional(),
     resolution: z.enum(["credit", "exchange", "repair"]).default("credit"),
