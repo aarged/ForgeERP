@@ -1494,6 +1494,10 @@ function SalesOrdersTab() {
               onAdd={() => append({ quantity: 1, unitPrice: 0, discountPct: 0, taxPct: 10 })}
               onRemove={remove}
               warehouseId={soFormWarehouseId}
+              setValue={(idx, patch) => {
+                if (patch.description !== undefined) form.setValue(`lines.${idx}.description`, patch.description);
+                if (patch.unitPrice !== undefined) form.setValue(`lines.${idx}.unitPrice`, patch.unitPrice);
+              }}
             />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
