@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import Papa from "papaparse";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import {
@@ -16,10 +17,12 @@ import {
   useListGlAccounts,
   useCreateGlAccount,
   useUpdateGlAccount,
+  useImportGlAccounts,
   getListGlAccountsQueryKey,
   type GlPosting,
   type MasterGlAccount,
   type CreateGlAccountBody,
+  type BulkImportResult,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -52,7 +55,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Eye, Download, Undo2, ChevronDown, ChevronRight, FileText, CheckCircle2, Pencil, Power } from "lucide-react";
+import { Plus, Search, Eye, Download, Undo2, ChevronDown, ChevronRight, FileText, CheckCircle2, Pencil, Power, Upload } from "lucide-react";
 
 // ── Local DTOs ────────────────────────────────────────────────────────────────
 
@@ -695,6 +698,143 @@ function GlAccountModal({
   );
 }
 
+const VALID_ACCOUNT_TYPES = new Set(["asset", "liability", "equity", "revenue", "expense"]);
+
+function GlAccountCsvImportDialog({ open, onOpenChange, onSuccess }: {
+  open: boolean; onOpenChange: (v: boolean) => void; onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const importM = useImportGlAccounts();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [result, setResult] = useState<BulkImportResult | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+
+  const getCol = (row: Record<string, string>, ...keys: string[]): string | undefined => {
+    for (const k of keys) { const v = row[k]?.trim(); if (v) return v; }
+    return undefined;
+  };
+
+  const toBool = (v: string | undefined, fallback: boolean): boolean => {
+    if (v === undefined) return fallback;
+    const s = v.trim().toLowerCase();
+    if (["true", "1", "yes", "y", "active"].includes(s)) return true;
+    if (["false", "0", "no", "n", "inactive"].includes(s)) return false;
+    return fallback;
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsParsing(true);
+    setResult(null);
+    try {
+      const parsed = await new Promise<Papa.ParseResult<Record<string, string>>>((resolve) => {
+        Papa.parse<Record<string, string>>(file, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (h) => h.trim().replace(/^\uFEFF/, ""),
+          complete: resolve,
+        });
+      });
+
+      if (parsed.errors.length > 0 && parsed.data.length === 0) {
+        toast({ title: "CSV parse error", description: parsed.errors[0]?.message, variant: "destructive" });
+        return;
+      }
+
+      const clientErrors: { row: number; code: string; error: string }[] = [];
+      const accounts: Array<{ code: string; name: string; accountType: "asset" | "liability" | "equity" | "revenue" | "expense"; isActive?: boolean }> = [];
+
+      parsed.data.forEach((r, idx) => {
+        const rowNum = idx + 2; // header is row 1
+        const code = getCol(r, "code", "Code") ?? "";
+        const name = getCol(r, "name", "Name") ?? "";
+        const rawType = (getCol(r, "accountType", "account_type", "type") ?? "").toLowerCase();
+        if (!code) { clientErrors.push({ row: rowNum, code, error: "Missing code" }); return; }
+        if (!name) { clientErrors.push({ row: rowNum, code, error: "Missing name" }); return; }
+        if (!VALID_ACCOUNT_TYPES.has(rawType)) {
+          clientErrors.push({ row: rowNum, code, error: `Invalid accountType "${rawType}" (expected asset, liability, equity, revenue, or expense)` });
+          return;
+        }
+        accounts.push({
+          code,
+          name,
+          accountType: rawType as "asset" | "liability" | "equity" | "revenue" | "expense",
+          isActive: toBool(getCol(r, "isActive", "is_active", "active"), true),
+        });
+      });
+
+      if (!accounts.length) {
+        setResult({ created: 0, updated: 0, errors: clientErrors });
+        toast({ title: "No valid rows found", description: "Ensure the CSV has 'code', 'name', and 'accountType' columns.", variant: "destructive" });
+        return;
+      }
+
+      const res = await importM.mutateAsync({ data: { accounts } });
+      const merged: BulkImportResult = {
+        created: res.created ?? 0,
+        updated: res.updated ?? 0,
+        errors: [...clientErrors, ...(res.errors ?? [])],
+      };
+      setResult(merged);
+      const errCount = merged.errors?.length ?? 0;
+      toast({ title: `Import complete: ${merged.created} created, ${merged.updated} updated${errCount ? `, ${errCount} errors` : ""}` });
+      onSuccess();
+    } catch (err: unknown) {
+      toast({ title: "Import failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setIsParsing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleClose = () => { setResult(null); onOpenChange(false); };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[520px]">
+        <DialogHeader>
+          <DialogTitle>Import GL Accounts from CSV</DialogTitle>
+          <DialogDescription>
+            Upload a CSV with columns: <code className="text-xs bg-muted px-1 rounded">code, name, accountType, isActive</code>.
+            Existing accounts (matched by code) will be updated.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFile} />
+          <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()} disabled={isParsing || importM.isPending}>
+            <Upload className="h-4 w-4 mr-2" />
+            {isParsing || importM.isPending ? "Processing…" : "Choose CSV file"}
+          </Button>
+          {result && (
+            <div className="rounded-md border p-3 text-sm space-y-2">
+              <div className="font-medium">Results</div>
+              <div className="text-muted-foreground">Created: <span className="text-foreground font-medium">{result.created}</span></div>
+              <div className="text-muted-foreground">Updated: <span className="text-foreground font-medium">{result.updated}</span></div>
+              {result.errors && result.errors.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-destructive font-medium">Errors: {result.errors.length} row(s) failed</div>
+                  <div className="max-h-40 overflow-y-auto text-xs space-y-0.5 border rounded p-2 bg-muted/30">
+                    {result.errors.slice(0, 50).map((e, i) => (
+                      <div key={i}><span className="font-mono">Row {e.row}{e.code ? ` (${e.code})` : ""}:</span> {e.error}</div>
+                    ))}
+                    {result.errors.length > 50 && (
+                      <div className="text-muted-foreground italic">…and {result.errors.length - 50} more</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ChartOfAccountsTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -704,6 +844,7 @@ function ChartOfAccountsTab() {
   const [activeFilter, setActiveFilter] = useState<"active" | "all">("active");
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editAccount, setEditAccount] = useState<MasterGlAccount | undefined>();
   const update = useUpdateGlAccount();
 
@@ -788,6 +929,13 @@ function ChartOfAccountsTab() {
             >
               <Download className="h-4 w-4 mr-2" />Download sample CSV
             </a>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setImportOpen(true)}
+            title="Import GL accounts from a CSV file"
+          >
+            <Upload className="h-4 w-4 mr-2" />Import CSV
           </Button>
           <Button onClick={() => { setEditAccount(undefined); setModalOpen(true); }}>
             <Plus className="h-4 w-4 mr-2" />New Account
@@ -882,6 +1030,12 @@ function ChartOfAccountsTab() {
         open={modalOpen}
         onOpenChange={setModalOpen}
         account={editAccount}
+        onSuccess={refresh}
+      />
+
+      <GlAccountCsvImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
         onSuccess={refresh}
       />
     </div>

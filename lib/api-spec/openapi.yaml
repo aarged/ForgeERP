@@ -2813,6 +2813,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /master-data/gl-accounts/import:
+    post:
+      operationId: importGlAccounts
+      tags: [master-data]
+      summary: Bulk import GL accounts from CSV data
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportGlAccountsBody"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkImportResult"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /master-data/audit-trail:
     get:
       operationId: getMasterDataAuditTrail
@@ -9254,6 +9287,23 @@ components:
         isPosting: { type: boolean }
         isActive: { type: boolean }
         glTemplate: { type: string }
+
+    ImportGlAccountsBody:
+      type: object
+      required: [accounts]
+      properties:
+        accounts:
+          type: array
+          items:
+            type: object
+            required: [code, name, accountType]
+            properties:
+              code: { type: string }
+              name: { type: string }
+              accountType: { type: string, enum: [asset, liability, equity, revenue, expense] }
+              isActive: { type: boolean }
+              description: { type: string }
+              taxCode: { type: string }
 
     GlTemplateImportBody:
       type: object

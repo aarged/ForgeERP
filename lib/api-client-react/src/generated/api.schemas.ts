@@ -1701,6 +1701,30 @@ export interface CreateGlAccountBody {
   glTemplate?: string;
 }
 
+export type ImportGlAccountsBodyAccountsItemAccountType =
+  (typeof ImportGlAccountsBodyAccountsItemAccountType)[keyof typeof ImportGlAccountsBodyAccountsItemAccountType];
+
+export const ImportGlAccountsBodyAccountsItemAccountType = {
+  asset: "asset",
+  liability: "liability",
+  equity: "equity",
+  revenue: "revenue",
+  expense: "expense",
+} as const;
+
+export type ImportGlAccountsBodyAccountsItem = {
+  code: string;
+  name: string;
+  accountType: ImportGlAccountsBodyAccountsItemAccountType;
+  isActive?: boolean;
+  description?: string;
+  taxCode?: string;
+};
+
+export interface ImportGlAccountsBody {
+  accounts: ImportGlAccountsBodyAccountsItem[];
+}
+
 export type GlTemplateImportBodyTemplate =
   (typeof GlTemplateImportBodyTemplate)[keyof typeof GlTemplateImportBodyTemplate];
 

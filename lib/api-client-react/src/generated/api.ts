@@ -168,6 +168,7 @@ import type {
   GlobalAdminInviteRedeemed,
   GlobalAdminInviteRevoked,
   HealthStatus,
+  ImportGlAccountsBody,
   ImportItemsBody,
   InventoryAdjustment,
   InventoryStockList,
@@ -8870,6 +8871,92 @@ export const useImportGlAccountTemplate = <
   TContext
 > => {
   return useMutation(getImportGlAccountTemplateMutationOptions(options));
+};
+
+/**
+ * @summary Bulk import GL accounts from CSV data
+ */
+export const getImportGlAccountsUrl = () => {
+  return `/api/master-data/gl-accounts/import`;
+};
+
+export const importGlAccounts = async (
+  importGlAccountsBody: ImportGlAccountsBody,
+  options?: RequestInit,
+): Promise<BulkImportResult> => {
+  return customFetch<BulkImportResult>(getImportGlAccountsUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(importGlAccountsBody),
+  });
+};
+
+export const getImportGlAccountsMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importGlAccounts>>,
+    TError,
+    { data: BodyType<ImportGlAccountsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof importGlAccounts>>,
+  TError,
+  { data: BodyType<ImportGlAccountsBody> },
+  TContext
+> => {
+  const mutationKey = ["importGlAccounts"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof importGlAccounts>>,
+    { data: BodyType<ImportGlAccountsBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return importGlAccounts(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ImportGlAccountsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof importGlAccounts>>
+>;
+export type ImportGlAccountsMutationBody = BodyType<ImportGlAccountsBody>;
+export type ImportGlAccountsMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Bulk import GL accounts from CSV data
+ */
+export const useImportGlAccounts = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importGlAccounts>>,
+    TError,
+    { data: BodyType<ImportGlAccountsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof importGlAccounts>>,
+  TError,
+  { data: BodyType<ImportGlAccountsBody> },
+  TContext
+> => {
+  return useMutation(getImportGlAccountsMutationOptions(options));
 };
 
 /**

@@ -2928,6 +2928,42 @@ export const ImportGlAccountTemplateResponse = zod.object({
 });
 
 /**
+ * @summary Bulk import GL accounts from CSV data
+ */
+export const ImportGlAccountsBody = zod.object({
+  accounts: zod.array(
+    zod.object({
+      code: zod.string(),
+      name: zod.string(),
+      accountType: zod.enum([
+        "asset",
+        "liability",
+        "equity",
+        "revenue",
+        "expense",
+      ]),
+      isActive: zod.boolean().optional(),
+      description: zod.string().optional(),
+      taxCode: zod.string().optional(),
+    }),
+  ),
+});
+
+export const ImportGlAccountsResponse = zod.object({
+  created: zod.number().optional(),
+  updated: zod.number().optional(),
+  errors: zod
+    .array(
+      zod.object({
+        row: zod.number().optional(),
+        code: zod.string().optional(),
+        error: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
  * @summary Get audit trail for a master data record
  */
 export const getMasterDataAuditTrailQueryLimitDefault = 50;

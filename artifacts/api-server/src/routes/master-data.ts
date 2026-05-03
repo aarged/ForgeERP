@@ -1751,6 +1751,62 @@ router.post(
   },
 );
 
+// GL account CSV bulk import
+router.post(
+  "/master-data/gl-accounts/import",
+  ...tenantWriteMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+
+    const schema = z.object({
+      accounts: z.array(z.object({
+        code: z.string().min(1).max(20),
+        name: z.string().min(1).max(200),
+        accountType: z.enum(["asset", "liability", "equity", "revenue", "expense"]),
+        isActive: z.boolean().optional(),
+        description: z.string().optional(),
+        taxCode: z.string().optional(),
+      })).min(1).max(5000),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+
+    const { accounts } = parsed.data;
+    let created = 0;
+    let updated = 0;
+    const errors: { row: number; code: string; error: string }[] = [];
+
+    for (let i = 0; i < accounts.length; i++) {
+      const acct = accounts[i]!;
+      try {
+        const existing = await withTenantDb(tenantId, (db) =>
+          db.select({ id: glAccountsTable.id }).from(glAccountsTable)
+            .where(and(eq(glAccountsTable.code, acct.code), eq(glAccountsTable.tenantId, tenantId), isNull(glAccountsTable.deletedAt)))
+            .limit(1),
+        );
+        if (existing.length > 0) {
+          await withTenantDb(tenantId, (db) =>
+            db.update(glAccountsTable).set(acct as Record<string, unknown>)
+              .where(and(eq(glAccountsTable.id, existing[0]!.id), eq(glAccountsTable.tenantId, tenantId))),
+          );
+          updated++;
+        } else {
+          await withTenantDb(tenantId, (db) =>
+            db.insert(glAccountsTable).values({ ...acct, tenantId } as typeof glAccountsTable.$inferInsert),
+          );
+          created++;
+        }
+      } catch (err) {
+        errors.push({ row: i + 1, code: acct.code, error: err instanceof Error ? err.message : "Unknown error" });
+      }
+    }
+
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "gl_account.bulk_import", entityType: "gl_account", entityId: tenantId, newValues: { created, updated, errorCount: errors.length } });
+    res.json({ created, updated, errors });
+  },
+);
+
 // ════════════════════════════════════════════════════════════════════════════
 //  AUDIT TRAIL
 // ════════════════════════════════════════════════════════════════════════════
