@@ -14,7 +14,7 @@ export default function AdministrationGuide() {
   return (
     <DocPage
       title="Administration"
-      intro="Administration covers the cross-cutting things tenant admins and super-admins do: setting up new tenants, inviting users, deciding who can do what, and reviewing the audit log when something needs explaining."
+      intro="Administration covers the cross-cutting things tenant admins and global-admins do: setting up new tenants, inviting users, deciding who can do what, and reviewing the audit log when something needs explaining."
     >
       <DocSection title="The tenant onboarding wizard">
         <P>
@@ -73,8 +73,8 @@ export default function AdministrationGuide() {
             { name: "Book goods receipt / pick", type: "warehouse, tenant_admin", description: "Inventory and Mobile PWA." },
             { name: "Post manual journal", type: "accountant, tenant_admin", description: "Approval rules apply above the threshold." },
             { name: "Manage members & invites", type: "tenant_admin", description: "Add, remove, change role, resend invite." },
-            { name: "View audit log", type: "tenant_admin, super_admin", description: "Tenant admin sees their tenant; super_admin sees all." },
-            { name: "Cross-tenant operations", type: "super_admin only", description: "Impersonation, tenant lifecycle, billing reconciliation." },
+            { name: "View audit log", type: "tenant_admin, global_admin", description: "Tenant admin sees their tenant; global_admin sees all." },
+            { name: "Cross-tenant operations", type: "global_admin only", description: "Impersonation, tenant lifecycle, billing reconciliation." },
           ]}
         />
       </DocSection>
@@ -125,7 +125,7 @@ export default function AdministrationGuide() {
             Filter by actor, entity type, action, and date range.
           </li>
           <li>
-            Tenant admins see audit events for their tenant only. Super-admins
+            Tenant admins see audit events for their tenant only. Global-admins
             can switch tenant or view across all.
           </li>
           <li>
@@ -139,9 +139,9 @@ export default function AdministrationGuide() {
         </Callout>
       </DocSection>
 
-      <DocSection title="Super Admin console">
+      <DocSection title="Global Admin console">
         <P>
-          Users with the <Code>super_admin</Code> role get an extra menu entry
+          Users with the <Code>global_admin</Code> role get an extra menu entry
           for the cross-tenant console. From there, they can:
         </P>
         <Bullets>

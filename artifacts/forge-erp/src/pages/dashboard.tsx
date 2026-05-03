@@ -414,7 +414,7 @@ function WidgetStockValue() {
 
 // ── Widget Library ─────────────────────────────────────────────────────────────
 
-type UserRole = "super_admin" | "tenant_admin" | "purchaser" | "warehouse" | "approver" | "accountant" | "viewer";
+type UserRole = "global_admin" | "tenant_admin" | "purchaser" | "warehouse" | "approver" | "accountant" | "viewer";
 
 interface WidgetDef {
   id: string;
@@ -424,17 +424,17 @@ interface WidgetDef {
 }
 
 const WIDGET_LIBRARY: WidgetDef[] = [
-  { id: "recent-pos",        label: "Recent Purchase Orders", availableRoles: ["super_admin","tenant_admin","purchaser","approver"],            Component: WidgetRecentPOs },
-  { id: "recent-orders",     label: "Recent Sales Orders",    availableRoles: ["super_admin","tenant_admin","accountant"],                      Component: WidgetRecentOrders },
-  { id: "stock-alerts",      label: "Stock Alerts",           availableRoles: ["super_admin","tenant_admin","warehouse","accountant"],           Component: WidgetStockAlerts },
-  { id: "pending-approvals", label: "Pending Approvals",      availableRoles: ["super_admin","tenant_admin","approver"],                        Component: WidgetPendingApprovals },
-  { id: "gl-activity",       label: "GL Activity",            availableRoles: ["super_admin","tenant_admin","accountant"],                      Component: WidgetGlActivity },
-  { id: "sales-by-period",   label: "Revenue by Period",      availableRoles: ["super_admin","tenant_admin","accountant"],                      Component: WidgetSalesByPeriod },
-  { id: "stock-value",       label: "Stock Value by Warehouse", availableRoles: ["super_admin","tenant_admin","warehouse","accountant"],         Component: WidgetStockValue },
+  { id: "recent-pos",        label: "Recent Purchase Orders", availableRoles: ["global_admin","tenant_admin","purchaser","approver"],            Component: WidgetRecentPOs },
+  { id: "recent-orders",     label: "Recent Sales Orders",    availableRoles: ["global_admin","tenant_admin","accountant"],                      Component: WidgetRecentOrders },
+  { id: "stock-alerts",      label: "Stock Alerts",           availableRoles: ["global_admin","tenant_admin","warehouse","accountant"],           Component: WidgetStockAlerts },
+  { id: "pending-approvals", label: "Pending Approvals",      availableRoles: ["global_admin","tenant_admin","approver"],                        Component: WidgetPendingApprovals },
+  { id: "gl-activity",       label: "GL Activity",            availableRoles: ["global_admin","tenant_admin","accountant"],                      Component: WidgetGlActivity },
+  { id: "sales-by-period",   label: "Revenue by Period",      availableRoles: ["global_admin","tenant_admin","accountant"],                      Component: WidgetSalesByPeriod },
+  { id: "stock-value",       label: "Stock Value by Warehouse", availableRoles: ["global_admin","tenant_admin","warehouse","accountant"],         Component: WidgetStockValue },
 ];
 
 const DEFAULT_WIDGETS: Record<string, string[]> = {
-  super_admin: ["sales-by-period","stock-value","recent-orders","recent-pos","stock-alerts","gl-activity"],
+  global_admin: ["sales-by-period","stock-value","recent-orders","recent-pos","stock-alerts","gl-activity"],
   tenant_admin:["sales-by-period","stock-value","recent-orders","recent-pos","stock-alerts","gl-activity"],
   purchaser:   ["recent-pos"],
   warehouse:   ["stock-value","stock-alerts"],

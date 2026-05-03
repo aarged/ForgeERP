@@ -1,9 +1,9 @@
 /**
- * grant-super-admin: Promote (or revoke) a tenant_membership to super_admin.
+ * grant-global-admin: Promote (or revoke) a tenant_membership to global_admin.
  *
  * Usage:
- *   pnpm grant-super-admin <email>           # promote to super_admin
- *   pnpm grant-super-admin <email> --revoke  # demote back to tenant_admin
+ *   pnpm grant-global-admin <email>           # promote to global_admin
+ *   pnpm grant-global-admin <email> --revoke  # demote back to tenant_admin
  *
  * Looks up the active tenant_memberships row for <email> (case-insensitive),
  * updates its `role`, and writes an audit_log entry attributed to
@@ -14,8 +14,8 @@
  * the membership row this script promotes).
  *
  * NOTE: This script is now mainly for emergency bootstrap. Existing super
- * admins can issue self-service super-admin invite links from the
- * /super-admin > "Super-admin invites" tab in the web UI — no shell needed.
+ * admins can issue self-service global-admin invite links from the
+ * /global-admin > "Global-admin invites" tab in the web UI — no shell needed.
  */
 import {
   adminPool,
@@ -36,14 +36,14 @@ async function main(): Promise<number> {
   const email = positional[0];
 
   if (!email) {
-    console.error("Usage: pnpm grant-super-admin <email> [--revoke]");
+    console.error("Usage: pnpm grant-global-admin <email> [--revoke]");
     return 2;
   }
 
   const lowered = email.trim().toLowerCase();
-  const newRole: "super_admin" | "tenant_admin" = revoke
+  const newRole: "global_admin" | "tenant_admin" = revoke
     ? "tenant_admin"
-    : "super_admin";
+    : "global_admin";
 
   const matches = await adminDb
     .select({
@@ -85,33 +85,33 @@ async function main(): Promise<number> {
 
   const target = matches[0]!;
 
-  if (revoke && target.role !== "super_admin") {
+  if (revoke && target.role !== "global_admin") {
     console.error(
-      `Membership for "${email}" is not a super_admin (current role: ${target.role}). Nothing to revoke.`,
+      `Membership for "${email}" is not a global_admin (current role: ${target.role}). Nothing to revoke.`,
     );
     return 1;
   }
 
-  if (!revoke && target.role === "super_admin") {
+  if (!revoke && target.role === "global_admin") {
     console.log(
-      `Membership for "${email}" is already super_admin. No change.`,
+      `Membership for "${email}" is already global_admin. No change.`,
     );
     return 0;
   }
 
-  // Last-super-admin platform protection on revoke
+  // Last-global-admin platform protection on revoke
   if (revoke) {
     const [{ remaining } = { remaining: 0 }] = await adminDb
       .select({ remaining: sql<number>`COUNT(*)::int` })
       .from(tenantMembershipsTable)
       .where(
-        sql`${tenantMembershipsTable.role} = 'super_admin'
+        sql`${tenantMembershipsTable.role} = 'global_admin'
             AND ${tenantMembershipsTable.isActive} = 'true'
             AND ${tenantMembershipsTable.id} <> ${target.id}`,
       );
     if (Number(remaining) === 0) {
       console.error(
-        `Refusing to revoke "${email}" — at least one active super_admin must remain on the platform.`,
+        `Refusing to revoke "${email}" — at least one active global_admin must remain on the platform.`,
       );
       return 1;
     }
@@ -127,7 +127,7 @@ async function main(): Promise<number> {
       tenantId: target.tenantId,
       actorClerkId: "cli:bootstrap",
       actorEmail: "cli:bootstrap",
-      action: revoke ? "tenant_member.revoke_super_admin" : "tenant_member.grant_super_admin",
+      action: revoke ? "tenant_member.revoke_global_admin" : "tenant_member.grant_global_admin",
       entityType: "tenant_membership",
       entityId: String(target.id),
       oldValues: { role: target.role },
@@ -136,7 +136,7 @@ async function main(): Promise<number> {
   });
 
   console.log(
-    `${revoke ? "Revoked" : "Granted"} ${revoke ? "super_admin from" : "super_admin to"} "${target.email}" ` +
+    `${revoke ? "Revoked" : "Granted"} ${revoke ? "global_admin from" : "global_admin to"} "${target.email}" ` +
       `(membership_id=${target.id}, tenant=${target.tenantName} [${target.tenantSlug}, id=${target.tenantId}], clerk_id=${target.clerkId}).`,
   );
   return 0;

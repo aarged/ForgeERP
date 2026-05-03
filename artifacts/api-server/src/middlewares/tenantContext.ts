@@ -148,7 +148,7 @@ export async function tenantContext(
 
 /**
  * requireRole: Use after tenantContext to gate a route by one or more roles.
- * super_admin always passes.
+ * global_admin always passes.
  */
 export function requireRole(...allowedRoles: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -158,7 +158,7 @@ export function requireRole(...allowedRoles: string[]) {
       return;
     }
     if (
-      tenantReq.userRole !== "super_admin" &&
+      tenantReq.userRole !== "global_admin" &&
       !allowedRoles.includes(tenantReq.userRole)
     ) {
       res.status(403).json({ error: "Insufficient permissions" });

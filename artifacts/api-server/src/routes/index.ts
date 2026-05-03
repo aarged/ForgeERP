@@ -12,7 +12,7 @@ import financeRouter from "./finance";
 import dashboardRouter from "./dashboard";
 import storageRouter from "./storage";
 import integrationsRouter from "./integrations";
-import superAdminInvitesRouter from "./super-admin-invites";
+import globalAdminInvitesRouter from "./global-admin-invites";
 
 const router: IRouter = Router();
 
@@ -29,6 +29,6 @@ router.use(financeRouter);
 router.use(dashboardRouter);
 router.use(storageRouter);
 router.use(integrationsRouter);
-router.use(superAdminInvitesRouter);
+router.use(globalAdminInvitesRouter);
 
 export default router;

@@ -39,7 +39,7 @@ async function resolveEscalationRecipients(
             eq(tenantMembershipsTable.tenantId, tenantId),
             inArray(
               tenantMembershipsTable.role,
-              approverRoles as ("super_admin" | "tenant_admin" | "purchaser" | "warehouse" | "approver" | "accountant" | "viewer")[],
+              approverRoles as ("global_admin" | "tenant_admin" | "purchaser" | "warehouse" | "approver" | "accountant" | "viewer")[],
             ),
           )));
       fromRoles = members.map((m) => m.clerkId);

@@ -47,13 +47,13 @@ const router: IRouter = Router();
 const tenantUserMiddleware = [
   requireAuth,
   tenantContext,
-  requireRole("viewer", "purchaser", "warehouse", "approver", "accountant", "tenant_admin", "super_admin"),
+  requireRole("viewer", "purchaser", "warehouse", "approver", "accountant", "tenant_admin", "global_admin"),
 ];
 
 const tenantWriteMiddleware = [
   requireAuth,
   tenantContext,
-  requireRole("purchaser", "warehouse", "approver", "accountant", "tenant_admin", "super_admin"),
+  requireRole("purchaser", "warehouse", "approver", "accountant", "tenant_admin", "global_admin"),
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import {
   adminPool,
-  superAdminInvitesTable,
+  globalAdminInvitesTable,
   tenantMembershipsTable,
   tenantsTable,
 } from "@workspace/db";
@@ -23,7 +23,7 @@ import type { Request, Response } from "express";
 const router: IRouter = Router();
 const adminDb = drizzle(adminPool, { schema });
 
-const superAdminOnly = [requireAuth, tenantContext, requireRole("super_admin")];
+const globalAdminOnly = [requireAuth, tenantContext, requireRole("global_admin")];
 
 // ── URL helpers ───────────────────────────────────────────────────────────────
 
@@ -71,16 +71,16 @@ function resolveFrontendOrigin(req: Request): string | undefined {
 function buildInviteUrl(req: Request, token: string): string {
   const origin = resolveFrontendOrigin(req);
   // Forge ERP is mounted at the root of its artifact; the invite landing page
-  // path (configured in App.tsx) is /super-admin-invite/:token.
+  // path (configured in App.tsx) is /global-admin-invite/:token.
   if (origin) {
     try {
-      return new URL(`/super-admin-invite/${token}`, origin).toString();
+      return new URL(`/global-admin-invite/${token}`, origin).toString();
     } catch {
       /* fallthrough */
     }
   }
   // Fallback: relative path so caller can prefix as needed.
-  return `/super-admin-invite/${token}`;
+  return `/global-admin-invite/${token}`;
 }
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
@@ -94,11 +94,11 @@ const redeemInviteSchema = z.object({
   token: z.string().min(16).max(128),
 });
 
-// ── POST /admin/super-admin-invites ──────────────────────────────────────────
+// ── POST /admin/global-admin-invites ──────────────────────────────────────────
 
 router.post(
-  "/admin/super-admin-invites",
-  ...superAdminOnly,
+  "/admin/global-admin-invites",
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const actor = req as TenantRequest;
     const parsed = createInviteSchema.safeParse(req.body ?? {});
@@ -116,7 +116,7 @@ router.post(
     const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
 
     const [invite] = await adminDb
-      .insert(superAdminInvitesTable)
+      .insert(globalAdminInvitesTable)
       .values({
         token,
         email,
@@ -130,8 +130,8 @@ router.post(
       req,
       actorClerkId: actor.clerkUserId,
       actorEmail: actor.userEmail,
-      action: "super_admin.invite_created",
-      entityType: "super_admin_invite",
+      action: "global_admin.invite_created",
+      entityType: "global_admin_invite",
       entityId: invite!.id,
       newValues: {
         email,
@@ -152,16 +152,16 @@ router.post(
   },
 );
 
-// ── GET /admin/super-admin-invites ───────────────────────────────────────────
+// ── GET /admin/global-admin-invites ───────────────────────────────────────────
 
 router.get(
-  "/admin/super-admin-invites",
-  ...superAdminOnly,
+  "/admin/global-admin-invites",
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const rows = await adminDb
       .select()
-      .from(superAdminInvitesTable)
-      .orderBy(desc(superAdminInvitesTable.createdAt))
+      .from(globalAdminInvitesTable)
+      .orderBy(desc(globalAdminInvitesTable.createdAt))
       .limit(100);
 
     res.json(
@@ -187,11 +187,11 @@ router.get(
   },
 );
 
-// ── DELETE /admin/super-admin-invites/:id ────────────────────────────────────
+// ── DELETE /admin/global-admin-invites/:id ────────────────────────────────────
 
 router.delete(
-  "/admin/super-admin-invites/:id",
-  ...superAdminOnly,
+  "/admin/global-admin-invites/:id",
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const actor = req as TenantRequest;
     const id = Number(req.params.id);
@@ -202,8 +202,8 @@ router.delete(
 
     const [existing] = await adminDb
       .select()
-      .from(superAdminInvitesTable)
-      .where(eq(superAdminInvitesTable.id, id))
+      .from(globalAdminInvitesTable)
+      .where(eq(globalAdminInvitesTable.id, id))
       .limit(1);
 
     if (!existing) {
@@ -225,19 +225,19 @@ router.delete(
     }
 
     await adminDb
-      .update(superAdminInvitesTable)
+      .update(globalAdminInvitesTable)
       .set({
         revokedAt: new Date(),
         revokedByClerkId: actor.clerkUserId,
       })
-      .where(eq(superAdminInvitesTable.id, id));
+      .where(eq(globalAdminInvitesTable.id, id));
 
     await writeAuditLog({
       req,
       actorClerkId: actor.clerkUserId,
       actorEmail: actor.userEmail,
-      action: "super_admin.invite_revoked",
-      entityType: "super_admin_invite",
+      action: "global_admin.invite_revoked",
+      entityType: "global_admin_invite",
       entityId: id,
       oldValues: { email: existing.email },
     });
@@ -246,12 +246,12 @@ router.delete(
   },
 );
 
-// ── GET /super-admin-invites/:token (public preview) ─────────────────────────
+// ── GET /global-admin-invites/:token (public preview) ─────────────────────────
 //
 // Allows the frontend invite landing page to validate a token before asking
 // the user to sign in. No auth required — token itself is the secret.
 router.get(
-  "/super-admin-invites/:token",
+  "/global-admin-invites/:token",
   async (req: Request, res: Response): Promise<void> => {
     const token = String(req.params.token ?? "");
     if (!token || token.length < 16) {
@@ -261,8 +261,8 @@ router.get(
 
     const [invite] = await adminDb
       .select()
-      .from(superAdminInvitesTable)
-      .where(eq(superAdminInvitesTable.token, token))
+      .from(globalAdminInvitesTable)
+      .where(eq(globalAdminInvitesTable.token, token))
       .limit(1);
 
     if (!invite) {
@@ -285,10 +285,10 @@ router.get(
   },
 );
 
-// ── POST /auth/super-admin-invites/redeem ────────────────────────────────────
+// ── POST /auth/global-admin-invites/redeem ────────────────────────────────────
 
 router.post(
-  "/auth/super-admin-invites/redeem",
+  "/auth/global-admin-invites/redeem",
   requireAuth,
   async (req: Request, res: Response): Promise<void> => {
     const clerkId = (req as AuthenticatedRequest).clerkUserId;
@@ -304,8 +304,8 @@ router.post(
     const txResult = await adminDb.transaction(async (tx) => {
       const [invite] = await tx
         .select()
-        .from(superAdminInvitesTable)
-        .where(eq(superAdminInvitesTable.token, token))
+        .from(globalAdminInvitesTable)
+        .where(eq(globalAdminInvitesTable.token, token))
         .for("update")
         .limit(1);
 
@@ -348,31 +348,31 @@ router.post(
         };
       }
 
-      // Promote to super_admin if not already.
-      const wasSuperAdmin = membership.role === "super_admin";
-      if (!wasSuperAdmin) {
+      // Promote to global_admin if not already.
+      const wasGlobalAdmin = membership.role === "global_admin";
+      if (!wasGlobalAdmin) {
         await tx
           .update(tenantMembershipsTable)
-          .set({ role: "super_admin" })
+          .set({ role: "global_admin" })
           .where(eq(tenantMembershipsTable.id, membership.id));
       }
 
-      // Mark invite consumed (even if user was already super_admin —
+      // Mark invite consumed (even if user was already global_admin —
       // single-use semantics are clearer that way).
       await tx
-        .update(superAdminInvitesTable)
+        .update(globalAdminInvitesTable)
         .set({
           usedAt: new Date(),
           usedByClerkId: clerkId,
           usedByEmail: membership.email,
         })
-        .where(eq(superAdminInvitesTable.id, invite.id));
+        .where(eq(globalAdminInvitesTable.id, invite.id));
 
       return {
         kind: "ok" as const,
         invite,
         membership,
-        wasSuperAdmin,
+        wasGlobalAdmin,
       };
     });
 
@@ -417,22 +417,22 @@ router.post(
       return;
     }
 
-    const { invite, membership, wasSuperAdmin } = txResult;
+    const { invite, membership, wasGlobalAdmin } = txResult;
 
     await writeAuditLog({
       req,
       actorClerkId: clerkId,
       actorEmail: membership.email,
       tenantId: membership.tenantId,
-      action: "super_admin.invite_redeemed",
-      entityType: "super_admin_invite",
+      action: "global_admin.invite_redeemed",
+      entityType: "global_admin_invite",
       entityId: invite.id,
       oldValues: { role: membership.role },
       newValues: {
-        role: "super_admin",
+        role: "global_admin",
         membershipId: membership.id,
         tenantId: membership.tenantId,
-        wasAlreadySuperAdmin: wasSuperAdmin,
+        wasAlreadyGlobalAdmin: wasGlobalAdmin,
       },
     });
 
@@ -441,15 +441,15 @@ router.post(
         clerkId,
         inviteId: invite.id,
         membershipId: membership.id,
-        wasSuperAdmin,
+        wasGlobalAdmin,
       },
-      "Super-admin invite redeemed",
+      "Global-admin invite redeemed",
     );
 
     res.json({
       ok: true,
-      wasAlreadySuperAdmin: wasSuperAdmin,
-      role: "super_admin",
+      wasAlreadyGlobalAdmin: wasGlobalAdmin,
+      role: "global_admin",
       tenantId: membership.tenantId,
     });
   },

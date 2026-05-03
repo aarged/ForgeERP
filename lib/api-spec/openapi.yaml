@@ -15,7 +15,7 @@ tags:
   - name: tenants
     description: Tenant management
   - name: admin
-    description: Super-admin platform operations
+    description: Global-admin platform operations
   - name: onboarding
     description: Self-serve tenant onboarding for new sign-ups
   - name: master-data
@@ -161,7 +161,7 @@ paths:
       tags: [tenants]
       summary: Update a tenant member's role or active status
       description: |
-        Tenant-admin only. Cannot set role to super_admin, modify a super_admin,
+        Tenant-admin only. Cannot set role to global_admin, modify a global_admin,
         modify your own membership, or demote/deactivate the last active
         tenant_admin.
       security:
@@ -462,7 +462,7 @@ paths:
       operationId: getAdminKpi
       tags: [admin]
       summary: Get platform KPI metrics
-      description: Returns platform-wide KPI metrics for the super-admin dashboard
+      description: Returns platform-wide KPI metrics for the global-admin dashboard
       security:
         - clerkAuth: []
       responses:
@@ -1270,7 +1270,7 @@ paths:
       summary: Get platform trend data
       description: >
         Returns weekly trend buckets for tenant signups, active tenant count,
-        and estimated MRR. Used to render historical charts on the super-admin
+        and estimated MRR. Used to render historical charts on the global-admin
         dashboard. MRR is derived from Stripe subscriptions when configured;
         otherwise it falls back to a plan-tier estimate from current tenant
         records (mrrIsEstimate=true).
@@ -1306,25 +1306,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /admin/super-admin-invites:
+  /admin/global-admin-invites:
     get:
-      operationId: listSuperAdminInvites
+      operationId: listGlobalAdminInvites
       tags: [admin]
-      summary: List super-admin invite links
+      summary: List global-admin invite links
       description: >
-        Returns recently issued super-admin invite links (active, used,
-        revoked, or expired). Super-admin only.
+        Returns recently issued global-admin invite links (active, used,
+        revoked, or expired). Global-admin only.
       security:
         - clerkAuth: []
       responses:
         "200":
-          description: List of super-admin invites
+          description: List of global-admin invites
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/SuperAdminInvite"
+                  $ref: "#/components/schemas/GlobalAdminInvite"
         "401":
           description: Unauthorized
           content:
@@ -1338,13 +1338,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
     post:
-      operationId: createSuperAdminInvite
+      operationId: createGlobalAdminInvite
       tags: [admin]
-      summary: Create a single-use super-admin invite link
+      summary: Create a single-use global-admin invite link
       description: >
         Generates a signed, time-limited URL the recipient can open to
-        promote their tenant_membership to super_admin without using the
-        `pnpm grant-super-admin` shell script. Super-admin only.
+        promote their tenant_membership to global_admin without using the
+        `pnpm grant-global-admin` shell script. Global-admin only.
       security:
         - clerkAuth: []
       requestBody:
@@ -1352,14 +1352,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateSuperAdminInviteBody"
+              $ref: "#/components/schemas/CreateGlobalAdminInviteBody"
       responses:
         "201":
           description: Invite created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuperAdminInviteCreated"
+                $ref: "#/components/schemas/GlobalAdminInviteCreated"
         "400":
           description: Bad request
           content:
@@ -1379,11 +1379,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /admin/super-admin-invites/{id}:
+  /admin/global-admin-invites/{id}:
     delete:
-      operationId: revokeSuperAdminInvite
+      operationId: revokeGlobalAdminInvite
       tags: [admin]
-      summary: Revoke a pending super-admin invite link
+      summary: Revoke a pending global-admin invite link
       security:
         - clerkAuth: []
       parameters:
@@ -1398,7 +1398,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuperAdminInviteRevoked"
+                $ref: "#/components/schemas/GlobalAdminInviteRevoked"
         "404":
           description: Invite not found
           content:
@@ -1412,11 +1412,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /super-admin-invites/{token}:
+  /global-admin-invites/{token}:
     get:
-      operationId: getSuperAdminInvitePreview
+      operationId: getGlobalAdminInvitePreview
       tags: [auth]
-      summary: Preview a super-admin invite (public)
+      summary: Preview a global-admin invite (public)
       description: >
         Validates the invite token and returns metadata so the landing page
         can show "this invite is for X / expires Y". No auth required —
@@ -1433,7 +1433,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuperAdminInvitePreview"
+                $ref: "#/components/schemas/GlobalAdminInvitePreview"
         "400":
           description: Invalid token
           content:
@@ -1447,14 +1447,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /auth/super-admin-invites/redeem:
+  /auth/global-admin-invites/redeem:
     post:
-      operationId: redeemSuperAdminInvite
+      operationId: redeemGlobalAdminInvite
       tags: [auth]
-      summary: Redeem a super-admin invite
+      summary: Redeem a global-admin invite
       description: >
         Called by the signed-in invitee to consume their token and promote
-        their active tenant_membership to super_admin. The user must have
+        their active tenant_membership to global_admin. The user must have
         completed onboarding first (active membership row).
       security:
         - clerkAuth: []
@@ -1463,14 +1463,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RedeemSuperAdminInviteBody"
+              $ref: "#/components/schemas/RedeemGlobalAdminInviteBody"
       responses:
         "200":
           description: Redeemed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuperAdminInviteRedeemed"
+                $ref: "#/components/schemas/GlobalAdminInviteRedeemed"
         "400":
           description: Bad request
           content:
@@ -7435,7 +7435,7 @@ components:
         role:
           type: string
           enum:
-            - super_admin
+            - global_admin
             - tenant_admin
             - purchaser
             - warehouse
@@ -7823,7 +7823,7 @@ components:
         role:
           type: string
           enum:
-            - super_admin
+            - global_admin
             - tenant_admin
             - purchaser
             - warehouse
@@ -7848,7 +7848,7 @@ components:
         role:
           type: string
           enum:
-            - super_admin
+            - global_admin
             - tenant_admin
             - purchaser
             - warehouse
@@ -7877,7 +7877,7 @@ components:
         - email
         - role
 
-    SuperAdminInvite:
+    GlobalAdminInvite:
       type: object
       properties:
         id:
@@ -7909,7 +7909,7 @@ components:
         - expiresAt
         - status
 
-    CreateSuperAdminInviteBody:
+    CreateGlobalAdminInviteBody:
       type: object
       properties:
         email:
@@ -7922,7 +7922,7 @@ components:
           maximum: 720
           default: 72
 
-    SuperAdminInviteCreated:
+    GlobalAdminInviteCreated:
       type: object
       properties:
         id:
@@ -7946,7 +7946,7 @@ components:
         - expiresAt
         - createdAt
 
-    SuperAdminInviteRevoked:
+    GlobalAdminInviteRevoked:
       type: object
       properties:
         id:
@@ -7958,7 +7958,7 @@ components:
       required:
         - id
 
-    SuperAdminInvitePreview:
+    GlobalAdminInvitePreview:
       type: object
       properties:
         email:
@@ -7974,7 +7974,7 @@ components:
         - expiresAt
         - status
 
-    RedeemSuperAdminInviteBody:
+    RedeemGlobalAdminInviteBody:
       type: object
       properties:
         token:
@@ -7983,12 +7983,12 @@ components:
       required:
         - token
 
-    SuperAdminInviteRedeemed:
+    GlobalAdminInviteRedeemed:
       type: object
       properties:
         ok:
           type: boolean
-        wasAlreadySuperAdmin:
+        wasAlreadyGlobalAdmin:
           type: boolean
         role:
           type: string

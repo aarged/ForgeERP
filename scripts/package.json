@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
-    "grant-super-admin": "tsx ./src/grant-super-admin.ts",
+    "grant-global-admin": "tsx ./src/grant-global-admin.ts",
+    "grant-super-admin": "node -e \"console.warn('[deprecated] pnpm grant-super-admin → use pnpm grant-global-admin')\" && tsx ./src/grant-global-admin.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

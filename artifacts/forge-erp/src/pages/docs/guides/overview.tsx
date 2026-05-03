@@ -114,10 +114,10 @@ export default function OverviewGuide() {
           typeHeader="Scope"
           rows={[
             {
-              name: "super_admin",
+              name: "global_admin",
               type: "All tenants",
               description:
-                "Replit/Forge platform staff. Sees every tenant via the Super Admin console; can impersonate, view audit logs, and manage tenant lifecycle. All other module access also granted.",
+                "Replit/Forge platform staff. Sees every tenant via the Global Admin console; can impersonate, view audit logs, and manage tenant lifecycle. All other module access also granted.",
             },
             {
               name: "tenant_admin",

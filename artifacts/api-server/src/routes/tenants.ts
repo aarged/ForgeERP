@@ -46,7 +46,7 @@ router.get(
     "approver",
     "accountant",
     "tenant_admin",
-    "super_admin",
+    "global_admin",
   ),
   async (req: Request, res: Response): Promise<void> => {
     const { tenantId } = req as TenantRequest;
@@ -633,7 +633,7 @@ router.post(
 );
 
 // ── PATCH /tenants/current/members/:membershipId ─────────────────────────────
-// Update role and/or active status. Tenant-scoped roles only (no super_admin).
+// Update role and/or active status. Tenant-scoped roles only (no global_admin).
 const updateMemberSchema = z.object({
   role: tenantRoleEnum.optional(),
   isActive: z.boolean().optional(),
@@ -681,11 +681,11 @@ router.patch(
       return;
     }
 
-    // Cannot modify super_admin via tenant API
-    if (existing.role === "super_admin") {
+    // Cannot modify global_admin via tenant API
+    if (existing.role === "global_admin") {
       res
         .status(403)
-        .json({ error: "Super admin members cannot be modified here" });
+        .json({ error: "Global admin members cannot be modified here" });
       return;
     }
 

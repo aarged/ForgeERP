@@ -225,8 +225,8 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
     return;
   }
 
-  // Only tenant_admin and super_admin get the full overview; all other roles get a 403
-  if (role !== "tenant_admin" && role !== "super_admin") {
+  // Only tenant_admin and global_admin get the full overview; all other roles get a 403
+  if (role !== "tenant_admin" && role !== "global_admin") {
     res.status(403).json({ error: "No dashboard view configured for this role" });
     return;
   }
@@ -291,14 +291,14 @@ router.get("/dashboard/kpi", ...tenantUserMiddleware, async (req: Request, res: 
 // ── Widget Data Endpoints ──────────────────────────────────────────────────────
 
 const WIDGET_ROLES: Record<string, string[]> = {
-  "recent-pos":        ["purchaser", "approver", "tenant_admin", "super_admin"],
-  "recent-orders":     ["accountant", "tenant_admin", "super_admin"],
-  "stock-alerts":      ["warehouse", "accountant", "tenant_admin", "super_admin"],
-  "pending-approvals": ["approver", "tenant_admin", "super_admin"],
-  "top-items":         ["warehouse", "accountant", "tenant_admin", "super_admin"],
-  "stock-value":       ["warehouse", "accountant", "tenant_admin", "super_admin"],
-  "gl-activity":       ["accountant", "tenant_admin", "super_admin"],
-  "sales-by-period":   ["accountant", "tenant_admin", "super_admin"],
+  "recent-pos":        ["purchaser", "approver", "tenant_admin", "global_admin"],
+  "recent-orders":     ["accountant", "tenant_admin", "global_admin"],
+  "stock-alerts":      ["warehouse", "accountant", "tenant_admin", "global_admin"],
+  "pending-approvals": ["approver", "tenant_admin", "global_admin"],
+  "top-items":         ["warehouse", "accountant", "tenant_admin", "global_admin"],
+  "stock-value":       ["warehouse", "accountant", "tenant_admin", "global_admin"],
+  "gl-activity":       ["accountant", "tenant_admin", "global_admin"],
+  "sales-by-period":   ["accountant", "tenant_admin", "global_admin"],
 };
 
 router.get("/dashboard/widget/:type", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {

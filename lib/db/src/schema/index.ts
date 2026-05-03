@@ -9,4 +9,4 @@ export * from "./notifications";
 export * from "./sales";
 export * from "./inventory";
 export * from "./api_keys";
-export * from "./super_admin_invites";
+export * from "./global_admin_invites";

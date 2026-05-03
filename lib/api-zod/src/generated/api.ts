@@ -81,7 +81,7 @@ export const GetTenantMembersResponseItem = zod.object({
   firstName: zod.string().nullish(),
   lastName: zod.string().nullish(),
   role: zod.enum([
-    "super_admin",
+    "global_admin",
     "tenant_admin",
     "purchaser",
     "warehouse",
@@ -96,7 +96,7 @@ export const GetTenantMembersResponseItem = zod.object({
 export const GetTenantMembersResponse = zod.array(GetTenantMembersResponseItem);
 
 /**
- * Tenant-admin only. Cannot set role to super_admin, modify a super_admin,
+ * Tenant-admin only. Cannot set role to global_admin, modify a global_admin,
 modify your own membership, or demote/deactivate the last active
 tenant_admin.
 
@@ -127,7 +127,7 @@ export const UpdateTenantMemberResponse = zod.object({
   firstName: zod.string().nullish(),
   lastName: zod.string().nullish(),
   role: zod.enum([
-    "super_admin",
+    "global_admin",
     "tenant_admin",
     "purchaser",
     "warehouse",
@@ -335,7 +335,7 @@ export const OnboardTenantResponse = zod.object({
 });
 
 /**
- * Returns platform-wide KPI metrics for the super-admin dashboard
+ * Returns platform-wide KPI metrics for the global-admin dashboard
  * @summary Get platform KPI metrics
  */
 export const GetAdminKpiResponse = zod.object({
@@ -964,7 +964,7 @@ export const ListAdminTenantMembersResponseItem = zod.object({
   firstName: zod.string().nullish(),
   lastName: zod.string().nullish(),
   role: zod.enum([
-    "super_admin",
+    "global_admin",
     "tenant_admin",
     "purchaser",
     "warehouse",
@@ -1011,7 +1011,7 @@ export const UpdateAdminTenantMemberParams = zod.object({
 export const UpdateAdminTenantMemberBody = zod.object({
   role: zod
     .enum([
-      "super_admin",
+      "global_admin",
       "tenant_admin",
       "purchaser",
       "warehouse",
@@ -1030,7 +1030,7 @@ export const UpdateAdminTenantMemberResponse = zod.object({
   firstName: zod.string().nullish(),
   lastName: zod.string().nullish(),
   role: zod.enum([
-    "super_admin",
+    "global_admin",
     "tenant_admin",
     "purchaser",
     "warehouse",
@@ -1067,7 +1067,7 @@ export const GetAdminAuditLogsResponse = zod.array(
 );
 
 /**
- * Returns weekly trend buckets for tenant signups, active tenant count, and estimated MRR. Used to render historical charts on the super-admin dashboard. MRR is derived from Stripe subscriptions when configured; otherwise it falls back to a plan-tier estimate from current tenant records (mrrIsEstimate=true).
+ * Returns weekly trend buckets for tenant signups, active tenant count, and estimated MRR. Used to render historical charts on the global-admin dashboard. MRR is derived from Stripe subscriptions when configured; otherwise it falls back to a plan-tier estimate from current tenant records (mrrIsEstimate=true).
 
  * @summary Get platform trend data
  */
@@ -1125,11 +1125,11 @@ export const GetAdminTrendsResponse = zod.object({
 });
 
 /**
- * Returns recently issued super-admin invite links (active, used, revoked, or expired). Super-admin only.
+ * Returns recently issued global-admin invite links (active, used, revoked, or expired). Global-admin only.
 
- * @summary List super-admin invite links
+ * @summary List global-admin invite links
  */
-export const ListSuperAdminInvitesResponseItem = zod.object({
+export const ListGlobalAdminInvitesResponseItem = zod.object({
   id: zod.number(),
   email: zod
     .string()
@@ -1144,19 +1144,19 @@ export const ListSuperAdminInvitesResponseItem = zod.object({
   revokedAt: zod.string().nullish(),
   status: zod.enum(["active", "used", "revoked", "expired"]),
 });
-export const ListSuperAdminInvitesResponse = zod.array(
-  ListSuperAdminInvitesResponseItem,
+export const ListGlobalAdminInvitesResponse = zod.array(
+  ListGlobalAdminInvitesResponseItem,
 );
 
 /**
- * Generates a signed, time-limited URL the recipient can open to promote their tenant_membership to super_admin without using the `pnpm grant-super-admin` shell script. Super-admin only.
+ * Generates a signed, time-limited URL the recipient can open to promote their tenant_membership to global_admin without using the `pnpm grant-global-admin` shell script. Global-admin only.
 
- * @summary Create a single-use super-admin invite link
+ * @summary Create a single-use global-admin invite link
  */
-export const createSuperAdminInviteBodyTtlHoursDefault = 72;
-export const createSuperAdminInviteBodyTtlHoursMax = 720;
+export const createGlobalAdminInviteBodyTtlHoursDefault = 72;
+export const createGlobalAdminInviteBodyTtlHoursMax = 720;
 
-export const CreateSuperAdminInviteBody = zod.object({
+export const CreateGlobalAdminInviteBody = zod.object({
   email: zod
     .string()
     .email()
@@ -1165,18 +1165,18 @@ export const CreateSuperAdminInviteBody = zod.object({
   ttlHours: zod
     .number()
     .min(1)
-    .max(createSuperAdminInviteBodyTtlHoursMax)
-    .default(createSuperAdminInviteBodyTtlHoursDefault),
+    .max(createGlobalAdminInviteBodyTtlHoursMax)
+    .default(createGlobalAdminInviteBodyTtlHoursDefault),
 });
 
 /**
- * @summary Revoke a pending super-admin invite link
+ * @summary Revoke a pending global-admin invite link
  */
-export const RevokeSuperAdminInviteParams = zod.object({
+export const RevokeGlobalAdminInviteParams = zod.object({
   id: zod.coerce.number(),
 });
 
-export const RevokeSuperAdminInviteResponse = zod.object({
+export const RevokeGlobalAdminInviteResponse = zod.object({
   id: zod.number(),
   revoked: zod.boolean().optional(),
   alreadyRevoked: zod.boolean().optional(),
@@ -1185,13 +1185,13 @@ export const RevokeSuperAdminInviteResponse = zod.object({
 /**
  * Validates the invite token and returns metadata so the landing page can show "this invite is for X / expires Y". No auth required — the token itself is the secret.
 
- * @summary Preview a super-admin invite (public)
+ * @summary Preview a global-admin invite (public)
  */
-export const GetSuperAdminInvitePreviewParams = zod.object({
+export const GetGlobalAdminInvitePreviewParams = zod.object({
   token: zod.coerce.string(),
 });
 
-export const GetSuperAdminInvitePreviewResponse = zod.object({
+export const GetGlobalAdminInvitePreviewResponse = zod.object({
   email: zod.string().nullish(),
   expiresAt: zod.string(),
   createdByEmail: zod.string().nullish(),
@@ -1199,19 +1199,19 @@ export const GetSuperAdminInvitePreviewResponse = zod.object({
 });
 
 /**
- * Called by the signed-in invitee to consume their token and promote their active tenant_membership to super_admin. The user must have completed onboarding first (active membership row).
+ * Called by the signed-in invitee to consume their token and promote their active tenant_membership to global_admin. The user must have completed onboarding first (active membership row).
 
- * @summary Redeem a super-admin invite
+ * @summary Redeem a global-admin invite
  */
-export const redeemSuperAdminInviteBodyTokenMin = 16;
+export const redeemGlobalAdminInviteBodyTokenMin = 16;
 
-export const RedeemSuperAdminInviteBody = zod.object({
-  token: zod.string().min(redeemSuperAdminInviteBodyTokenMin),
+export const RedeemGlobalAdminInviteBody = zod.object({
+  token: zod.string().min(redeemGlobalAdminInviteBodyTokenMin),
 });
 
-export const RedeemSuperAdminInviteResponse = zod.object({
+export const RedeemGlobalAdminInviteResponse = zod.object({
   ok: zod.boolean(),
-  wasAlreadySuperAdmin: zod.boolean().optional(),
+  wasAlreadyGlobalAdmin: zod.boolean().optional(),
   role: zod.string(),
   tenantId: zod.number(),
 });

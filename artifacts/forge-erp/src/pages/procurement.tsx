@@ -2115,7 +2115,7 @@ function WorkflowStepsPanel({ workflowId }: { workflowId: number }) {
               <select {...register("approverRole")} className="h-7 text-xs rounded-md border border-input bg-background px-2">
                 <option value="approver">approver</option>
                 <option value="tenant_admin">admin</option>
-                <option value="super_admin">super admin</option>
+                <option value="global_admin">global admin</option>
               </select>
               <Button type="submit" size="sm" className="h-7" disabled={createStep.isPending}>Add</Button>
             </form>

@@ -20,10 +20,10 @@ import {
   useUpdateAdminTenantMember,
   useGetAdminAuditLogs,
   useInviteAdminTenantMember,
-  useListSuperAdminInvites,
-  useCreateSuperAdminInvite,
-  useRevokeSuperAdminInvite,
-  getListSuperAdminInvitesQueryKey,
+  useListGlobalAdminInvites,
+  useCreateGlobalAdminInvite,
+  useRevokeGlobalAdminInvite,
+  getListGlobalAdminInvitesQueryKey,
   getListAdminTenantsQueryKey,
   getGetAdminKpiQueryKey,
   getGetTenantInvoicesQueryKey,
@@ -645,8 +645,8 @@ function ConfirmDialog({
 // ── Tenant members card ───────────────────────────────────────────────────────
 
 // Tenant-scoped roles selectable from the per-row dropdown.
-// `super_admin` is intentionally excluded — it's a platform-wide role and is
-// granted/revoked via the dedicated "Make/Revoke super admin" button below.
+// `global_admin` is intentionally excluded — it's a platform-wide role and is
+// granted/revoked via the dedicated "Make/Revoke global admin" button below.
 const ROLE_OPTIONS: Array<AdminTenantMember["role"]> = [
   "tenant_admin",
   "purchaser",
@@ -658,7 +658,7 @@ const ROLE_OPTIONS: Array<AdminTenantMember["role"]> = [
 
 function RoleBadge({ role }: { role: string }) {
   const styles: Record<string, string> = {
-    super_admin:
+    global_admin:
       "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
     tenant_admin:
       "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
@@ -890,15 +890,15 @@ function TenantMembersCard({
         void queryClient.invalidateQueries({
           queryKey: getListAdminTenantsQueryKey(),
         });
-        // If the current user just demoted themselves out of super_admin,
-        // the /super-admin page would 403 on the next refetch. Refresh
+        // If the current user just demoted themselves out of global_admin,
+        // the /global-admin page would 403 on the next refetch. Refresh
         // /auth/me and bounce to /dashboard so the route guard handles
         // the new role gracefully instead of showing an error.
         if (
           selfRevokeMember &&
           variables.membershipId === selfRevokeMember.id &&
           variables.data.role &&
-          variables.data.role !== "super_admin"
+          variables.data.role !== "global_admin"
         ) {
           setSelfRevokeMember(null);
           void queryClient.invalidateQueries({
@@ -911,12 +911,12 @@ function TenantMembersCard({
         const data = (error as { data?: { error?: string; code?: string } })
           ?.data;
         const status = (error as { status?: number })?.status;
-        if (data?.code === "LAST_SUPER_ADMIN" || status === 409) {
+        if (data?.code === "LAST_GLOBAL_ADMIN" || status === 409) {
           toast({
             title: "Action blocked",
             description:
               data?.error ??
-              "At least one active super admin must remain on the platform.",
+              "At least one active global admin must remain on the platform.",
             variant: "destructive",
           });
           return;
@@ -1049,12 +1049,12 @@ function TenantMembersCard({
                       )}
                     </Button>
                   </div>
-                  {/* Dedicated platform-wide super_admin grant/revoke. */}
+                  {/* Dedicated platform-wide global_admin grant/revoke. */}
                   {!isPending && (
                     <div className="flex items-center gap-2 pt-1">
                       <Button
                         variant={
-                          m.role === "super_admin" ? "destructive" : "secondary"
+                          m.role === "global_admin" ? "destructive" : "secondary"
                         }
                         size="sm"
                         className="h-7 text-xs whitespace-nowrap"
@@ -1062,18 +1062,18 @@ function TenantMembersCard({
                           const isSelf =
                             !!currentUser?.clerkId &&
                             currentUser.clerkId === m.clerkId;
-                          // Self-revocation immediately costs us /super-admin
+                          // Self-revocation immediately costs us /global-admin
                           // access — confirm before proceeding so admins don't
                           // accidentally lock themselves out with one click.
-                          if (isSelf && m.role === "super_admin") {
+                          if (isSelf && m.role === "global_admin") {
                             setSelfRevokeMember(m);
                             return;
                           }
                           handleUpdate(m.id, {
                             role:
-                              m.role === "super_admin"
+                              m.role === "global_admin"
                                 ? "tenant_admin"
-                                : "super_admin",
+                                : "global_admin",
                           });
                         }}
                         disabled={
@@ -1082,21 +1082,21 @@ function TenantMembersCard({
                           // Wait for /auth/me before allowing a revoke so we
                           // can reliably detect self-demotion and show the
                           // confirmation dialog.
-                          (m.role === "super_admin" && !currentUser)
+                          (m.role === "global_admin" && !currentUser)
                         }
-                        data-testid={`member-toggle-super-admin-${m.id}`}
+                        data-testid={`member-toggle-global-admin-${m.id}`}
                         title={
                           !m.isActive
-                            ? "Reactivate the member before changing super_admin status"
-                            : m.role === "super_admin"
+                            ? "Reactivate the member before changing global_admin status"
+                            : m.role === "global_admin"
                               ? "Demote this user back to tenant_admin"
-                              : "Grant platform-wide super_admin access"
+                              : "Grant platform-wide global_admin access"
                         }
                       >
                         <Shield className="mr-1 h-3 w-3" />
-                        {m.role === "super_admin"
-                          ? "Revoke super admin"
-                          : "Make super admin"}
+                        {m.role === "global_admin"
+                          ? "Revoke global admin"
+                          : "Make global admin"}
                       </Button>
                     </div>
                   )}
@@ -1117,9 +1117,9 @@ function TenantMembersCard({
         onOpenChange={(v) => {
           if (!v) setSelfRevokeMember(null);
         }}
-        title="Revoke your own super admin access?"
-        description="You are about to remove super admin from your own account. You will immediately lose access to /super-admin and be redirected to the dashboard. Another super admin will need to re-promote you to restore access."
-        confirmLabel="Revoke my super admin"
+        title="Revoke your own global admin access?"
+        description="You are about to remove global admin from your own account. You will immediately lose access to /global-admin and be redirected to the dashboard. Another global admin will need to re-promote you to restore access."
+        confirmLabel="Revoke my global admin"
         variant="destructive"
         onConfirm={() => {
           if (!selfRevokeMember) return;
@@ -1826,7 +1826,7 @@ function MetadataDiff({ log }: { log: AuditLog }) {
   );
 }
 
-// ── Super-admin invite links tab ─────────────────────────────────────────────
+// ── Global-admin invite links tab ─────────────────────────────────────────────
 
 function formatRelative(iso: string): string {
   const ms = new Date(iso).getTime() - Date.now();
@@ -1856,24 +1856,24 @@ function inviteStatusStyles(status: string): string {
   }
 }
 
-function SuperAdminInvitesTab() {
+function GlobalAdminInvitesTab() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [ttlHours, setTtlHours] = useState<number>(72);
   const [lastUrl, setLastUrl] = useState<string | null>(null);
 
-  const { data: invites, isLoading } = useListSuperAdminInvites({
-    query: { queryKey: getListSuperAdminInvitesQueryKey() },
+  const { data: invites, isLoading } = useListGlobalAdminInvites({
+    query: { queryKey: getListGlobalAdminInvitesQueryKey() },
   });
 
-  const createInvite = useCreateSuperAdminInvite({
+  const createInvite = useCreateGlobalAdminInvite({
     mutation: {
       onSuccess: (result) => {
         setLastUrl(result.url);
         setEmail("");
         void queryClient.invalidateQueries({
-          queryKey: getListSuperAdminInvitesQueryKey(),
+          queryKey: getListGlobalAdminInvitesQueryKey(),
         });
         // Try to copy the link automatically.
         if (navigator.clipboard) {
@@ -1904,12 +1904,12 @@ function SuperAdminInvitesTab() {
     },
   });
 
-  const revokeInvite = useRevokeSuperAdminInvite({
+  const revokeInvite = useRevokeGlobalAdminInvite({
     mutation: {
       onSuccess: () => {
         toast({ title: "Invite revoked" });
         void queryClient.invalidateQueries({
-          queryKey: getListSuperAdminInvitesQueryKey(),
+          queryKey: getListGlobalAdminInvitesQueryKey(),
         });
       },
       onError: (error) => {
@@ -1958,14 +1958,14 @@ function SuperAdminInvitesTab() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Shield className="h-4 w-4" />
-            Generate a super-admin invite link
+            Generate a global-admin invite link
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">
             The recipient opens the link, signs in (or signs up), completes
             onboarding if they don't have a workspace yet, and is automatically
-            promoted to super_admin. Each link is single-use, audited, and
+            promoted to global_admin. Each link is single-use, audited, and
             expires after the chosen window.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2">
@@ -2006,7 +2006,7 @@ function SuperAdminInvitesTab() {
               data-testid="invite-last-url"
             >
               <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
-                Share this link with the new super-admin
+                Share this link with the new global-admin
               </p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 text-xs bg-background border rounded px-2 py-1.5 truncate font-mono">
@@ -2156,9 +2156,18 @@ function AuditLogsTab() {
     return map;
   }, [tenants]);
 
+  // Normalise legacy "super_admin.*" actions stored in the audit log
+  // (written before the super_admin → global_admin rename) so the UI shows
+  // a single consistent label and a single filter row per action type.
+  function normaliseAction(a: string): string {
+    return a.startsWith("super_admin.")
+      ? "global_admin." + a.slice("super_admin.".length)
+      : a;
+  }
+
   const uniqueActions = useMemo(() => {
     const set = new Set<string>();
-    for (const l of logs ?? []) set.add(l.action);
+    for (const l of logs ?? []) set.add(normaliseAction(l.action));
     return Array.from(set).sort();
   }, [logs]);
 
@@ -2173,7 +2182,7 @@ function AuditLogsTab() {
       );
     }
     if (actionFilter !== "all") {
-      result = result.filter((l) => l.action === actionFilter);
+      result = result.filter((l) => normaliseAction(l.action) === actionFilter);
     }
     return result;
   }, [logs, tenantFilter, actionFilter]);
@@ -2308,7 +2317,7 @@ function AuditLogsTab() {
                       {new Date(log.createdAt).toLocaleString()}
                     </TableCell>
                     <TableCell>
-                      <ActionBadge action={log.action} />
+                      <ActionBadge action={normaliseAction(log.action)} />
                     </TableCell>
                     <TableCell className="text-sm truncate max-w-[220px]">
                       {formatActorEmail(log)}
@@ -2372,7 +2381,7 @@ function AuditLogsTab() {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function SuperAdmin() {
+export default function GlobalAdmin() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [planFilter, setPlanFilter] = useState("all");
@@ -2397,7 +2406,7 @@ export default function SuperAdmin() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Super Admin</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Global Admin</h2>
         <p className="text-sm text-muted-foreground">
           Platform management · all tenants
         </p>
@@ -2417,7 +2426,7 @@ export default function SuperAdmin() {
           </TabsTrigger>
           <TabsTrigger value="invites" data-testid="tab-invites">
             <LinkIcon className="mr-1.5 h-4 w-4" />
-            Super-admin invites
+            Global-admin invites
           </TabsTrigger>
           <TabsTrigger value="audit" data-testid="tab-audit">
             <FileText className="mr-1.5 h-4 w-4" />
@@ -2576,7 +2585,7 @@ export default function SuperAdmin() {
         </TabsContent>
 
         <TabsContent value="invites">
-          <SuperAdminInvitesTab />
+          <GlobalAdminInvitesTab />
         </TabsContent>
 
         <TabsContent value="audit">

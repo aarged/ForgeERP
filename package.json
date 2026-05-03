@@ -7,6 +7,7 @@
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "grant-global-admin": "pnpm --filter @workspace/scripts grant-global-admin --",
     "grant-super-admin": "pnpm --filter @workspace/scripts grant-super-admin --"
   },
   "private": true,

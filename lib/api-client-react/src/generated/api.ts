@@ -50,6 +50,7 @@ import type {
   CreateDirectReceive201,
   CreateDirectReceiveBody,
   CreateGlAccountBody,
+  CreateGlobalAdminInviteBody,
   CreateInventoryAdjustment201,
   CreateInventoryAdjustmentBody,
   CreateInventoryBuild201,
@@ -78,7 +79,6 @@ import type {
   CreateStocktakeRun201,
   CreateStocktakeRunBody,
   CreateSubscriptionBody,
-  CreateSuperAdminInviteBody,
   CreateSupplierBody,
   CreateTenantBody,
   CreateTenantInviteBody,
@@ -162,6 +162,11 @@ import type {
   GlPostingList,
   GlTemplateImportBody,
   GlTemplateImportResult,
+  GlobalAdminInvite,
+  GlobalAdminInviteCreated,
+  GlobalAdminInvitePreview,
+  GlobalAdminInviteRedeemed,
+  GlobalAdminInviteRevoked,
   HealthStatus,
   ImportItemsBody,
   InventoryAdjustment,
@@ -275,7 +280,7 @@ import type {
   ReceiveInventoryTransfer200,
   ReceiveInventoryTransferBody,
   ReceiveRmaBody,
-  RedeemSuperAdminInviteBody,
+  RedeemGlobalAdminInviteBody,
   RegisterSerialNumberBody,
   ReleaseBackorderBody,
   ReportBackorders200Item,
@@ -322,11 +327,6 @@ import type {
   StocktakeRun,
   StripeSyncResult,
   SubscriptionResult,
-  SuperAdminInvite,
-  SuperAdminInviteCreated,
-  SuperAdminInvitePreview,
-  SuperAdminInviteRedeemed,
-  SuperAdminInviteRevoked,
   SupplierListResponse,
   SupplierPerformanceRow,
   Tenant,
@@ -764,7 +764,7 @@ export function useGetTenantMembers<
 }
 
 /**
- * Tenant-admin only. Cannot set role to super_admin, modify a super_admin,
+ * Tenant-admin only. Cannot set role to global_admin, modify a global_admin,
 modify your own membership, or demote/deactivate the last active
 tenant_admin.
 
@@ -1464,7 +1464,7 @@ export const useOnboardTenant = <
 };
 
 /**
- * Returns platform-wide KPI metrics for the super-admin dashboard
+ * Returns platform-wide KPI metrics for the global-admin dashboard
  * @summary Get platform KPI metrics
  */
 export const getGetAdminKpiUrl = () => {
@@ -3265,7 +3265,7 @@ export function useGetAdminAuditLogs<
 }
 
 /**
- * Returns weekly trend buckets for tenant signups, active tenant count, and estimated MRR. Used to render historical charts on the super-admin dashboard. MRR is derived from Stripe subscriptions when configured; otherwise it falls back to a plan-tier estimate from current tenant records (mrrIsEstimate=true).
+ * Returns weekly trend buckets for tenant signups, active tenant count, and estimated MRR. Used to render historical charts on the global-admin dashboard. MRR is derived from Stripe subscriptions when configured; otherwise it falls back to a plan-tier estimate from current tenant records (mrrIsEstimate=true).
 
  * @summary Get platform trend data
  */
@@ -3361,33 +3361,33 @@ export function useGetAdminTrends<
 }
 
 /**
- * Returns recently issued super-admin invite links (active, used, revoked, or expired). Super-admin only.
+ * Returns recently issued global-admin invite links (active, used, revoked, or expired). Global-admin only.
 
- * @summary List super-admin invite links
+ * @summary List global-admin invite links
  */
-export const getListSuperAdminInvitesUrl = () => {
-  return `/api/admin/super-admin-invites`;
+export const getListGlobalAdminInvitesUrl = () => {
+  return `/api/admin/global-admin-invites`;
 };
 
-export const listSuperAdminInvites = async (
+export const listGlobalAdminInvites = async (
   options?: RequestInit,
-): Promise<SuperAdminInvite[]> => {
-  return customFetch<SuperAdminInvite[]>(getListSuperAdminInvitesUrl(), {
+): Promise<GlobalAdminInvite[]> => {
+  return customFetch<GlobalAdminInvite[]>(getListGlobalAdminInvitesUrl(), {
     ...options,
     method: "GET",
   });
 };
 
-export const getListSuperAdminInvitesQueryKey = () => {
-  return [`/api/admin/super-admin-invites`] as const;
+export const getListGlobalAdminInvitesQueryKey = () => {
+  return [`/api/admin/global-admin-invites`] as const;
 };
 
-export const getListSuperAdminInvitesQueryOptions = <
-  TData = Awaited<ReturnType<typeof listSuperAdminInvites>>,
+export const getListGlobalAdminInvitesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listGlobalAdminInvites>>,
   TError = ErrorType<ErrorResponse>,
 >(options?: {
   query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listSuperAdminInvites>>,
+    Awaited<ReturnType<typeof listGlobalAdminInvites>>,
     TError,
     TData
   >;
@@ -3395,40 +3395,41 @@ export const getListSuperAdminInvitesQueryOptions = <
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListSuperAdminInvitesQueryKey();
+  const queryKey =
+    queryOptions?.queryKey ?? getListGlobalAdminInvitesQueryKey();
 
   const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof listSuperAdminInvites>>
-  > = ({ signal }) => listSuperAdminInvites({ signal, ...requestOptions });
+    Awaited<ReturnType<typeof listGlobalAdminInvites>>
+  > = ({ signal }) => listGlobalAdminInvites({ signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof listSuperAdminInvites>>,
+    Awaited<ReturnType<typeof listGlobalAdminInvites>>,
     TError,
     TData
   > & { queryKey: QueryKey };
 };
 
-export type ListSuperAdminInvitesQueryResult = NonNullable<
-  Awaited<ReturnType<typeof listSuperAdminInvites>>
+export type ListGlobalAdminInvitesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listGlobalAdminInvites>>
 >;
-export type ListSuperAdminInvitesQueryError = ErrorType<ErrorResponse>;
+export type ListGlobalAdminInvitesQueryError = ErrorType<ErrorResponse>;
 
 /**
- * @summary List super-admin invite links
+ * @summary List global-admin invite links
  */
 
-export function useListSuperAdminInvites<
-  TData = Awaited<ReturnType<typeof listSuperAdminInvites>>,
+export function useListGlobalAdminInvites<
+  TData = Awaited<ReturnType<typeof listGlobalAdminInvites>>,
   TError = ErrorType<ErrorResponse>,
 >(options?: {
   query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listSuperAdminInvites>>,
+    Awaited<ReturnType<typeof listGlobalAdminInvites>>,
     TError,
     TData
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListSuperAdminInvitesQueryOptions(options);
+  const queryOptions = getListGlobalAdminInvitesQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -3438,44 +3439,47 @@ export function useListSuperAdminInvites<
 }
 
 /**
- * Generates a signed, time-limited URL the recipient can open to promote their tenant_membership to super_admin without using the `pnpm grant-super-admin` shell script. Super-admin only.
+ * Generates a signed, time-limited URL the recipient can open to promote their tenant_membership to global_admin without using the `pnpm grant-global-admin` shell script. Global-admin only.
 
- * @summary Create a single-use super-admin invite link
+ * @summary Create a single-use global-admin invite link
  */
-export const getCreateSuperAdminInviteUrl = () => {
-  return `/api/admin/super-admin-invites`;
+export const getCreateGlobalAdminInviteUrl = () => {
+  return `/api/admin/global-admin-invites`;
 };
 
-export const createSuperAdminInvite = async (
-  createSuperAdminInviteBody?: CreateSuperAdminInviteBody,
+export const createGlobalAdminInvite = async (
+  createGlobalAdminInviteBody?: CreateGlobalAdminInviteBody,
   options?: RequestInit,
-): Promise<SuperAdminInviteCreated> => {
-  return customFetch<SuperAdminInviteCreated>(getCreateSuperAdminInviteUrl(), {
-    ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(createSuperAdminInviteBody),
-  });
+): Promise<GlobalAdminInviteCreated> => {
+  return customFetch<GlobalAdminInviteCreated>(
+    getCreateGlobalAdminInviteUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(createGlobalAdminInviteBody),
+    },
+  );
 };
 
-export const getCreateSuperAdminInviteMutationOptions = <
+export const getCreateGlobalAdminInviteMutationOptions = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof createSuperAdminInvite>>,
+    Awaited<ReturnType<typeof createGlobalAdminInvite>>,
     TError,
-    { data: BodyType<CreateSuperAdminInviteBody> },
+    { data: BodyType<CreateGlobalAdminInviteBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof createSuperAdminInvite>>,
+  Awaited<ReturnType<typeof createGlobalAdminInvite>>,
   TError,
-  { data: BodyType<CreateSuperAdminInviteBody> },
+  { data: BodyType<CreateGlobalAdminInviteBody> },
   TContext
 > => {
-  const mutationKey = ["createSuperAdminInvite"];
+  const mutationKey = ["createGlobalAdminInvite"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation &&
       "mutationKey" in options.mutation &&
@@ -3485,60 +3489,60 @@ export const getCreateSuperAdminInviteMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof createSuperAdminInvite>>,
-    { data: BodyType<CreateSuperAdminInviteBody> }
+    Awaited<ReturnType<typeof createGlobalAdminInvite>>,
+    { data: BodyType<CreateGlobalAdminInviteBody> }
   > = (props) => {
     const { data } = props ?? {};
 
-    return createSuperAdminInvite(data, requestOptions);
+    return createGlobalAdminInvite(data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type CreateSuperAdminInviteMutationResult = NonNullable<
-  Awaited<ReturnType<typeof createSuperAdminInvite>>
+export type CreateGlobalAdminInviteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createGlobalAdminInvite>>
 >;
-export type CreateSuperAdminInviteMutationBody =
-  BodyType<CreateSuperAdminInviteBody>;
-export type CreateSuperAdminInviteMutationError = ErrorType<ErrorResponse>;
+export type CreateGlobalAdminInviteMutationBody =
+  BodyType<CreateGlobalAdminInviteBody>;
+export type CreateGlobalAdminInviteMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Create a single-use super-admin invite link
+ * @summary Create a single-use global-admin invite link
  */
-export const useCreateSuperAdminInvite = <
+export const useCreateGlobalAdminInvite = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof createSuperAdminInvite>>,
+    Awaited<ReturnType<typeof createGlobalAdminInvite>>,
     TError,
-    { data: BodyType<CreateSuperAdminInviteBody> },
+    { data: BodyType<CreateGlobalAdminInviteBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
-  Awaited<ReturnType<typeof createSuperAdminInvite>>,
+  Awaited<ReturnType<typeof createGlobalAdminInvite>>,
   TError,
-  { data: BodyType<CreateSuperAdminInviteBody> },
+  { data: BodyType<CreateGlobalAdminInviteBody> },
   TContext
 > => {
-  return useMutation(getCreateSuperAdminInviteMutationOptions(options));
+  return useMutation(getCreateGlobalAdminInviteMutationOptions(options));
 };
 
 /**
- * @summary Revoke a pending super-admin invite link
+ * @summary Revoke a pending global-admin invite link
  */
-export const getRevokeSuperAdminInviteUrl = (id: number) => {
-  return `/api/admin/super-admin-invites/${id}`;
+export const getRevokeGlobalAdminInviteUrl = (id: number) => {
+  return `/api/admin/global-admin-invites/${id}`;
 };
 
-export const revokeSuperAdminInvite = async (
+export const revokeGlobalAdminInvite = async (
   id: number,
   options?: RequestInit,
-): Promise<SuperAdminInviteRevoked> => {
-  return customFetch<SuperAdminInviteRevoked>(
-    getRevokeSuperAdminInviteUrl(id),
+): Promise<GlobalAdminInviteRevoked> => {
+  return customFetch<GlobalAdminInviteRevoked>(
+    getRevokeGlobalAdminInviteUrl(id),
     {
       ...options,
       method: "DELETE",
@@ -3546,24 +3550,24 @@ export const revokeSuperAdminInvite = async (
   );
 };
 
-export const getRevokeSuperAdminInviteMutationOptions = <
+export const getRevokeGlobalAdminInviteMutationOptions = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof revokeSuperAdminInvite>>,
+    Awaited<ReturnType<typeof revokeGlobalAdminInvite>>,
     TError,
     { id: number },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof revokeSuperAdminInvite>>,
+  Awaited<ReturnType<typeof revokeGlobalAdminInvite>>,
   TError,
   { id: number },
   TContext
 > => {
-  const mutationKey = ["revokeSuperAdminInvite"];
+  const mutationKey = ["revokeGlobalAdminInvite"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation &&
       "mutationKey" in options.mutation &&
@@ -3573,61 +3577,61 @@ export const getRevokeSuperAdminInviteMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof revokeSuperAdminInvite>>,
+    Awaited<ReturnType<typeof revokeGlobalAdminInvite>>,
     { id: number }
   > = (props) => {
     const { id } = props ?? {};
 
-    return revokeSuperAdminInvite(id, requestOptions);
+    return revokeGlobalAdminInvite(id, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type RevokeSuperAdminInviteMutationResult = NonNullable<
-  Awaited<ReturnType<typeof revokeSuperAdminInvite>>
+export type RevokeGlobalAdminInviteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof revokeGlobalAdminInvite>>
 >;
 
-export type RevokeSuperAdminInviteMutationError = ErrorType<ErrorResponse>;
+export type RevokeGlobalAdminInviteMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Revoke a pending super-admin invite link
+ * @summary Revoke a pending global-admin invite link
  */
-export const useRevokeSuperAdminInvite = <
+export const useRevokeGlobalAdminInvite = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof revokeSuperAdminInvite>>,
+    Awaited<ReturnType<typeof revokeGlobalAdminInvite>>,
     TError,
     { id: number },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
-  Awaited<ReturnType<typeof revokeSuperAdminInvite>>,
+  Awaited<ReturnType<typeof revokeGlobalAdminInvite>>,
   TError,
   { id: number },
   TContext
 > => {
-  return useMutation(getRevokeSuperAdminInviteMutationOptions(options));
+  return useMutation(getRevokeGlobalAdminInviteMutationOptions(options));
 };
 
 /**
  * Validates the invite token and returns metadata so the landing page can show "this invite is for X / expires Y". No auth required — the token itself is the secret.
 
- * @summary Preview a super-admin invite (public)
+ * @summary Preview a global-admin invite (public)
  */
-export const getGetSuperAdminInvitePreviewUrl = (token: string) => {
-  return `/api/super-admin-invites/${token}`;
+export const getGetGlobalAdminInvitePreviewUrl = (token: string) => {
+  return `/api/global-admin-invites/${token}`;
 };
 
-export const getSuperAdminInvitePreview = async (
+export const getGlobalAdminInvitePreview = async (
   token: string,
   options?: RequestInit,
-): Promise<SuperAdminInvitePreview> => {
-  return customFetch<SuperAdminInvitePreview>(
-    getGetSuperAdminInvitePreviewUrl(token),
+): Promise<GlobalAdminInvitePreview> => {
+  return customFetch<GlobalAdminInvitePreview>(
+    getGetGlobalAdminInvitePreviewUrl(token),
     {
       ...options,
       method: "GET",
@@ -3635,18 +3639,18 @@ export const getSuperAdminInvitePreview = async (
   );
 };
 
-export const getGetSuperAdminInvitePreviewQueryKey = (token: string) => {
-  return [`/api/super-admin-invites/${token}`] as const;
+export const getGetGlobalAdminInvitePreviewQueryKey = (token: string) => {
+  return [`/api/global-admin-invites/${token}`] as const;
 };
 
-export const getGetSuperAdminInvitePreviewQueryOptions = <
-  TData = Awaited<ReturnType<typeof getSuperAdminInvitePreview>>,
+export const getGetGlobalAdminInvitePreviewQueryOptions = <
+  TData = Awaited<ReturnType<typeof getGlobalAdminInvitePreview>>,
   TError = ErrorType<ErrorResponse>,
 >(
   token: string,
   options?: {
     query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getSuperAdminInvitePreview>>,
+      Awaited<ReturnType<typeof getGlobalAdminInvitePreview>>,
       TError,
       TData
     >;
@@ -3656,12 +3660,12 @@ export const getGetSuperAdminInvitePreviewQueryOptions = <
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ?? getGetSuperAdminInvitePreviewQueryKey(token);
+    queryOptions?.queryKey ?? getGetGlobalAdminInvitePreviewQueryKey(token);
 
   const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getSuperAdminInvitePreview>>
+    Awaited<ReturnType<typeof getGlobalAdminInvitePreview>>
   > = ({ signal }) =>
-    getSuperAdminInvitePreview(token, { signal, ...requestOptions });
+    getGlobalAdminInvitePreview(token, { signal, ...requestOptions });
 
   return {
     queryKey,
@@ -3669,36 +3673,36 @@ export const getGetSuperAdminInvitePreviewQueryOptions = <
     enabled: !!token,
     ...queryOptions,
   } as UseQueryOptions<
-    Awaited<ReturnType<typeof getSuperAdminInvitePreview>>,
+    Awaited<ReturnType<typeof getGlobalAdminInvitePreview>>,
     TError,
     TData
   > & { queryKey: QueryKey };
 };
 
-export type GetSuperAdminInvitePreviewQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getSuperAdminInvitePreview>>
+export type GetGlobalAdminInvitePreviewQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getGlobalAdminInvitePreview>>
 >;
-export type GetSuperAdminInvitePreviewQueryError = ErrorType<ErrorResponse>;
+export type GetGlobalAdminInvitePreviewQueryError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Preview a super-admin invite (public)
+ * @summary Preview a global-admin invite (public)
  */
 
-export function useGetSuperAdminInvitePreview<
-  TData = Awaited<ReturnType<typeof getSuperAdminInvitePreview>>,
+export function useGetGlobalAdminInvitePreview<
+  TData = Awaited<ReturnType<typeof getGlobalAdminInvitePreview>>,
   TError = ErrorType<ErrorResponse>,
 >(
   token: string,
   options?: {
     query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getSuperAdminInvitePreview>>,
+      Awaited<ReturnType<typeof getGlobalAdminInvitePreview>>,
       TError,
       TData
     >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetSuperAdminInvitePreviewQueryOptions(
+  const queryOptions = getGetGlobalAdminInvitePreviewQueryOptions(
     token,
     options,
   );
@@ -3711,44 +3715,47 @@ export function useGetSuperAdminInvitePreview<
 }
 
 /**
- * Called by the signed-in invitee to consume their token and promote their active tenant_membership to super_admin. The user must have completed onboarding first (active membership row).
+ * Called by the signed-in invitee to consume their token and promote their active tenant_membership to global_admin. The user must have completed onboarding first (active membership row).
 
- * @summary Redeem a super-admin invite
+ * @summary Redeem a global-admin invite
  */
-export const getRedeemSuperAdminInviteUrl = () => {
-  return `/api/auth/super-admin-invites/redeem`;
+export const getRedeemGlobalAdminInviteUrl = () => {
+  return `/api/auth/global-admin-invites/redeem`;
 };
 
-export const redeemSuperAdminInvite = async (
-  redeemSuperAdminInviteBody: RedeemSuperAdminInviteBody,
+export const redeemGlobalAdminInvite = async (
+  redeemGlobalAdminInviteBody: RedeemGlobalAdminInviteBody,
   options?: RequestInit,
-): Promise<SuperAdminInviteRedeemed> => {
-  return customFetch<SuperAdminInviteRedeemed>(getRedeemSuperAdminInviteUrl(), {
-    ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(redeemSuperAdminInviteBody),
-  });
+): Promise<GlobalAdminInviteRedeemed> => {
+  return customFetch<GlobalAdminInviteRedeemed>(
+    getRedeemGlobalAdminInviteUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(redeemGlobalAdminInviteBody),
+    },
+  );
 };
 
-export const getRedeemSuperAdminInviteMutationOptions = <
+export const getRedeemGlobalAdminInviteMutationOptions = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof redeemSuperAdminInvite>>,
+    Awaited<ReturnType<typeof redeemGlobalAdminInvite>>,
     TError,
-    { data: BodyType<RedeemSuperAdminInviteBody> },
+    { data: BodyType<RedeemGlobalAdminInviteBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof redeemSuperAdminInvite>>,
+  Awaited<ReturnType<typeof redeemGlobalAdminInvite>>,
   TError,
-  { data: BodyType<RedeemSuperAdminInviteBody> },
+  { data: BodyType<RedeemGlobalAdminInviteBody> },
   TContext
 > => {
-  const mutationKey = ["redeemSuperAdminInvite"];
+  const mutationKey = ["redeemGlobalAdminInvite"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation &&
       "mutationKey" in options.mutation &&
@@ -3758,45 +3765,45 @@ export const getRedeemSuperAdminInviteMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof redeemSuperAdminInvite>>,
-    { data: BodyType<RedeemSuperAdminInviteBody> }
+    Awaited<ReturnType<typeof redeemGlobalAdminInvite>>,
+    { data: BodyType<RedeemGlobalAdminInviteBody> }
   > = (props) => {
     const { data } = props ?? {};
 
-    return redeemSuperAdminInvite(data, requestOptions);
+    return redeemGlobalAdminInvite(data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type RedeemSuperAdminInviteMutationResult = NonNullable<
-  Awaited<ReturnType<typeof redeemSuperAdminInvite>>
+export type RedeemGlobalAdminInviteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof redeemGlobalAdminInvite>>
 >;
-export type RedeemSuperAdminInviteMutationBody =
-  BodyType<RedeemSuperAdminInviteBody>;
-export type RedeemSuperAdminInviteMutationError = ErrorType<ErrorResponse>;
+export type RedeemGlobalAdminInviteMutationBody =
+  BodyType<RedeemGlobalAdminInviteBody>;
+export type RedeemGlobalAdminInviteMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Redeem a super-admin invite
+ * @summary Redeem a global-admin invite
  */
-export const useRedeemSuperAdminInvite = <
+export const useRedeemGlobalAdminInvite = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof redeemSuperAdminInvite>>,
+    Awaited<ReturnType<typeof redeemGlobalAdminInvite>>,
     TError,
-    { data: BodyType<RedeemSuperAdminInviteBody> },
+    { data: BodyType<RedeemGlobalAdminInviteBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
-  Awaited<ReturnType<typeof redeemSuperAdminInvite>>,
+  Awaited<ReturnType<typeof redeemGlobalAdminInvite>>,
   TError,
-  { data: BodyType<RedeemSuperAdminInviteBody> },
+  { data: BodyType<RedeemGlobalAdminInviteBody> },
   TContext
 > => {
-  return useMutation(getRedeemSuperAdminInviteMutationOptions(options));
+  return useMutation(getRedeemGlobalAdminInviteMutationOptions(options));
 };
 
 /**

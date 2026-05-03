@@ -75,7 +75,7 @@ export type TenantMemberRole =
   (typeof TenantMemberRole)[keyof typeof TenantMemberRole];
 
 export const TenantMemberRole = {
-  super_admin: "super_admin",
+  global_admin: "global_admin",
   tenant_admin: "tenant_admin",
   purchaser: "purchaser",
   warehouse: "warehouse",
@@ -514,7 +514,7 @@ export type AdminTenantMemberRole =
   (typeof AdminTenantMemberRole)[keyof typeof AdminTenantMemberRole];
 
 export const AdminTenantMemberRole = {
-  super_admin: "super_admin",
+  global_admin: "global_admin",
   tenant_admin: "tenant_admin",
   purchaser: "purchaser",
   warehouse: "warehouse",
@@ -540,7 +540,7 @@ export type UpdateMemberBodyRole =
   (typeof UpdateMemberBodyRole)[keyof typeof UpdateMemberBodyRole];
 
 export const UpdateMemberBodyRole = {
-  super_admin: "super_admin",
+  global_admin: "global_admin",
   tenant_admin: "tenant_admin",
   purchaser: "purchaser",
   warehouse: "warehouse",
@@ -571,17 +571,17 @@ export interface InviteMemberBody {
   role: InviteMemberBodyRole;
 }
 
-export type SuperAdminInviteStatus =
-  (typeof SuperAdminInviteStatus)[keyof typeof SuperAdminInviteStatus];
+export type GlobalAdminInviteStatus =
+  (typeof GlobalAdminInviteStatus)[keyof typeof GlobalAdminInviteStatus];
 
-export const SuperAdminInviteStatus = {
+export const GlobalAdminInviteStatus = {
   active: "active",
   used: "used",
   revoked: "revoked",
   expired: "expired",
 } as const;
 
-export interface SuperAdminInvite {
+export interface GlobalAdminInvite {
   id: number;
   /**
    * When set, only the user with this email may redeem.
@@ -599,10 +599,10 @@ export interface SuperAdminInvite {
   usedByEmail?: string | null;
   /** @nullable */
   revokedAt?: string | null;
-  status: SuperAdminInviteStatus;
+  status: GlobalAdminInviteStatus;
 }
 
-export interface CreateSuperAdminInviteBody {
+export interface CreateGlobalAdminInviteBody {
   /** Optional — when set, only this email can redeem the invite. */
   email?: string;
   /**
@@ -612,7 +612,7 @@ export interface CreateSuperAdminInviteBody {
   ttlHours?: number;
 }
 
-export interface SuperAdminInviteCreated {
+export interface GlobalAdminInviteCreated {
   id: number;
   token: string;
   url: string;
@@ -624,39 +624,39 @@ export interface SuperAdminInviteCreated {
   createdByEmail?: string | null;
 }
 
-export interface SuperAdminInviteRevoked {
+export interface GlobalAdminInviteRevoked {
   id: number;
   revoked?: boolean;
   alreadyRevoked?: boolean;
 }
 
-export type SuperAdminInvitePreviewStatus =
-  (typeof SuperAdminInvitePreviewStatus)[keyof typeof SuperAdminInvitePreviewStatus];
+export type GlobalAdminInvitePreviewStatus =
+  (typeof GlobalAdminInvitePreviewStatus)[keyof typeof GlobalAdminInvitePreviewStatus];
 
-export const SuperAdminInvitePreviewStatus = {
+export const GlobalAdminInvitePreviewStatus = {
   active: "active",
   used: "used",
   revoked: "revoked",
   expired: "expired",
 } as const;
 
-export interface SuperAdminInvitePreview {
+export interface GlobalAdminInvitePreview {
   /** @nullable */
   email?: string | null;
   expiresAt: string;
   /** @nullable */
   createdByEmail?: string | null;
-  status: SuperAdminInvitePreviewStatus;
+  status: GlobalAdminInvitePreviewStatus;
 }
 
-export interface RedeemSuperAdminInviteBody {
+export interface RedeemGlobalAdminInviteBody {
   /** @minLength 16 */
   token: string;
 }
 
-export interface SuperAdminInviteRedeemed {
+export interface GlobalAdminInviteRedeemed {
   ok: boolean;
-  wasAlreadySuperAdmin?: boolean;
+  wasAlreadyGlobalAdmin?: boolean;
   role: string;
   tenantId: number;
 }

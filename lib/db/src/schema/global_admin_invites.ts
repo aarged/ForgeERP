@@ -7,7 +7,7 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const superAdminInvitesTable = pgTable("super_admin_invites", {
+export const globalAdminInvitesTable = pgTable("global_admin_invites", {
   id: serial("id").primaryKey(),
   token: text("token").notNull().unique(),
   email: text("email"),
@@ -24,10 +24,10 @@ export const superAdminInvitesTable = pgTable("super_admin_invites", {
     .defaultNow(),
 });
 
-export const insertSuperAdminInviteSchema = createInsertSchema(
-  superAdminInvitesTable,
+export const insertGlobalAdminInviteSchema = createInsertSchema(
+  globalAdminInvitesTable,
 ).omit({ id: true, createdAt: true });
-export type InsertSuperAdminInvite = z.infer<
-  typeof insertSuperAdminInviteSchema
+export type InsertGlobalAdminInvite = z.infer<
+  typeof insertGlobalAdminInviteSchema
 >;
-export type SuperAdminInvite = typeof superAdminInvitesTable.$inferSelect;
+export type GlobalAdminInvite = typeof globalAdminInvitesTable.$inferSelect;

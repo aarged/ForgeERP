@@ -225,12 +225,12 @@ function AppSidebar({
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["all"] },
-    { name: "Master Data", href: "/master-data", icon: Database, roles: ["super_admin", "tenant_admin", "accountant"] },
-    { name: "Procurement", href: "/procurement", icon: ShoppingCart, roles: ["super_admin", "tenant_admin", "purchaser", "approver"] },
-    { name: "Sales", href: "/sales", icon: Receipt, roles: ["super_admin", "tenant_admin", "approver"] },
-    { name: "Inventory", href: "/inventory", icon: PackageSearch, roles: ["super_admin", "tenant_admin", "warehouse"] },
-    { name: "Finance", href: "/finance", icon: Calculator, roles: ["super_admin", "tenant_admin", "accountant"] },
-    { name: "Reports", href: "/reports", icon: BarChart3, roles: ["super_admin", "tenant_admin", "accountant", "approver"] },
+    { name: "Master Data", href: "/master-data", icon: Database, roles: ["global_admin", "tenant_admin", "accountant"] },
+    { name: "Procurement", href: "/procurement", icon: ShoppingCart, roles: ["global_admin", "tenant_admin", "purchaser", "approver"] },
+    { name: "Sales", href: "/sales", icon: Receipt, roles: ["global_admin", "tenant_admin", "approver"] },
+    { name: "Inventory", href: "/inventory", icon: PackageSearch, roles: ["global_admin", "tenant_admin", "warehouse"] },
+    { name: "Finance", href: "/finance", icon: Calculator, roles: ["global_admin", "tenant_admin", "accountant"] },
+    { name: "Reports", href: "/reports", icon: BarChart3, roles: ["global_admin", "tenant_admin", "accountant", "approver"] },
     { name: "Help & Docs", href: "/docs", icon: BookOpen, roles: ["all"] },
     { name: "Settings", href: "/settings", icon: Settings, roles: ["all"] },
   ];
@@ -239,7 +239,7 @@ function AppSidebar({
     (item) =>
       item.roles.includes("all") ||
       item.roles.includes(role) ||
-      role === "super_admin",
+      role === "global_admin",
   );
 
   return (
@@ -288,12 +288,12 @@ function AppSidebar({
                   </SidebarMenuItem>
                 );
               })}
-              {role === "super_admin" && (
+              {role === "global_admin" && (
                 <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Super Admin">
-                    <Link href="/super-admin" data-testid="nav-super-admin">
+                  <SidebarMenuButton asChild tooltip="Global Admin">
+                    <Link href="/global-admin" data-testid="nav-global-admin">
                       <ShieldAlert />
-                      <span>Super Admin</span>
+                      <span>Global Admin</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

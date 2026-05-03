@@ -19,7 +19,7 @@ import { userRoleEnum } from "./users";
  *
  * `role` controls what the key may do once authenticated — typically
  * `purchaser` (allowed to create quotations) for Cyntric, never
- * `tenant_admin` or `super_admin`.
+ * `tenant_admin` or `global_admin`.
  */
 export const apiKeysTable = pgTable(
   "api_keys",

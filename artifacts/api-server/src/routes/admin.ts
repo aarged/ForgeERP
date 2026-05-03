@@ -84,10 +84,10 @@ function resolveInviteRedirectUrl(req: Request): string | undefined {
   }
 }
 
-const superAdminOnly = [
+const globalAdminOnly = [
   requireAuth,
   tenantContext,
-  requireRole("super_admin"),
+  requireRole("global_admin"),
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ function subToMonthlyCents(sub: { items: { data: Array<{ price: { unit_amount: n
 
 router.get(
   "/admin/kpi",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (_req: Request, res: Response): Promise<void> => {
     const [totals] = await adminDb
       .select({
@@ -227,7 +227,7 @@ router.get(
 
 router.get(
   "/admin/tenants",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (_req: Request, res: Response): Promise<void> => {
     const tenants = await adminDb
       .select({
@@ -290,7 +290,7 @@ router.get(
 
 router.get(
   "/admin/tenants/:id",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const id = Number(req.params.id);
     if (isNaN(id)) {
@@ -379,7 +379,7 @@ const createTenantSchema = z.object({
 
 router.post(
   "/admin/tenants",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const actor = req as TenantRequest;
     const parsed = createTenantSchema.safeParse(req.body);
@@ -453,7 +453,7 @@ const updateTenantSchema = z.object({
 
 router.patch(
   "/admin/tenants/:id",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const actor = req as TenantRequest;
     const id = Number(req.params.id);
@@ -606,7 +606,7 @@ router.patch(
 
 router.delete(
   "/admin/tenants/:id",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const actor = req as TenantRequest;
     const id = Number(req.params.id);
@@ -650,7 +650,7 @@ router.delete(
 
 router.post(
   "/admin/tenants/:id/stripe-sync",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const actor = req as TenantRequest;
     const id = Number(req.params.id);
@@ -723,7 +723,7 @@ const createSubscriptionSchema = z.object({
 
 router.post(
   "/admin/tenants/:id/stripe-subscription",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const actor = req as TenantRequest;
     const id = Number(req.params.id);
@@ -868,7 +868,7 @@ router.post(
 
 router.get(
   "/admin/tenants/:id/invoices",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const id = Number(req.params.id);
     if (isNaN(id)) {
@@ -931,7 +931,7 @@ router.get(
 
 router.get(
   "/admin/tenants/:id/members",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const id = Number(req.params.id);
     if (isNaN(id)) {
@@ -987,7 +987,7 @@ const inviteMemberSchema = z.object({
 
 router.post(
   "/admin/tenants/:id/members",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const actor = req as TenantRequest;
     const id = Number(req.params.id);
@@ -1120,7 +1120,7 @@ router.post(
 const updateMemberSchema = z.object({
   role: z
     .enum([
-      "super_admin",
+      "global_admin",
       "tenant_admin",
       "purchaser",
       "warehouse",
@@ -1134,7 +1134,7 @@ const updateMemberSchema = z.object({
 
 router.patch(
   "/admin/tenants/:id/members/:membershipId",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const actor = req as TenantRequest;
     const id = Number(req.params.id);
@@ -1158,21 +1158,21 @@ router.patch(
     // Atomic guard + update.
     //
     // To prevent locking the platform out by removing the last active
-    // super_admin, we wrap the read-check-update in a transaction and take
+    // global_admin, we wrap the read-check-update in a transaction and take
     // row-level locks (SELECT ... FOR UPDATE) on every currently active
-    // super_admin row plus the target membership. Any concurrent request
-    // that also touches an active super_admin will block on the same lock
+    // global_admin row plus the target membership. Any concurrent request
+    // that also touches an active global_admin will block on the same lock
     // set and re-evaluate the invariant after the first transaction commits,
     // so two simultaneous demotions/deactivations cannot both succeed.
     const txResult = await adminDb.transaction(async (tx) => {
-      // Lock the union of (a) all currently active super_admin rows and
+      // Lock the union of (a) all currently active global_admin rows and
       // (b) the target membership row. Returning `id` is enough — we just
       // need the locks; we re-read state below.
       await tx
         .select({ id: tenantMembershipsTable.id })
         .from(tenantMembershipsTable)
         .where(
-          sql`(${tenantMembershipsTable.role} = 'super_admin'
+          sql`(${tenantMembershipsTable.role} = 'global_admin'
                 AND ${tenantMembershipsTable.isActive} = 'true')
               OR ${tenantMembershipsTable.id} = ${membershipId}`,
         )
@@ -1193,33 +1193,33 @@ router.patch(
         return { kind: "not_found" as const };
       }
 
-      const isCurrentlyActiveSuperAdmin =
-        current.role === "super_admin" && current.isActive === "true";
-      const willRemainSuperAdmin =
+      const isCurrentlyActiveGlobalAdmin =
+        current.role === "global_admin" && current.isActive === "true";
+      const willRemainGlobalAdmin =
         parsed.data.role === undefined
-          ? current.role === "super_admin"
-          : parsed.data.role === "super_admin";
+          ? current.role === "global_admin"
+          : parsed.data.role === "global_admin";
       const willRemainActive =
         parsed.data.isActive === undefined
           ? current.isActive === "true"
           : parsed.data.isActive;
-      const wouldLoseSuperAdminStatus =
-        isCurrentlyActiveSuperAdmin &&
-        (!willRemainSuperAdmin || !willRemainActive);
+      const wouldLoseGlobalAdminStatus =
+        isCurrentlyActiveGlobalAdmin &&
+        (!willRemainGlobalAdmin || !willRemainActive);
 
-      if (wouldLoseSuperAdminStatus) {
-        // Count other active super_admins under the lock taken above.
+      if (wouldLoseGlobalAdminStatus) {
+        // Count other active global_admins under the lock taken above.
         const [{ remaining } = { remaining: 0 }] = await tx
           .select({ remaining: sql<number>`COUNT(*)::int` })
           .from(tenantMembershipsTable)
           .where(
-            sql`${tenantMembershipsTable.role} = 'super_admin'
+            sql`${tenantMembershipsTable.role} = 'global_admin'
                 AND ${tenantMembershipsTable.isActive} = 'true'
                 AND ${tenantMembershipsTable.id} <> ${membershipId}`,
           );
 
         if (Number(remaining) === 0) {
-          return { kind: "last_super_admin" as const };
+          return { kind: "last_global_admin" as const };
         }
       }
 
@@ -1242,11 +1242,11 @@ router.patch(
       res.status(404).json({ error: "Member not found" });
       return;
     }
-    if (txResult.kind === "last_super_admin") {
+    if (txResult.kind === "last_global_admin") {
       res.status(409).json({
         error:
-          "Cannot remove the last active super admin — at least one active super admin must remain on the platform.",
-        code: "LAST_SUPER_ADMIN",
+          "Cannot remove the last active global admin — at least one active global admin must remain on the platform.",
+        code: "LAST_GLOBAL_ADMIN",
       });
       return;
     }
@@ -1293,7 +1293,7 @@ function startOfWeekUtc(d: Date): Date {
 
 router.get(
   "/admin/trends",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const rawWeeks = Number(req.query.weeks);
     const weeks = Number.isFinite(rawWeeks)
@@ -1426,7 +1426,7 @@ router.get(
 
 router.get(
   "/admin/tenants/:id/activity",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const id = Number(req.params.id);
     if (isNaN(id)) {
@@ -1495,7 +1495,7 @@ router.get(
 
 router.get(
   "/admin/audit-logs",
-  ...superAdminOnly,
+  ...globalAdminOnly,
   async (req: Request, res: Response): Promise<void> => {
     const tenantId = req.query.tenantId ? Number(req.query.tenantId) : undefined;
 

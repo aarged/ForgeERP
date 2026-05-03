@@ -3,17 +3,17 @@ import { useRoute, useLocation, Redirect } from "wouter";
 import { Show, useAuth } from "@clerk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  useGetSuperAdminInvitePreview,
-  useRedeemSuperAdminInvite,
+  useGetGlobalAdminInvitePreview,
+  useRedeemGlobalAdminInvite,
   useGetCurrentUser,
-  getGetSuperAdminInvitePreviewQueryKey,
+  getGetGlobalAdminInvitePreviewQueryKey,
   getGetCurrentUserQueryKey,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Shield, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 
-const PENDING_TOKEN_KEY = "forge.pendingSuperAdminInviteToken";
+const PENDING_TOKEN_KEY = "forge.pendingGlobalAdminInviteToken";
 
 export function rememberPendingInviteToken(token: string) {
   try {
@@ -43,8 +43,8 @@ export function peekPendingInviteToken(): string | null {
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-export default function SuperAdminInvitePage() {
-  const [, params] = useRoute("/super-admin-invite/:token");
+export default function GlobalAdminInvitePage() {
+  const [, params] = useRoute("/global-admin-invite/:token");
   const token = params?.token ?? "";
   const [, setLocation] = useLocation();
   const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
@@ -54,9 +54,9 @@ export default function SuperAdminInvitePage() {
     data: preview,
     isLoading: previewLoading,
     error: previewError,
-  } = useGetSuperAdminInvitePreview(token, {
+  } = useGetGlobalAdminInvitePreview(token, {
     query: {
-      queryKey: getGetSuperAdminInvitePreviewQueryKey(token),
+      queryKey: getGetGlobalAdminInvitePreviewQueryKey(token),
       enabled: !!token,
       retry: false,
     },
@@ -74,7 +74,7 @@ export default function SuperAdminInvitePage() {
   >("idle");
   const [redeemError, setRedeemError] = useState<string | null>(null);
 
-  const redeem = useRedeemSuperAdminInvite({
+  const redeem = useRedeemGlobalAdminInvite({
     mutation: {
       onSuccess: () => {
         setRedeemState("ok");
@@ -82,7 +82,7 @@ export default function SuperAdminInvitePage() {
           queryKey: getGetCurrentUserQueryKey(),
         });
         // Brief delay so the success card flashes before redirect.
-        window.setTimeout(() => setLocation("/super-admin"), 1200);
+        window.setTimeout(() => setLocation("/global-admin"), 1200);
       },
       onError: (error) => {
         const data = (error as { data?: { error?: string; code?: string } })
@@ -129,7 +129,7 @@ export default function SuperAdminInvitePage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
-            Super-admin invite
+            Global-admin invite
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -144,11 +144,11 @@ export default function SuperAdminInvitePage() {
           ) : preview.status === "revoked" ? (
             <InviteError message="This invite has been revoked." />
           ) : preview.status === "expired" ? (
-            <InviteError message="This invite has expired. Ask a super-admin to issue a new one." />
+            <InviteError message="This invite has expired. Ask a global-admin to issue a new one." />
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
-                You've been invited to become a platform super-admin
+                You've been invited to become a platform global-admin
                 {preview.createdByEmail ? (
                   <>
                     {" "}
@@ -229,7 +229,7 @@ export default function SuperAdminInvitePage() {
                 ) : redeemState === "ok" ? (
                   <RedeemStatus
                     icon="check"
-                    message="You're now a super-admin. Redirecting…"
+                    message="You're now a global-admin. Redirecting…"
                   />
                 ) : redeemState === "error" ? (
                   <div className="space-y-3 pt-2">
@@ -253,7 +253,7 @@ export default function SuperAdminInvitePage() {
                 ) : (
                   <RedeemStatus
                     icon="spinner"
-                    message="Activating super-admin access…"
+                    message="Activating global-admin access…"
                   />
                 )}
               </Show>
@@ -261,7 +261,7 @@ export default function SuperAdminInvitePage() {
           )}
           <p className="text-[11px] text-muted-foreground/70 pt-2 border-t">
             Path:{" "}
-            <code className="font-mono">{basePath}/super-admin-invite/…</code>
+            <code className="font-mono">{basePath}/global-admin-invite/…</code>
           </p>
         </CardContent>
       </Card>

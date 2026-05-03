@@ -41,26 +41,26 @@ const router: IRouter = Router();
 const tenantUserMiddleware = [
   requireAuth,
   tenantContext,
-  requireRole("viewer", "purchaser", "warehouse", "approver", "accountant", "tenant_admin", "super_admin"),
+  requireRole("viewer", "purchaser", "warehouse", "approver", "accountant", "tenant_admin", "global_admin"),
 ];
 
 const tenantWriteMiddleware = [
   requireAuth,
   tenantContext,
-  requireRole("purchaser", "warehouse", "approver", "accountant", "tenant_admin", "super_admin"),
+  requireRole("purchaser", "warehouse", "approver", "accountant", "tenant_admin", "global_admin"),
 ];
 
 const tenantAdminMiddleware = [
   requireAuth,
   tenantContext,
-  requireRole("tenant_admin", "super_admin"),
+  requireRole("tenant_admin", "global_admin"),
 ];
 
-// Approval actions are restricted to designated approvers, admins, and super-admins
+// Approval actions are restricted to designated approvers, admins, and global-admins
 const approverMiddleware = [
   requireAuth,
   tenantContext,
-  requireRole("approver", "tenant_admin", "super_admin"),
+  requireRole("approver", "tenant_admin", "global_admin"),
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -606,7 +606,7 @@ async function resolveApproverClerkIds(
         .from(tenantMembershipsTable)
         .where(and(
           eq(tenantMembershipsTable.tenantId, tenantId),
-          inArray(tenantMembershipsTable.role, roles as ("super_admin" | "tenant_admin" | "purchaser" | "warehouse" | "approver" | "accountant" | "viewer")[]),
+          inArray(tenantMembershipsTable.role, roles as ("global_admin" | "tenant_admin" | "purchaser" | "warehouse" | "approver" | "accountant" | "viewer")[]),
         )));
     fromRoles = members.map((m) => m.clerkId);
   }
@@ -700,12 +700,12 @@ async function executeApprovalDecision(opts: {
       const hasRoleConstraint = approverRoles.length > 0;
       const hasUserConstraint = approverUserIds.length > 0;
 
-      // Eligibility rules — hard baseline: actor must have approver|tenant_admin|super_admin role.
+      // Eligibility rules — hard baseline: actor must have approver|tenant_admin|global_admin role.
       // • No constraints (open step) → baseline role check applies (any baseline-role user may act)
       // • Role constraint only → actor's role must be in the configured list
       // • User constraint only → actor's clerk ID must be in the list AND role is baseline
       // • Both constraints → either role OR user match is sufficient (role still baseline enforced at route level)
-      const baselineApproverRoles = ["approver", "tenant_admin", "super_admin"];
+      const baselineApproverRoles = ["approver", "tenant_admin", "global_admin"];
       if (!baselineApproverRoles.includes(actorRole)) {
         // Strict baseline: even explicit approverUserIds must hold a baseline approver role
         throw Object.assign(
@@ -893,7 +893,7 @@ router.post("/procurement/approval-workflows/:id/steps", ...tenantAdminMiddlewar
     stepName: z.string().min(1),
     approverType: z.enum(["role", "user"]).default("role"),
     // Only roles that are authorised to reach /decision endpoints
-    approverRoles: z.array(z.enum(["approver", "tenant_admin", "super_admin"])).default([]),
+    approverRoles: z.array(z.enum(["approver", "tenant_admin", "global_admin"])).default([]),
     approverUserIds: z.array(z.string()).default([]),
     approvalMode: z.enum(["any", "all"]).default("any"),
     valueLimit: z.number().nonnegative().optional(),
@@ -1162,7 +1162,7 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
 
   // Always advance to pending_approval on submit. The status only moves to "approved"
   // after an approver explicitly acts via the /decision endpoint — even when no workflow
-  // matches, an eligible approver (approver | tenant_admin | super_admin) must take action.
+  // matches, an eligible approver (approver | tenant_admin | global_admin) must take action.
   const [updated] = await withTenantDb(tenantId, (db) =>
     db.update(purchaseRequisitionsTable)
       .set({
@@ -1191,7 +1191,7 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
         .from(tenantMembershipsTable)
         .where(and(
           eq(tenantMembershipsTable.tenantId, tenantId),
-          inArray(tenantMembershipsTable.role, ["approver", "tenant_admin", "super_admin"]),
+          inArray(tenantMembershipsTable.role, ["approver", "tenant_admin", "global_admin"]),
         )));
     const approverIds = [...new Set(baselineApprovers.map((m) => m.clerkId))];
     await Promise.all(approverIds.map((uid) =>
@@ -1205,7 +1205,7 @@ router.post("/procurement/requisitions/:id/submit", ...tenantWriteMiddleware, as
   res.json(updated);
 });
 
-// Approve/reject/return — restricted to approver, tenant_admin, super_admin
+// Approve/reject/return — restricted to approver, tenant_admin, global_admin
 router.post("/procurement/requisitions/:id/decision", ...approverMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail, userRole } = req as TenantRequest;
   const id = Number(req.params.id);
@@ -1687,7 +1687,7 @@ router.post("/procurement/purchase-orders/:id/submit", ...tenantWriteMiddleware,
   res.json(updated);
 });
 
-// Approve/reject/return PO — restricted to approver, tenant_admin, super_admin
+// Approve/reject/return PO — restricted to approver, tenant_admin, global_admin
 router.post("/procurement/purchase-orders/:id/decision", ...approverMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail, userRole } = req as TenantRequest;
   const id = Number(req.params.id);
@@ -2724,8 +2724,8 @@ router.get("/procurement/reports/pending-approvals", ...approverMiddleware, asyn
         .where(and(eq(purchaseOrdersTable.tenantId, tenantId), eq(purchaseOrdersTable.status, "pending_approval"), isNull(purchaseOrdersTable.deletedAt)))),
   ]);
 
-  // Admins and super_admin see all pending items; approvers see only items on steps they can act on
-  if (userRole === "tenant_admin" || userRole === "super_admin") {
+  // Admins and global_admin see all pending items; approvers see only items on steps they can act on
+  if (userRole === "tenant_admin" || userRole === "global_admin") {
     return void res.json({
       pendingRequisitions: allReqs,
       pendingPurchaseOrders: allPos,

@@ -11,7 +11,7 @@ import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 
 export const userRoleEnum = pgEnum("user_role", [
-  "super_admin",
+  "global_admin",
   "tenant_admin",
   "purchaser",
   "warehouse",

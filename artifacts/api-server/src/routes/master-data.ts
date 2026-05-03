@@ -46,7 +46,7 @@ const tenantUserMiddleware = [
     "approver",
     "accountant",
     "tenant_admin",
-    "super_admin",
+    "global_admin",
   ),
 ];
 
@@ -59,7 +59,7 @@ const tenantWriteMiddleware = [
     "approver",
     "accountant",
     "tenant_admin",
-    "super_admin",
+    "global_admin",
   ),
 ];
 

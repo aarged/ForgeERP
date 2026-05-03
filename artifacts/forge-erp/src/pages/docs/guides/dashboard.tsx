@@ -59,7 +59,7 @@ export default function DashboardGuide() {
                 "GL postings today, unreconciled drafts, outstanding receivables, trial balance totals, and a month-to-date inflow / outflow estimate.",
             },
             {
-              name: "tenant_admin / super_admin",
+              name: "tenant_admin / global_admin",
               type: "Composite",
               description:
                 "Sees every tile from every role, plus tenant-health signals (active users, audit log volume, and onboarding completion if applicable).",

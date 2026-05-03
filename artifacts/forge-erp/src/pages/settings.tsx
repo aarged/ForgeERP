@@ -578,7 +578,7 @@ function MembersPanel() {
                                 },
                               });
                             }}
-                            disabled={isUpdatingThis || m.role === "super_admin"}
+                            disabled={isUpdatingThis || m.role === "global_admin"}
                           >
                             <SelectTrigger
                               className="w-36 h-8"
@@ -634,7 +634,7 @@ function MembersPanel() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
-                              disabled={isSelf || m.role === "super_admin"}
+                              disabled={isSelf || m.role === "global_admin"}
                               data-testid={`button-actions-${m.id}`}
                             >
                               <MoreHorizontal className="h-4 w-4" />
@@ -771,7 +771,7 @@ export default function Settings() {
   });
 
   const role = currentUser?.role ?? "viewer";
-  const canManageMembers = role === "tenant_admin" || role === "super_admin";
+  const canManageMembers = role === "tenant_admin" || role === "global_admin";
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">

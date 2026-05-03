@@ -24,10 +24,10 @@ import Sales from "@/pages/sales";
 import Inventory from "@/pages/inventory";
 import Finance from "@/pages/finance";
 import Reports from "@/pages/reports";
-import SuperAdmin from "@/pages/super-admin";
-import SuperAdminInvitePage, {
+import GlobalAdmin from "@/pages/global-admin";
+import GlobalAdminInvitePage, {
   peekPendingInviteToken,
-} from "@/pages/super-admin-invite";
+} from "@/pages/global-admin-invite";
 import MasterData from "@/pages/master-data";
 import PickerApp from "@/pages/picking/PickerApp";
 import DocsPage from "@/pages/docs";
@@ -203,10 +203,10 @@ function OnboardingRoute({ component: Component }: { component: React.ComponentT
 }
 
 /**
- * SuperAdminRoute only renders for users with the `super_admin` role.
+ * GlobalAdminRoute only renders for users with the `global_admin` role.
  * All other signed-in users are redirected to /dashboard.
  */
-function SuperAdminRoute({ component: Component }: { component: React.ComponentType }) {
+function GlobalAdminRoute({ component: Component }: { component: React.ComponentType }) {
   const { data: currentUser, isLoading } = useGetCurrentUser({
     query: { queryKey: getGetCurrentUserQueryKey() },
   });
@@ -218,7 +218,7 @@ function SuperAdminRoute({ component: Component }: { component: React.ComponentT
       </Show>
       <Show when="signed-in">
         {isLoading ? null : (
-          currentUser?.role !== "super_admin" ? (
+          currentUser?.role !== "global_admin" ? (
             <Redirect to="/dashboard" />
           ) : (
             <AppShell>
@@ -299,24 +299,24 @@ function ClerkAuthTokenBridge() {
 }
 
 /**
- * If the user clicked a /super-admin-invite/:token link before signing in,
+ * If the user clicked a /global-admin-invite/:token link before signing in,
  * we stash the token in sessionStorage. After Clerk completes the sign-in /
  * sign-up flow they typically land on /dashboard or /onboarding — this
  * watcher routes them back to the invite landing page so the redeem hook
  * can run.
  */
-function PendingSuperAdminInviteRedirect() {
+function PendingGlobalAdminInviteRedirect() {
   const [location, setLocation] = useLocation();
   const { isLoaded, isSignedIn } = useAuth();
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
-    if (location.startsWith("/super-admin-invite/")) return;
+    if (location.startsWith("/global-admin-invite/")) return;
     if (location.startsWith("/sign-in") || location.startsWith("/sign-up"))
       return;
     const token = peekPendingInviteToken();
     if (token) {
-      setLocation(`/super-admin-invite/${token}`);
+      setLocation(`/global-admin-invite/${token}`);
     }
   }, [isLoaded, isSignedIn, location, setLocation]);
 
@@ -353,7 +353,7 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <ClerkAuthTokenBridge />
         <ClerkQueryClientCacheInvalidator />
-        <PendingSuperAdminInviteRedirect />
+        <PendingGlobalAdminInviteRedirect />
         <Switch>
           <Route path="/" component={HomeRedirect} />
           <Route path="/sign-in/*?" component={SignInPage} />
@@ -371,8 +371,13 @@ function ClerkProviderWithRoutes() {
           <Route path="/inventory"><ProtectedRoute component={Inventory} /></Route>
           <Route path="/finance"><ProtectedRoute component={Finance} /></Route>
           <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
-          <Route path="/super-admin"><SuperAdminRoute component={SuperAdmin} /></Route>
-          <Route path="/super-admin-invite/:token" component={SuperAdminInvitePage} />
+          <Route path="/global-admin"><GlobalAdminRoute component={GlobalAdmin} /></Route>
+          <Route path="/global-admin-invite/:token" component={GlobalAdminInvitePage} />
+          {/* Legacy paths from before the super_admin → global_admin rename. */}
+          <Route path="/super-admin"><Redirect to="/global-admin" /></Route>
+          <Route path="/super-admin-invite/:token">
+            {(params) => <Redirect to={`/global-admin-invite/${params.token}`} />}
+          </Route>
           <Route path="/docs"><ProtectedRoute component={DocsPage} /></Route>
           <Route path="/docs/:slug"><ProtectedRoute component={DocsPage} /></Route>
           <Route path="/picking" component={PickerApp} />
