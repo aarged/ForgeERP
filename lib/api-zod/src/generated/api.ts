@@ -1289,6 +1289,8 @@ export const ListItemsResponse = zod.object({
         isActive: zod.boolean().optional(),
         hasVariants: zod.boolean().optional(),
         notes: zod.string().nullish(),
+        preferredSupplierId: zod.number().nullish(),
+        supplierItemNumber: zod.string().nullish(),
         createdAt: zod.coerce.date().optional(),
         updatedAt: zod.coerce.date().optional(),
       }),
@@ -1317,6 +1319,8 @@ export const CreateItemBody = zod.object({
   isActive: zod.boolean().optional(),
   hasVariants: zod.boolean().optional(),
   notes: zod.string().optional(),
+  preferredSupplierId: zod.number().nullish(),
+  supplierItemNumber: zod.string().nullish(),
 });
 
 /**
@@ -1346,11 +1350,14 @@ export const LookupItemResponse = zod
     isActive: zod.boolean().optional(),
     hasVariants: zod.boolean().optional(),
     notes: zod.string().nullish(),
+    preferredSupplierId: zod.number().nullish(),
+    supplierItemNumber: zod.string().nullish(),
     createdAt: zod.coerce.date().optional(),
     updatedAt: zod.coerce.date().optional(),
   })
   .and(
     zod.object({
+      preferredSupplierName: zod.string().nullish(),
       variants: zod
         .array(
           zod.object({
@@ -1456,11 +1463,14 @@ export const GetItemResponse = zod
     isActive: zod.boolean().optional(),
     hasVariants: zod.boolean().optional(),
     notes: zod.string().nullish(),
+    preferredSupplierId: zod.number().nullish(),
+    supplierItemNumber: zod.string().nullish(),
     createdAt: zod.coerce.date().optional(),
     updatedAt: zod.coerce.date().optional(),
   })
   .and(
     zod.object({
+      preferredSupplierName: zod.string().nullish(),
       variants: zod
         .array(
           zod.object({
@@ -1530,6 +1540,8 @@ export const UpdateItemBody = zod.object({
   isActive: zod.boolean().optional(),
   hasVariants: zod.boolean().optional(),
   notes: zod.string().optional(),
+  preferredSupplierId: zod.number().nullish(),
+  supplierItemNumber: zod.string().nullish(),
 });
 
 export const UpdateItemResponse = zod.object({
@@ -1551,6 +1563,8 @@ export const UpdateItemResponse = zod.object({
   isActive: zod.boolean().optional(),
   hasVariants: zod.boolean().optional(),
   notes: zod.string().nullish(),
+  preferredSupplierId: zod.number().nullish(),
+  supplierItemNumber: zod.string().nullish(),
   createdAt: zod.coerce.date().optional(),
   updatedAt: zod.coerce.date().optional(),
 });

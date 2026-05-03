@@ -160,7 +160,17 @@ router.get(
       withTenantDb(tenantId, (db) => db.select().from(itemLocationsTable).where(and(eq(itemLocationsTable.itemId, id), eq(itemLocationsTable.tenantId, tenantId)))),
       withTenantDb(tenantId, (db) => db.select().from(itemCrossReferencesTable).where(and(eq(itemCrossReferencesTable.itemId, id), eq(itemCrossReferencesTable.tenantId, tenantId)))),
     ]);
-    res.json({ ...items[0], variants, attributes, locations, crossRefs });
+    let preferredSupplierName: string | null = null;
+    const prefId = (items[0] as { preferredSupplierId?: number | null }).preferredSupplierId;
+    if (prefId) {
+      const sup = await withTenantDb(tenantId, (db) =>
+        db.select({ name: suppliersTable.name }).from(suppliersTable)
+          .where(and(eq(suppliersTable.id, prefId), eq(suppliersTable.tenantId, tenantId)))
+          .limit(1),
+      );
+      preferredSupplierName = sup[0]?.name ?? null;
+    }
+    res.json({ ...items[0], preferredSupplierName, variants, attributes, locations, crossRefs });
   },
 );
 
@@ -198,7 +208,18 @@ router.get(
     ]);
 
     if (!item[0]) { res.status(404).json({ error: "Item not found" }); return; }
-    res.json({ ...item[0], variants, attributes, locations, crossRefs });
+
+    let preferredSupplierName: string | null = null;
+    const prefId = (item[0] as { preferredSupplierId?: number | null }).preferredSupplierId;
+    if (prefId) {
+      const sup = await withTenantDb(tenantId, (db) =>
+        db.select({ name: suppliersTable.name }).from(suppliersTable)
+          .where(and(eq(suppliersTable.id, prefId), eq(suppliersTable.tenantId, tenantId)))
+          .limit(1),
+      );
+      preferredSupplierName = sup[0]?.name ?? null;
+    }
+    res.json({ ...item[0], preferredSupplierName, variants, attributes, locations, crossRefs });
   },
 );
 
@@ -219,6 +240,8 @@ const itemCreateSchema = z.object({
   isActive: z.boolean().default(true),
   hasVariants: z.boolean().default(false),
   notes: z.string().optional(),
+  preferredSupplierId: z.number().int().nullable().optional(),
+  supplierItemNumber: z.string().nullable().optional(),
 });
 
 router.post(

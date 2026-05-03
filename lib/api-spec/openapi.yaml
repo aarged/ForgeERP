@@ -8745,6 +8745,8 @@ components:
         isActive: { type: boolean }
         hasVariants: { type: boolean }
         notes: { type: string, nullable: true }
+        preferredSupplierId: { type: integer, nullable: true }
+        supplierItemNumber: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -8788,6 +8790,7 @@ components:
         - $ref: "#/components/schemas/MasterItem"
         - type: object
           properties:
+            preferredSupplierName: { type: string, nullable: true }
             variants:
               type: array
               items:
@@ -8834,6 +8837,8 @@ components:
         isActive: { type: boolean }
         hasVariants: { type: boolean }
         notes: { type: string }
+        preferredSupplierId: { type: integer, nullable: true }
+        supplierItemNumber: { type: string, nullable: true }
 
     CreateItemVariantBody:
       type: object

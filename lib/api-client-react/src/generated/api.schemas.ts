@@ -1228,6 +1228,8 @@ export interface MasterItem {
   isActive?: boolean;
   hasVariants?: boolean;
   notes?: string | null;
+  preferredSupplierId?: number | null;
+  supplierItemNumber?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -1269,6 +1271,7 @@ export interface ItemCrossReference {
 export type MasterItemDetailLocationsItem = { [key: string]: unknown };
 
 export type MasterItemDetail = MasterItem & {
+  preferredSupplierName?: string | null;
   variants?: ItemVariant[];
   attributes?: ItemAttribute[];
   locations?: MasterItemDetailLocationsItem[];
@@ -1316,6 +1319,8 @@ export interface CreateItemBody {
   isActive?: boolean;
   hasVariants?: boolean;
   notes?: string;
+  preferredSupplierId?: number | null;
+  supplierItemNumber?: string | null;
 }
 
 export type CreateItemVariantBodyAttributes = { [key: string]: unknown };

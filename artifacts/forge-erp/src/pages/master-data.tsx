@@ -641,6 +641,7 @@ type CrossRefEntry = {
   refType: string;
   refCode: string;
   refDescription?: string;
+  supplierId?: number;
   competitorName?: string;
   competitorPrice?: string;
 };
@@ -652,31 +653,49 @@ function ItemCrossRefsPanel({ itemId }: { itemId: number }) {
   const crossRefs = (data?.crossRefs ?? []) as ItemCrossReference[];
 
   const [localRefs, setLocalRefs] = useState<CrossRefEntry[]>([]);
-  const [newType, setNewType] = useState("alternative");
+  const [newType, setNewType] = useState("cross");
   const [newCode, setNewCode] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newCompetitorName, setNewCompetitorName] = useState("");
   const [newCompetitorPrice, setNewCompetitorPrice] = useState("");
 
   useEffect(() => {
-    setLocalRefs(crossRefs.map((r) => ({
-      refType: r.refType ?? "alternative",
-      refCode: r.refCode ?? "",
-      refDescription: r.refDescription ?? undefined,
-      competitorName: (r as { competitorName?: string }).competitorName ?? undefined,
-      competitorPrice: (r as { competitorPrice?: string }).competitorPrice ?? undefined,
-    })));
+    // Alternative-supplier rows (refType=alternative with supplierId) are now
+    // surfaced via the AlternativeSuppliersPanel — exclude them here.
+    setLocalRefs(crossRefs
+      .filter((r) => !(r.refType === "alternative" && (r as { supplierId?: number | null }).supplierId))
+      .map((r) => ({
+        refType: r.refType ?? "cross",
+        refCode: r.refCode ?? "",
+        refDescription: r.refDescription ?? undefined,
+        supplierId: (r as { supplierId?: number | null }).supplierId ?? undefined,
+        competitorName: (r as { competitorName?: string }).competitorName ?? undefined,
+        competitorPrice: (r as { competitorPrice?: string }).competitorPrice ?? undefined,
+      })));
   }, [data]);
 
   const save = async (updated: CrossRefEntry[]) => {
     try {
-      const payload: ItemCrossReferenceInput[] = updated.map((r) => ({
-        refType: r.refType as ItemCrossReferenceInput["refType"],
-        refCode: r.refCode,
-        refDescription: r.refDescription,
-        competitorName: r.competitorName,
-        competitorPrice: r.competitorPrice ? Number(r.competitorPrice) : undefined,
-      }));
+      // Preserve alternative-supplier rows owned by AlternativeSuppliersPanel
+      const altSupplierRows: ItemCrossReferenceInput[] = crossRefs
+        .filter((r) => r.refType === "alternative" && (r as { supplierId?: number | null }).supplierId)
+        .map((r) => ({
+          refType: "alternative" as const,
+          refCode: r.refCode ?? "",
+          refDescription: r.refDescription ?? undefined,
+          supplierId: (r as { supplierId?: number | null }).supplierId ?? undefined,
+        }));
+      const payload: ItemCrossReferenceInput[] = [
+        ...altSupplierRows,
+        ...updated.map((r) => ({
+          refType: r.refType as ItemCrossReferenceInput["refType"],
+          refCode: r.refCode,
+          refDescription: r.refDescription,
+          supplierId: r.supplierId,
+          competitorName: r.competitorName,
+          competitorPrice: r.competitorPrice ? Number(r.competitorPrice) : undefined,
+        })),
+      ];
       await setCrossRefs.mutateAsync({ id: itemId, data: payload });
       toast({ title: "Cross-references saved" });
       refetch();
@@ -707,6 +726,7 @@ function ItemCrossRefsPanel({ itemId }: { itemId: number }) {
   return (
     <div className="space-y-3 pt-2 border-t">
       <h4 className="text-sm font-semibold">Cross-References &amp; Competitor Pricing</h4>
+      <p className="text-xs text-muted-foreground">For supplier alternatives, use the Supplier section above.</p>
       {localRefs.length > 0 ? (
         <div className="rounded border divide-y text-sm">
           {localRefs.map((r, i) => (
@@ -729,7 +749,6 @@ function ItemCrossRefsPanel({ itemId }: { itemId: number }) {
           <Select value={newType} onValueChange={setNewType}>
             <SelectTrigger className="h-8 text-xs w-32"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="alternative">Alternative</SelectItem>
               <SelectItem value="cross">Cross</SelectItem>
               <SelectItem value="competitor">Competitor</SelectItem>
             </SelectContent>
@@ -744,6 +763,118 @@ function ItemCrossRefsPanel({ itemId }: { itemId: number }) {
           </div>
         )}
         <Button size="sm" className="h-8" onClick={addRef} disabled={setCrossRefs.isPending || !newCode.trim()}>
+          <Plus className="h-3 w-3 mr-1" /> Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Alternative Suppliers Panel ──────────────────────────────────────────────
+
+type AltSupplierEntry = {
+  supplierId: number;
+  supplierItemNumber: string;
+};
+
+function AlternativeSuppliersPanel({ itemId }: { itemId: number }) {
+  const { toast } = useToast();
+  const { data, refetch } = useGetItem(itemId);
+  const setCrossRefs = useSetItemCrossReferences();
+  const suppliersQ = useListSuppliers({ limit: 200 });
+  const suppliers = suppliersQ.data?.suppliers ?? [];
+  const crossRefs = (data?.crossRefs ?? []) as ItemCrossReference[];
+
+  const [local, setLocal] = useState<AltSupplierEntry[]>([]);
+  const [newSupplierId, setNewSupplierId] = useState<string>("");
+  const [newPart, setNewPart] = useState("");
+
+  useEffect(() => {
+    setLocal(
+      crossRefs
+        .filter((r) => r.refType === "alternative" && (r as { supplierId?: number | null }).supplierId)
+        .map((r) => ({
+          supplierId: (r as { supplierId?: number | null }).supplierId as number,
+          supplierItemNumber: r.refCode ?? "",
+        })),
+    );
+  }, [data]);
+
+  const save = async (updatedAlts: AltSupplierEntry[]) => {
+    try {
+      // Preserve all non-alternative-supplier rows (cross, competitor, alternative w/o supplier).
+      const others: ItemCrossReferenceInput[] = crossRefs
+        .filter((r) => !(r.refType === "alternative" && (r as { supplierId?: number | null }).supplierId))
+        .map((r) => ({
+          refType: (r.refType ?? "cross") as ItemCrossReferenceInput["refType"],
+          refCode: r.refCode ?? "",
+          refDescription: r.refDescription ?? undefined,
+          supplierId: (r as { supplierId?: number | null }).supplierId ?? undefined,
+          competitorName: (r as { competitorName?: string | null }).competitorName ?? undefined,
+          competitorPrice: (r as { competitorPrice?: string | null }).competitorPrice
+            ? Number((r as { competitorPrice?: string }).competitorPrice) : undefined,
+        }));
+      const payload: ItemCrossReferenceInput[] = [
+        ...others,
+        ...updatedAlts.map((a) => ({
+          refType: "alternative" as const,
+          refCode: a.supplierItemNumber.trim(),
+          supplierId: a.supplierId,
+        })),
+      ];
+      await setCrossRefs.mutateAsync({ id: itemId, data: payload });
+      toast({ title: "Alternative suppliers saved" });
+      refetch();
+    } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
+  };
+
+  const addAlt = () => {
+    if (!newSupplierId || !newPart.trim()) return;
+    const entry: AltSupplierEntry = {
+      supplierId: Number(newSupplierId),
+      supplierItemNumber: newPart.trim(),
+    };
+    const updated = [...local, entry];
+    setLocal(updated);
+    setNewSupplierId(""); setNewPart("");
+    save(updated);
+  };
+
+  const removeAlt = (idx: number) => {
+    const updated = local.filter((_, i) => i !== idx);
+    setLocal(updated);
+    save(updated);
+  };
+
+  const supplierName = (id: number) => suppliers.find((s) => s.id === id)?.name ?? `Supplier #${id}`;
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm font-medium">Alternative Suppliers</Label>
+      {local.length > 0 ? (
+        <div className="rounded border divide-y text-sm">
+          {local.map((a, i) => (
+            <div key={i} className="flex items-center gap-2 px-3 py-1.5">
+              <span className="flex-1 text-xs font-medium">{supplierName(a.supplierId)}</span>
+              <span className="text-muted-foreground text-xs font-mono">{a.supplierItemNumber}</span>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeAlt(i)}>
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-xs text-muted-foreground">No alternative suppliers yet.</p>}
+      <div className="flex gap-2 items-end">
+        <div className="flex-1">
+          <Select value={newSupplierId} onValueChange={setNewSupplierId}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Choose supplier…" /></SelectTrigger>
+            <SelectContent>
+              {suppliers.map((s) => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <Input value={newPart} onChange={(e) => setNewPart(e.target.value)} placeholder="Supplier item # (required)" className="h-8 text-xs w-40" />
+        <Button size="sm" className="h-8" onClick={addAlt} disabled={!newSupplierId || !newPart.trim() || setCrossRefs.isPending}>
           <Plus className="h-3 w-3 mr-1" /> Add
         </Button>
       </div>
@@ -1259,6 +1390,9 @@ function ItemModal({
     },
   });
 
+  const suppliersQ = useListSuppliers({ limit: 200 });
+  const suppliers = suppliersQ.data?.suppliers ?? [];
+
   useEffect(() => {
     if (open) {
       reset({
@@ -1274,6 +1408,8 @@ function ItemModal({
         category: item?.category ?? "",
         notes: item?.notes ?? "",
         isActive: item?.isActive ?? true,
+        preferredSupplierId: (item as { preferredSupplierId?: number | null })?.preferredSupplierId ?? null,
+        supplierItemNumber: (item as { supplierItemNumber?: string | null })?.supplierItemNumber ?? "",
       });
     }
   }, [open, item, reset]);
@@ -1350,6 +1486,35 @@ function ItemModal({
           <FormField label="Category">
             <Input {...register("category")} />
           </FormField>
+          <div className="space-y-3 pt-3 border-t">
+            <h4 className="text-sm font-semibold">Supplier</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Preferred Supplier">
+                <Controller
+                  control={control}
+                  name="preferredSupplierId"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value != null ? String(field.value) : "__none__"}
+                      onValueChange={(v) => field.onChange(v === "__none__" ? null : Number(v))}
+                    >
+                      <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {suppliers.map((s) => (
+                          <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </FormField>
+              <FormField label="Supplier Item Number">
+                <Input {...register("supplierItemNumber")} placeholder="Supplier's part #" />
+              </FormField>
+            </div>
+            {isEdit && item?.id && <AlternativeSuppliersPanel itemId={item.id} />}
+          </div>
           <div className="flex items-center gap-2">
             <Controller control={control} name="isActive" render={({ field }) => (
               <Switch checked={field.value ?? true} onCheckedChange={field.onChange} id="item-active" />

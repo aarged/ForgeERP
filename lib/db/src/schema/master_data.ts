@@ -7,6 +7,7 @@ import {
   numeric,
   boolean,
   jsonb,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { tenantsTable } from "./tenants";
 
@@ -87,6 +88,10 @@ export const itemsTable = pgTable("items", {
   isActive: boolean("is_active").notNull().default(true),
   hasVariants: boolean("has_variants").notNull().default(false),
   notes: text("notes"),
+  /** Preferred supplier for this item (FK -> suppliers.id). */
+  preferredSupplierId: integer("preferred_supplier_id").references((): AnyPgColumn => suppliersTable.id, { onDelete: "set null" }),
+  /** Preferred supplier's part number for this item. */
+  supplierItemNumber: text("supplier_item_number"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
