@@ -1125,6 +1125,98 @@ export const GetAdminTrendsResponse = zod.object({
 });
 
 /**
+ * Returns recently issued super-admin invite links (active, used, revoked, or expired). Super-admin only.
+
+ * @summary List super-admin invite links
+ */
+export const ListSuperAdminInvitesResponseItem = zod.object({
+  id: zod.number(),
+  email: zod
+    .string()
+    .nullish()
+    .describe("When set, only the user with this email may redeem."),
+  url: zod.string(),
+  createdAt: zod.string(),
+  createdByEmail: zod.string().nullish(),
+  expiresAt: zod.string(),
+  usedAt: zod.string().nullish(),
+  usedByEmail: zod.string().nullish(),
+  revokedAt: zod.string().nullish(),
+  status: zod.enum(["active", "used", "revoked", "expired"]),
+});
+export const ListSuperAdminInvitesResponse = zod.array(
+  ListSuperAdminInvitesResponseItem,
+);
+
+/**
+ * Generates a signed, time-limited URL the recipient can open to promote their tenant_membership to super_admin without using the `pnpm grant-super-admin` shell script. Super-admin only.
+
+ * @summary Create a single-use super-admin invite link
+ */
+export const createSuperAdminInviteBodyTtlHoursDefault = 72;
+export const createSuperAdminInviteBodyTtlHoursMax = 720;
+
+export const CreateSuperAdminInviteBody = zod.object({
+  email: zod
+    .string()
+    .email()
+    .optional()
+    .describe("Optional — when set, only this email can redeem the invite."),
+  ttlHours: zod
+    .number()
+    .min(1)
+    .max(createSuperAdminInviteBodyTtlHoursMax)
+    .default(createSuperAdminInviteBodyTtlHoursDefault),
+});
+
+/**
+ * @summary Revoke a pending super-admin invite link
+ */
+export const RevokeSuperAdminInviteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RevokeSuperAdminInviteResponse = zod.object({
+  id: zod.number(),
+  revoked: zod.boolean().optional(),
+  alreadyRevoked: zod.boolean().optional(),
+});
+
+/**
+ * Validates the invite token and returns metadata so the landing page can show "this invite is for X / expires Y". No auth required — the token itself is the secret.
+
+ * @summary Preview a super-admin invite (public)
+ */
+export const GetSuperAdminInvitePreviewParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+export const GetSuperAdminInvitePreviewResponse = zod.object({
+  email: zod.string().nullish(),
+  expiresAt: zod.string(),
+  createdByEmail: zod.string().nullish(),
+  status: zod.enum(["active", "used", "revoked", "expired"]),
+});
+
+/**
+ * Called by the signed-in invitee to consume their token and promote their active tenant_membership to super_admin. The user must have completed onboarding first (active membership row).
+
+ * @summary Redeem a super-admin invite
+ */
+export const redeemSuperAdminInviteBodyTokenMin = 16;
+
+export const RedeemSuperAdminInviteBody = zod.object({
+  token: zod.string().min(redeemSuperAdminInviteBodyTokenMin),
+});
+
+export const RedeemSuperAdminInviteResponse = zod.object({
+  ok: zod.boolean(),
+  wasAlreadySuperAdmin: zod.boolean().optional(),
+  role: zod.string(),
+  tenantId: zod.number(),
+});
+
+/**
  * Returns a daily count of audit-log events for the given tenant for the last N days (default 30). Used to render the activity sparkline in the tenant detail sheet.
 
  * @summary Get per-tenant activity counts

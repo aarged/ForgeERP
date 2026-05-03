@@ -9,3 +9,4 @@ export * from "./notifications";
 export * from "./sales";
 export * from "./inventory";
 export * from "./api_keys";
+export * from "./super_admin_invites";

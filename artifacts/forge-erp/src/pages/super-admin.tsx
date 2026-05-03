@@ -20,6 +20,10 @@ import {
   useUpdateAdminTenantMember,
   useGetAdminAuditLogs,
   useInviteAdminTenantMember,
+  useListSuperAdminInvites,
+  useCreateSuperAdminInvite,
+  useRevokeSuperAdminInvite,
+  getListSuperAdminInvitesQueryKey,
   getListAdminTenantsQueryKey,
   getGetAdminKpiQueryKey,
   getGetTenantInvoicesQueryKey,
@@ -122,6 +126,8 @@ import {
   Eye,
   UserPlus,
   Mail,
+  Copy,
+  Link as LinkIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -1820,6 +1826,310 @@ function MetadataDiff({ log }: { log: AuditLog }) {
   );
 }
 
+// ── Super-admin invite links tab ─────────────────────────────────────────────
+
+function formatRelative(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now();
+  const abs = Math.abs(ms);
+  const m = Math.round(abs / 60_000);
+  const h = Math.round(abs / 3_600_000);
+  const d = Math.round(abs / 86_400_000);
+  const sign = ms >= 0 ? "in " : "";
+  const suffix = ms >= 0 ? "" : " ago";
+  if (d >= 1) return `${sign}${d}d${suffix}`;
+  if (h >= 1) return `${sign}${h}h${suffix}`;
+  return `${sign}${m}m${suffix}`;
+}
+
+function inviteStatusStyles(status: string): string {
+  switch (status) {
+    case "active":
+      return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400";
+    case "used":
+      return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
+    case "revoked":
+      return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
+    case "expired":
+      return "bg-muted text-muted-foreground";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
+function SuperAdminInvitesTab() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState("");
+  const [ttlHours, setTtlHours] = useState<number>(72);
+  const [lastUrl, setLastUrl] = useState<string | null>(null);
+
+  const { data: invites, isLoading } = useListSuperAdminInvites({
+    query: { queryKey: getListSuperAdminInvitesQueryKey() },
+  });
+
+  const createInvite = useCreateSuperAdminInvite({
+    mutation: {
+      onSuccess: (result) => {
+        setLastUrl(result.url);
+        setEmail("");
+        void queryClient.invalidateQueries({
+          queryKey: getListSuperAdminInvitesQueryKey(),
+        });
+        // Try to copy the link automatically.
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(result.url).then(
+            () =>
+              toast({
+                title: "Invite link created",
+                description: "Copied to clipboard.",
+              }),
+            () =>
+              toast({
+                title: "Invite link created",
+                description: "Copy the link below and share it.",
+              }),
+          );
+        } else {
+          toast({ title: "Invite link created" });
+        }
+      },
+      onError: (error) => {
+        const data = (error as { data?: { error?: string } })?.data;
+        toast({
+          title: "Failed to create invite",
+          description: data?.error ?? "Please try again.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const revokeInvite = useRevokeSuperAdminInvite({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Invite revoked" });
+        void queryClient.invalidateQueries({
+          queryKey: getListSuperAdminInvitesQueryKey(),
+        });
+      },
+      onError: (error) => {
+        const data = (error as { data?: { error?: string } })?.data;
+        toast({
+          title: "Could not revoke",
+          description: data?.error ?? "Please try again.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  function handleCreate() {
+    const trimmed = email.trim().toLowerCase();
+    createInvite.mutate({
+      data: {
+        ...(trimmed ? { email: trimmed } : {}),
+        ttlHours,
+      },
+    });
+  }
+
+  function copyUrl(url: string) {
+    if (!navigator.clipboard) {
+      toast({
+        title: "Clipboard unavailable",
+        description: "Copy the link manually.",
+        variant: "destructive",
+      });
+      return;
+    }
+    navigator.clipboard.writeText(url).then(
+      () => toast({ title: "Link copied" }),
+      () =>
+        toast({
+          title: "Copy failed",
+          variant: "destructive",
+        }),
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            Generate a super-admin invite link
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            The recipient opens the link, signs in (or signs up), completes
+            onboarding if they don't have a workspace yet, and is automatically
+            promoted to super_admin. Each link is single-use, audited, and
+            expires after the chosen window.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2">
+            <Input
+              type="email"
+              placeholder="Bind to email (optional)"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              data-testid="invite-email-input"
+            />
+            <Select
+              value={String(ttlHours)}
+              onValueChange={(v) => setTtlHours(Number(v))}
+            >
+              <SelectTrigger data-testid="invite-ttl-select">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 hour</SelectItem>
+                <SelectItem value="24">1 day</SelectItem>
+                <SelectItem value="72">3 days</SelectItem>
+                <SelectItem value="168">7 days</SelectItem>
+                <SelectItem value="720">30 days</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={handleCreate}
+              disabled={createInvite.isPending}
+              data-testid="invite-create-button"
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              Generate link
+            </Button>
+          </div>
+          {lastUrl && (
+            <div
+              className="rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-3 space-y-2"
+              data-testid="invite-last-url"
+            >
+              <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
+                Share this link with the new super-admin
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs bg-background border rounded px-2 py-1.5 truncate font-mono">
+                  {lastUrl}
+                </code>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copyUrl(lastUrl)}
+                >
+                  <Copy className="mr-1 h-3.5 w-3.5" />
+                  Copy
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <LinkIcon className="h-4 w-4" />
+            Recent invite links
+            {invites && (
+              <span className="text-xs font-normal text-muted-foreground">
+                ({invites.length})
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="text-xs text-muted-foreground">Loading…</p>
+          ) : !invites || invites.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              No invite links yet. Generate one above.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Status</TableHead>
+                  <TableHead>Bound to</TableHead>
+                  <TableHead>Created by</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead>Used by</TableHead>
+                  <TableHead className="w-[200px] text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invites.map((inv) => (
+                  <TableRow
+                    key={inv.id}
+                    data-testid={`invite-row-${inv.id}`}
+                  >
+                    <TableCell>
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize",
+                          inviteStatusStyles(inv.status),
+                        )}
+                        data-testid={`invite-status-${inv.id}`}
+                      >
+                        {inv.status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {inv.email ?? (
+                        <span className="text-muted-foreground italic">
+                          anyone
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {inv.createdByEmail ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatRelative(inv.expiresAt)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {inv.usedByEmail ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right space-x-1">
+                      {inv.status === "active" && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => copyUrl(inv.url)}
+                            data-testid={`invite-copy-${inv.id}`}
+                          >
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() =>
+                              revokeInvite.mutate({ id: inv.id })
+                            }
+                            disabled={revokeInvite.isPending}
+                            data-testid={`invite-revoke-${inv.id}`}
+                          >
+                            <Ban className="mr-1 h-3 w-3" />
+                            Revoke
+                          </Button>
+                        </>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function AuditLogsTab() {
   const [tenantFilter, setTenantFilter] = useState<string>("all");
   const [actionFilter, setActionFilter] = useState<string>("all");
@@ -2105,6 +2415,10 @@ export default function SuperAdmin() {
             <Building2 className="mr-1.5 h-4 w-4" />
             Tenants
           </TabsTrigger>
+          <TabsTrigger value="invites" data-testid="tab-invites">
+            <LinkIcon className="mr-1.5 h-4 w-4" />
+            Super-admin invites
+          </TabsTrigger>
           <TabsTrigger value="audit" data-testid="tab-audit">
             <FileText className="mr-1.5 h-4 w-4" />
             Audit Logs
@@ -2259,6 +2573,10 @@ export default function SuperAdmin() {
           </TableBody>
         </Table>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="invites">
+          <SuperAdminInvitesTab />
         </TabsContent>
 
         <TabsContent value="audit">

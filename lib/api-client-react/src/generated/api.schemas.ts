@@ -571,6 +571,96 @@ export interface InviteMemberBody {
   role: InviteMemberBodyRole;
 }
 
+export type SuperAdminInviteStatus =
+  (typeof SuperAdminInviteStatus)[keyof typeof SuperAdminInviteStatus];
+
+export const SuperAdminInviteStatus = {
+  active: "active",
+  used: "used",
+  revoked: "revoked",
+  expired: "expired",
+} as const;
+
+export interface SuperAdminInvite {
+  id: number;
+  /**
+   * When set, only the user with this email may redeem.
+   * @nullable
+   */
+  email?: string | null;
+  url: string;
+  createdAt: string;
+  /** @nullable */
+  createdByEmail?: string | null;
+  expiresAt: string;
+  /** @nullable */
+  usedAt?: string | null;
+  /** @nullable */
+  usedByEmail?: string | null;
+  /** @nullable */
+  revokedAt?: string | null;
+  status: SuperAdminInviteStatus;
+}
+
+export interface CreateSuperAdminInviteBody {
+  /** Optional — when set, only this email can redeem the invite. */
+  email?: string;
+  /**
+   * @minimum 1
+   * @maximum 720
+   */
+  ttlHours?: number;
+}
+
+export interface SuperAdminInviteCreated {
+  id: number;
+  token: string;
+  url: string;
+  /** @nullable */
+  email?: string | null;
+  expiresAt: string;
+  createdAt: string;
+  /** @nullable */
+  createdByEmail?: string | null;
+}
+
+export interface SuperAdminInviteRevoked {
+  id: number;
+  revoked?: boolean;
+  alreadyRevoked?: boolean;
+}
+
+export type SuperAdminInvitePreviewStatus =
+  (typeof SuperAdminInvitePreviewStatus)[keyof typeof SuperAdminInvitePreviewStatus];
+
+export const SuperAdminInvitePreviewStatus = {
+  active: "active",
+  used: "used",
+  revoked: "revoked",
+  expired: "expired",
+} as const;
+
+export interface SuperAdminInvitePreview {
+  /** @nullable */
+  email?: string | null;
+  expiresAt: string;
+  /** @nullable */
+  createdByEmail?: string | null;
+  status: SuperAdminInvitePreviewStatus;
+}
+
+export interface RedeemSuperAdminInviteBody {
+  /** @minLength 16 */
+  token: string;
+}
+
+export interface SuperAdminInviteRedeemed {
+  ok: boolean;
+  wasAlreadySuperAdmin?: boolean;
+  role: string;
+  tenantId: number;
+}
+
 export interface InviteMemberResult {
   membership: AdminTenantMember;
   /** True if Clerk accepted and queued the invitation email */

@@ -1306,6 +1306,208 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/super-admin-invites:
+    get:
+      operationId: listSuperAdminInvites
+      tags: [admin]
+      summary: List super-admin invite links
+      description: >
+        Returns recently issued super-admin invite links (active, used,
+        revoked, or expired). Super-admin only.
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: List of super-admin invites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SuperAdminInvite"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createSuperAdminInvite
+      tags: [admin]
+      summary: Create a single-use super-admin invite link
+      description: >
+        Generates a signed, time-limited URL the recipient can open to
+        promote their tenant_membership to super_admin without using the
+        `pnpm grant-super-admin` shell script. Super-admin only.
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSuperAdminInviteBody"
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuperAdminInviteCreated"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/super-admin-invites/{id}:
+    delete:
+      operationId: revokeSuperAdminInvite
+      tags: [admin]
+      summary: Revoke a pending super-admin invite link
+      security:
+        - clerkAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuperAdminInviteRevoked"
+        "404":
+          description: Invite not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invite already used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /super-admin-invites/{token}:
+    get:
+      operationId: getSuperAdminInvitePreview
+      tags: [auth]
+      summary: Preview a super-admin invite (public)
+      description: >
+        Validates the invite token and returns metadata so the landing page
+        can show "this invite is for X / expires Y". No auth required —
+        the token itself is the secret.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invite preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuperAdminInvitePreview"
+        "400":
+          description: Invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/super-admin-invites/redeem:
+    post:
+      operationId: redeemSuperAdminInvite
+      tags: [auth]
+      summary: Redeem a super-admin invite
+      description: >
+        Called by the signed-in invitee to consume their token and promote
+        their active tenant_membership to super_admin. The user must have
+        completed onboarding first (active membership row).
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RedeemSuperAdminInviteBody"
+      responses:
+        "200":
+          description: Redeemed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuperAdminInviteRedeemed"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Email mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invite is used, revoked, or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "412":
+          description: Caller has not completed onboarding yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/tenants/{id}/activity:
     get:
       operationId: getAdminTenantActivity
@@ -7674,6 +7876,128 @@ components:
       required:
         - email
         - role
+
+    SuperAdminInvite:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: ["string", "null"]
+          description: When set, only the user with this email may redeem.
+        url:
+          type: string
+        createdAt:
+          type: string
+        createdByEmail:
+          type: ["string", "null"]
+        expiresAt:
+          type: string
+        usedAt:
+          type: ["string", "null"]
+        usedByEmail:
+          type: ["string", "null"]
+        revokedAt:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, used, revoked, expired]
+      required:
+        - id
+        - url
+        - createdAt
+        - expiresAt
+        - status
+
+    CreateSuperAdminInviteBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: Optional — when set, only this email can redeem the invite.
+        ttlHours:
+          type: integer
+          minimum: 1
+          maximum: 720
+          default: 72
+
+    SuperAdminInviteCreated:
+      type: object
+      properties:
+        id:
+          type: integer
+        token:
+          type: string
+        url:
+          type: string
+        email:
+          type: ["string", "null"]
+        expiresAt:
+          type: string
+        createdAt:
+          type: string
+        createdByEmail:
+          type: ["string", "null"]
+      required:
+        - id
+        - token
+        - url
+        - expiresAt
+        - createdAt
+
+    SuperAdminInviteRevoked:
+      type: object
+      properties:
+        id:
+          type: integer
+        revoked:
+          type: boolean
+        alreadyRevoked:
+          type: boolean
+      required:
+        - id
+
+    SuperAdminInvitePreview:
+      type: object
+      properties:
+        email:
+          type: ["string", "null"]
+        expiresAt:
+          type: string
+        createdByEmail:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, used, revoked, expired]
+      required:
+        - expiresAt
+        - status
+
+    RedeemSuperAdminInviteBody:
+      type: object
+      properties:
+        token:
+          type: string
+          minLength: 16
+      required:
+        - token
+
+    SuperAdminInviteRedeemed:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        wasAlreadySuperAdmin:
+          type: boolean
+        role:
+          type: string
+        tenantId:
+          type: integer
+      required:
+        - ok
+        - role
+        - tenantId
 
     InviteMemberResult:
       type: object

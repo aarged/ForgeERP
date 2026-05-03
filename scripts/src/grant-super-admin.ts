@@ -12,6 +12,10 @@
  * Errors clearly when there are zero or multiple matches. The user must have
  * already signed up via Clerk and completed onboarding (which is what creates
  * the membership row this script promotes).
+ *
+ * NOTE: This script is now mainly for emergency bootstrap. Existing super
+ * admins can issue self-service super-admin invite links from the
+ * /super-admin > "Super-admin invites" tab in the web UI — no shell needed.
  */
 import {
   adminPool,
