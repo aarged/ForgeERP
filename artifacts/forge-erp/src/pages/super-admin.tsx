@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  useGetCurrentUser,
+  getGetCurrentUserQueryKey,
   useGetAdminKpi,
   useListAdminTenants,
   useGetAdminTenant,
@@ -855,7 +858,14 @@ function TenantMembersCard({
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [selfRevokeMember, setSelfRevokeMember] =
+    useState<AdminTenantMember | null>(null);
+
+  const { data: currentUser } = useGetCurrentUser({
+    query: { queryKey: getGetCurrentUserQueryKey() },
+  });
 
   const { data: members, isLoading } = useListAdminTenantMembers(tenantId, {
     query: {
@@ -866,7 +876,7 @@ function TenantMembersCard({
 
   const updateMember = useUpdateAdminTenantMember({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (_data, variables) => {
         toast({ title: "Member updated" });
         void queryClient.invalidateQueries({
           queryKey: getListAdminTenantMembersQueryKey(tenantId),
@@ -874,6 +884,22 @@ function TenantMembersCard({
         void queryClient.invalidateQueries({
           queryKey: getListAdminTenantsQueryKey(),
         });
+        // If the current user just demoted themselves out of super_admin,
+        // the /super-admin page would 403 on the next refetch. Refresh
+        // /auth/me and bounce to /dashboard so the route guard handles
+        // the new role gracefully instead of showing an error.
+        if (
+          selfRevokeMember &&
+          variables.membershipId === selfRevokeMember.id &&
+          variables.data.role &&
+          variables.data.role !== "super_admin"
+        ) {
+          setSelfRevokeMember(null);
+          void queryClient.invalidateQueries({
+            queryKey: getGetCurrentUserQueryKey(),
+          });
+          setLocation("/dashboard");
+        }
       },
       onError: (error) => {
         const data = (error as { data?: { error?: string; code?: string } })
@@ -1026,15 +1052,32 @@ function TenantMembersCard({
                         }
                         size="sm"
                         className="h-7 text-xs whitespace-nowrap"
-                        onClick={() =>
+                        onClick={() => {
+                          const isSelf =
+                            !!currentUser?.clerkId &&
+                            currentUser.clerkId === m.clerkId;
+                          // Self-revocation immediately costs us /super-admin
+                          // access — confirm before proceeding so admins don't
+                          // accidentally lock themselves out with one click.
+                          if (isSelf && m.role === "super_admin") {
+                            setSelfRevokeMember(m);
+                            return;
+                          }
                           handleUpdate(m.id, {
                             role:
                               m.role === "super_admin"
                                 ? "tenant_admin"
                                 : "super_admin",
-                          })
+                          });
+                        }}
+                        disabled={
+                          updateMember.isPending ||
+                          !m.isActive ||
+                          // Wait for /auth/me before allowing a revoke so we
+                          // can reliably detect self-demotion and show the
+                          // confirmation dialog.
+                          (m.role === "super_admin" && !currentUser)
                         }
-                        disabled={updateMember.isPending || !m.isActive}
                         data-testid={`member-toggle-super-admin-${m.id}`}
                         title={
                           !m.isActive
@@ -1062,6 +1105,25 @@ function TenantMembersCard({
         tenantName={tenantName}
         open={inviteOpen}
         onOpenChange={setInviteOpen}
+      />
+      <ConfirmDialog
+        open={!!selfRevokeMember}
+        onOpenChange={(v) => {
+          if (!v) setSelfRevokeMember(null);
+        }}
+        title="Revoke your own super admin access?"
+        description="You are about to remove super admin from your own account. You will immediately lose access to /super-admin and be redirected to the dashboard. Another super admin will need to re-promote you to restore access."
+        confirmLabel="Revoke my super admin"
+        variant="destructive"
+        onConfirm={() => {
+          if (!selfRevokeMember) return;
+          updateMember.mutate({
+            id: tenantId,
+            membershipId: selfRevokeMember.id,
+            data: { role: "tenant_admin" },
+          });
+        }}
+        isPending={updateMember.isPending}
       />
     </Card>
   );
