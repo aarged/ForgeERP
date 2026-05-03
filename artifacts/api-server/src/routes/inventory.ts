@@ -36,7 +36,11 @@ import { z } from "zod";
 
 const router = Router();
 const tenantUserMiddleware = [requireAuth, tenantContext] as const;
-const tenantWriteMiddleware = [requireAuth, tenantContext, requireRole("admin", "manager", "warehouse")] as const;
+const tenantWriteMiddleware = [
+  requireAuth,
+  tenantContext,
+  requireRole("tenant_admin", "warehouse", "purchaser", "approver", "accountant"),
+] as const;
 
 // ── Helper: generate code ─────────────────────────────────────────────────────
 function genCode(prefix: string, id: number) { return `${prefix}-${String(id).padStart(5, "0")}`; }
