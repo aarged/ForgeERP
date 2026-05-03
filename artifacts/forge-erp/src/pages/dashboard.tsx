@@ -174,7 +174,7 @@ function WidgetStockAlerts() {
           <AlertTriangle className="h-4 w-4 text-orange-500" />
           Stock Alerts
         </CardTitle>
-        <CardDescription>Items below reorder point</CardDescription>
+        <CardDescription>Items below minimum</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">

@@ -772,22 +772,40 @@ function ItemLocationsPanel({ itemId }: { itemId: number }) {
   const locations = (data?.locations ?? []) as MasterItemDetailLocation[];
   const [editLoc, setEditLoc] = useState<MasterItemDetailLocation | null>(null);
   const [whId, setWhId] = useState<string>("");
-  const [reorderPoint, setReorderPoint] = useState("");
-  const [reorderQty, setReorderQty] = useState("");
+  const [minStock, setMinStock] = useState("");
+  const [maxStock, setMaxStock] = useState("");
 
   const warehouses = warehouseQuery.data?.warehouses ?? [];
 
+  const displayMax = (l: MasterItemDetailLocation): string => {
+    if (l.reorderQty == null) return "—";
+    const min = l.reorderPoint != null ? Number(l.reorderPoint) : 0;
+    return String(min + Number(l.reorderQty));
+  };
+
   const save = async () => {
     if (!whId) return;
+    const minNum = minStock !== "" ? Number(minStock) : undefined;
+    const maxNum = maxStock !== "" ? Number(maxStock) : undefined;
+    if (minNum !== undefined && maxNum !== undefined && maxNum < minNum) {
+      toast({ title: "Invalid range", description: "Max must be greater than or equal to Min.", variant: "destructive" });
+      return;
+    }
+    if (maxNum !== undefined && minNum === undefined) {
+      toast({ title: "Min required", description: "Set a Min value before setting Max.", variant: "destructive" });
+      return;
+    }
+    const reorderPoint = minNum;
+    const reorderQty = maxNum !== undefined && minNum !== undefined ? maxNum - minNum : undefined;
     try {
       if (editLoc?.id) {
-        await updateLoc.mutateAsync({ itemId, locId: editLoc.id, data: { warehouseId: Number(whId), reorderPoint: reorderPoint ? Number(reorderPoint) : undefined, reorderQty: reorderQty ? Number(reorderQty) : undefined } });
+        await updateLoc.mutateAsync({ itemId, locId: editLoc.id, data: { warehouseId: Number(whId), reorderPoint, reorderQty } });
         toast({ title: "Location updated" });
       } else {
-        await createLoc.mutateAsync({ itemId, data: { warehouseId: Number(whId), reorderPoint: reorderPoint ? Number(reorderPoint) : undefined, reorderQty: reorderQty ? Number(reorderQty) : undefined } });
+        await createLoc.mutateAsync({ itemId, data: { warehouseId: Number(whId), reorderPoint, reorderQty } });
         toast({ title: "Location added" });
       }
-      setEditLoc(null); setWhId(""); setReorderPoint(""); setReorderQty("");
+      setEditLoc(null); setWhId(""); setMinStock(""); setMaxStock("");
       refetch();
     } catch (e: unknown) { toast({ title: "Error", description: (e as Error).message, variant: "destructive" }); }
   };
@@ -795,8 +813,10 @@ function ItemLocationsPanel({ itemId }: { itemId: number }) {
   useEffect(() => {
     if (editLoc) {
       setWhId(editLoc.warehouseId ? String(editLoc.warehouseId) : "");
-      setReorderPoint(editLoc.reorderPoint ?? "");
-      setReorderQty(editLoc.reorderQty ?? "");
+      const rp = editLoc.reorderPoint;
+      const rq = editLoc.reorderQty;
+      setMinStock(rp ?? "");
+      setMaxStock(rq != null ? String(Number(rp ?? 0) + Number(rq)) : "");
     }
   }, [editLoc]);
 
@@ -810,8 +830,8 @@ function ItemLocationsPanel({ itemId }: { itemId: number }) {
           {locations.map((l) => (
             <div key={l.id} className="flex items-center gap-2 px-3 py-1.5">
               <span className="flex-1 text-xs">{warehouseName(l.warehouseId)}</span>
-              <span className="text-muted-foreground text-xs">ROP: {l.reorderPoint ?? "—"}</span>
-              <span className="text-muted-foreground text-xs">ROQ: {l.reorderQty ?? "—"}</span>
+              <span className="text-muted-foreground text-xs">Min: {l.reorderPoint ?? "—"}</span>
+              <span className="text-muted-foreground text-xs">Max: {displayMax(l)}</span>
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditLoc(l)}><Pencil className="h-3 w-3" /></Button>
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await deleteLoc.mutateAsync({ itemId, locId: l.id! }); refetch(); }}>
                 <Trash2 className="h-3 w-3 text-destructive" />
@@ -829,17 +849,17 @@ function ItemLocationsPanel({ itemId }: { itemId: number }) {
           </Select>
         </div>
         <div className="w-24">
-          <Label className="text-xs mb-1 block">Reorder Point</Label>
-          <Input value={reorderPoint} onChange={(e) => setReorderPoint(e.target.value)} type="number" placeholder="0" className="h-8 text-xs" />
+          <Label className="text-xs mb-1 block">Min</Label>
+          <Input value={minStock} onChange={(e) => setMinStock(e.target.value)} type="number" placeholder="0" className="h-8 text-xs" />
         </div>
         <div className="w-24">
-          <Label className="text-xs mb-1 block">Reorder Qty</Label>
-          <Input value={reorderQty} onChange={(e) => setReorderQty(e.target.value)} type="number" placeholder="0" className="h-8 text-xs" />
+          <Label className="text-xs mb-1 block">Max</Label>
+          <Input value={maxStock} onChange={(e) => setMaxStock(e.target.value)} type="number" placeholder="0" className="h-8 text-xs" />
         </div>
         <Button size="sm" className="h-8" onClick={save} disabled={!whId || createLoc.isPending || updateLoc.isPending}>
           {editLoc ? <><Pencil className="h-3 w-3 mr-1" /> Update</> : <><Plus className="h-3 w-3 mr-1" /> Add</>}
         </Button>
-        {editLoc && <Button variant="ghost" size="sm" className="h-8" onClick={() => { setEditLoc(null); setWhId(""); setReorderPoint(""); setReorderQty(""); }}>Cancel</Button>}
+        {editLoc && <Button variant="ghost" size="sm" className="h-8" onClick={() => { setEditLoc(null); setWhId(""); setMinStock(""); setMaxStock(""); }}>Cancel</Button>}
       </div>
     </div>
   );

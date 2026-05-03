@@ -85,7 +85,7 @@ export default function DashboardGuide() {
             top customers by revenue, or items with the largest stock variance.
           </li>
           <li>
-            <strong>Alert lists</strong> — items below reorder point, invoices
+            <strong>Alert lists</strong> — items below minimum, invoices
             past due, requisitions older than the SLA, etc.
           </li>
         </Bullets>
