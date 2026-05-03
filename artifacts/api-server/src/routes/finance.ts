@@ -15,6 +15,7 @@ import {
   type TenantRequest,
 } from "../middlewares/tenantContext";
 import { writeAuditLog } from "../lib/audit";
+import { buildExportFilename } from "../lib/exportFilename";
 import type { IRouter } from "express";
 import { z } from "zod";
 
@@ -135,7 +136,7 @@ router.get("/finance/journals/export/csv", ...tenantUserMiddleware, async (req: 
   ];
 
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", `attachment; filename="gl-journals.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "gl-journals", "csv")}"`);
   res.send(lines.join("\r\n"));
 });
 
@@ -340,7 +341,7 @@ router.get("/finance/journals/export/xlsx", ...tenantUserMiddleware, async (req:
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition", `attachment; filename="gl-journals.xlsx"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "gl-journals", "xlsx")}"`);
   res.send(buf);
 });
 
@@ -492,7 +493,7 @@ router.get("/finance/trial-balance/pdf", ...tenantUserMiddleware, async (req: Re
 
   const doc = new PDFDocument({ margin: 40, size: "A4", layout: "landscape" });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="trial-balance.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "trial-balance", "pdf")}"`);
   doc.pipe(res);
 
   const tenantName = tenant[0]?.name ?? "Forge ERP";
@@ -662,7 +663,7 @@ router.get("/finance/trial-balance/export/csv", ...tenantUserMiddleware, async (
   }
 
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", `attachment; filename="trial-balance.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "trial-balance", "csv")}"`);
   res.send(csvLines.join("\n"));
 });
 

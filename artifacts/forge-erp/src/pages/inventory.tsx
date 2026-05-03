@@ -55,6 +55,7 @@ import {
   type CreateCycleCount201,
   type CycleCountTask,
   type CycleCountTaskLinesItem,
+  useGetCurrentTenant,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -112,12 +113,32 @@ function fmt(n: string | number | null | undefined, dec = 2) {
   return Number(n).toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 
-function exportCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
+function buildClientExportFilename(
+  tenantSlug: string | null | undefined,
+  baseName: string,
+  ext: string,
+): string {
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  const d = new Date();
+  const ts =
+    `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}` +
+    `_` +
+    `${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
+  const slug = (tenantSlug ?? "tenant").replace(/[^a-zA-Z0-9_-]+/g, "-").toLowerCase() || "tenant";
+  return `${ts}_${slug}_${baseName.replace(/\.+$/, "")}.${ext.replace(/^\.+/, "")}`;
+}
+
+function exportCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][], tenantSlug?: string | null) {
   const lines = [headers.join(","), ...rows.map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))];
   const blob = new Blob([lines.join("\n")], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
+  a.href = url;
+  const dot = filename.lastIndexOf(".");
+  const base = dot > 0 ? filename.slice(0, dot) : filename;
+  const ext = dot > 0 ? filename.slice(dot + 1) : "csv";
+  a.download = buildClientExportFilename(tenantSlug, base, ext);
+  a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -165,6 +186,7 @@ function StatusBadge({ status }: { status: string }) {
 // ── Stock Dashboard Tab ───────────────────────────────────────────────────────
 
 function StockDashboardTab() {
+  const { data: tenant } = useGetCurrentTenant();
   const [search, setSearch] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -217,7 +239,8 @@ function StockDashboardTab() {
         <Input placeholder="Category…" className="w-36" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} />
         <Button variant="outline" size="sm" onClick={() => exportCsv("stock.csv",
           ["Item Code","Item Name","Warehouse","Location","Lot","On Hand","Reserved","Available","Avg Cost","Value"],
-          rows.map((r) => [r.itemCode, r.itemName, r.warehouseName, r.locationCode ?? r.locationName, r.lotNumber, r.qtyOnHand, r.qtyReserved, r.qtyAvailable, r.averageCost, r.stockValue])
+          rows.map((r) => [r.itemCode, r.itemName, r.warehouseName, r.locationCode ?? r.locationName, r.lotNumber, r.qtyOnHand, r.qtyReserved, r.qtyAvailable, r.averageCost, r.stockValue]),
+          tenant?.slug
         )}><Download className="h-4 w-4 mr-1" />Export CSV</Button>
       </div>
 

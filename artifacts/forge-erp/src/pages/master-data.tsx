@@ -5,6 +5,7 @@ import { useLocation, useSearch } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm, Controller } from "react-hook-form";
 import {
+  useGetCurrentTenant,
   useListItems,
   useCreateItem,
   useUpdateItem,
@@ -321,7 +322,28 @@ function AuditTrailDialog({
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────
 
-function exportCSV(rows: Record<string, unknown>[], filename: string) {
+/**
+ * Build a tenant-scoped, timestamped export filename.
+ * Format: `YYYYMMDD_HHmmss_<tenantSlug>_<baseName>.<ext>` (UTC time).
+ */
+function buildClientExportFilename(
+  tenantSlug: string | null | undefined,
+  baseName: string,
+  ext: string,
+): string {
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  const d = new Date();
+  const ts =
+    `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}` +
+    `_` +
+    `${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
+  const slug = (tenantSlug ?? "tenant").replace(/[^a-zA-Z0-9_-]+/g, "-").toLowerCase() || "tenant";
+  const cleanBase = baseName.replace(/\.+$/, "");
+  const cleanExt = ext.replace(/^\.+/, "");
+  return `${ts}_${slug}_${cleanBase}.${cleanExt}`;
+}
+
+function exportCSV(rows: Record<string, unknown>[], filename: string, tenantSlug?: string | null) {
   if (!rows.length) return;
   const keys = Object.keys(rows[0]!).filter(
     (k) => !["tenantId", "deletedAt"].includes(k),
@@ -346,12 +368,15 @@ function exportCSV(rows: Record<string, unknown>[], filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  const dot = filename.lastIndexOf(".");
+  const base = dot > 0 ? filename.slice(0, dot) : filename;
+  const ext = dot > 0 ? filename.slice(dot + 1) : "csv";
+  a.download = buildClientExportFilename(tenantSlug, base, ext);
   a.click();
   URL.revokeObjectURL(url);
 }
 
-function exportExcel(rows: Record<string, unknown>[], filename: string) {
+function exportExcel(rows: Record<string, unknown>[], filename: string, tenantSlug?: string | null) {
   if (!rows.length) return;
   const filtered = rows.map((r) => {
     const out: Record<string, unknown> = {};
@@ -364,7 +389,10 @@ function exportExcel(rows: Record<string, unknown>[], filename: string) {
   const ws = XLSX.utils.json_to_sheet(filtered);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Data");
-  XLSX.writeFile(wb, filename);
+  const dot = filename.lastIndexOf(".");
+  const base = dot > 0 ? filename.slice(0, dot) : filename;
+  const ext = dot > 0 ? filename.slice(dot + 1) : "xlsx";
+  XLSX.writeFile(wb, buildClientExportFilename(tenantSlug, base, ext));
 }
 
 // ─── useInfiniteTable ─────────────────────────────────────────────────────────
@@ -1330,6 +1358,7 @@ function ItemModal({
 }
 
 function ItemsTab({ initialId, initialCode }: { initialId?: number; initialCode?: string }) {
+  const { data: tenant } = useGetCurrentTenant();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [allRows, setAllRows] = useState<ItemRow[]>([]);
@@ -1434,10 +1463,10 @@ function ItemsTab({ initialId, initialCode }: { initialId?: number; initialCode?
           <Input className="pl-9" placeholder="Search items…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="flex gap-2 ml-auto">
-          <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "items.csv")} disabled={!allRows.length}>
+          <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "items.csv", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> CSV
           </Button>
-          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "items.xlsx")} disabled={!allRows.length}>
+          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "items.xlsx", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
@@ -1658,6 +1687,7 @@ function SupplierModal({
 }
 
 function SuppliersTab({ initialId, initialCode }: { initialId?: number; initialCode?: string }) {
+  const { data: tenant } = useGetCurrentTenant();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [allRows, setAllRows] = useState<SupplierRow[]>([]);
@@ -1737,10 +1767,10 @@ function SuppliersTab({ initialId, initialCode }: { initialId?: number; initialC
           <Input className="pl-9" placeholder="Search suppliers…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="flex gap-2 ml-auto">
-          <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "suppliers.csv")} disabled={!allRows.length}>
+          <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "suppliers.csv", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> CSV
           </Button>
-          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "suppliers.xlsx")} disabled={!allRows.length}>
+          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "suppliers.xlsx", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
           <Button onClick={() => { setEditRow(undefined); setModalOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New Supplier</Button>
@@ -1899,6 +1929,7 @@ function CustomerModal({ open, onOpenChange, customer, onSuccess }: {
 }
 
 function CustomersTab({ initialId, initialCode }: { initialId?: number; initialCode?: string }) {
+  const { data: tenant } = useGetCurrentTenant();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [allRows, setAllRows] = useState<CustomerRow[]>([]);
@@ -1965,10 +1996,10 @@ function CustomersTab({ initialId, initialCode }: { initialId?: number; initialC
           <Input className="pl-9" placeholder="Search customers…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="flex gap-2 ml-auto">
-          <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "customers.csv")} disabled={!allRows.length}>
+          <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "customers.csv", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> CSV
           </Button>
-          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "customers.xlsx")} disabled={!allRows.length}>
+          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "customers.xlsx", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
           <Button onClick={() => { setEditRow(undefined); setModalOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New Customer</Button>
@@ -2112,6 +2143,7 @@ function WarehouseModal({ open, onOpenChange, warehouse, onSuccess }: {
 }
 
 function WarehousesTab({ initialId, initialCode }: { initialId?: number; initialCode?: string }) {
+  const { data: tenant } = useGetCurrentTenant();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [allRows, setAllRows] = useState<WarehouseRow[]>([]);
@@ -2178,10 +2210,10 @@ function WarehousesTab({ initialId, initialCode }: { initialId?: number; initial
           <Input className="pl-9" placeholder="Search warehouses…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="flex gap-2 ml-auto">
-          <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "warehouses.csv")} disabled={!allRows.length}>
+          <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "warehouses.csv", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> CSV
           </Button>
-          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "warehouses.xlsx")} disabled={!allRows.length}>
+          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "warehouses.xlsx", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
           <Button onClick={() => { setEditRow(undefined); setModalOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New Warehouse</Button>
@@ -2502,6 +2534,7 @@ function ImportTemplateDialog({ open, onOpenChange, onSuccess }: {
 }
 
 function GlAccountsTab({ initialId }: { initialId?: number }) {
+  const { data: tenant } = useGetCurrentTenant();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -2577,10 +2610,10 @@ function GlAccountsTab({ initialId }: { initialId?: number }) {
           </SelectContent>
         </Select>
         <div className="flex gap-2 ml-auto">
-          <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "gl-accounts.csv")} disabled={!allRows.length}>
+          <Button variant="outline" size="sm" onClick={() => exportCSV(allRows as Record<string, unknown>[], "gl-accounts.csv", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> CSV
           </Button>
-          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "gl-accounts.xlsx")} disabled={!allRows.length}>
+          <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "gl-accounts.xlsx", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> Excel
           </Button>
           <Button variant="outline" onClick={() => setImportOpen(true)}>

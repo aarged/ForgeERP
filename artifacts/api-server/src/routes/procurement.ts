@@ -31,6 +31,7 @@ import {
   type TenantRequest,
 } from "../middlewares/tenantContext";
 import { writeAuditLog } from "../lib/audit";
+import { buildExportFilename } from "../lib/exportFilename";
 import { sendEmail } from "../lib/email";
 import type { Request, Response } from "express";
 import { z } from "zod";
@@ -1965,7 +1966,10 @@ router.post("/procurement/purchase-orders/:id/pdf", ...tenantWriteMiddleware, as
 
   const pdfBuffer = await generatePoPdf(po, lines);
   const pdfBase64 = pdfBuffer.toString("base64");
-  const filename = `${po.code}.pdf`;
+  // Email attachment keeps the PO code as filename (per spec: emails out of scope).
+  const emailAttachmentFilename = `${po.code}.pdf`;
+  // Browser download filename gets the timestamped tenant-prefixed format.
+  const filename = await buildExportFilename(tenantId, po.code, "pdf");
 
   let emailSent = false;
   if (dispatchEmail) {
@@ -1974,7 +1978,7 @@ router.post("/procurement/purchase-orders/:id/pdf", ...tenantWriteMiddleware, as
       subject: `Purchase Order ${po.code} from Forge ERP`,
       html: buildPoEmailHtml(po),
       text: `Dear ${po.supplierName ?? "Supplier"},\n\nPlease find attached Purchase Order ${po.code}.\nTotal: ${Number(po.total).toFixed(2)} ${po.currencyCode}.\n\nThe Forge ERP Team`,
-      attachments: [{ filename, content: pdfBuffer, contentType: "application/pdf" }],
+      attachments: [{ filename: emailAttachmentFilename, content: pdfBuffer, contentType: "application/pdf" }],
     });
   }
 

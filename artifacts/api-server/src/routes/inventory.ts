@@ -31,6 +31,7 @@ import {
   type TenantRequest,
 } from "../middlewares/tenantContext";
 import { writeAuditLog } from "../lib/audit";
+import { buildExportFilename } from "../lib/exportFilename";
 import { z } from "zod";
 
 const router = Router();
@@ -2371,7 +2372,7 @@ router.get("/inventory/reports/stock-valuation/export/csv", ...tenantUserMiddlew
   }
 
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", "attachment; filename=\"stock-valuation.csv\"");
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "stock-valuation", "csv")}"`);
   res.send(lines.join("\n"));
 });
 
@@ -2400,7 +2401,7 @@ router.get("/inventory/reports/stock-valuation/export/pdf", ...tenantUserMiddlew
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", "attachment; filename=\"stock-valuation.pdf\"");
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "stock-valuation", "pdf")}"`);
   doc.pipe(res);
   doc.fontSize(16).text("Stock Valuation Report", { align: "center" });
   doc.moveDown();
@@ -2456,7 +2457,7 @@ router.get("/inventory/reports/movement-history/export/csv", ...tenantUserMiddle
     lines.push([r.itemCode ?? "", `"${r.itemName ?? ""}"`, r.movementType ?? "", Number(r.quantity).toFixed(4), r.unitCost ? Number(r.unitCost).toFixed(4) : "", r.refType ?? "", r.refCode ?? "", r.createdAt ? new Date(r.createdAt).toISOString().split("T")[0] : ""].join(","));
   }
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", "attachment; filename=\"movement-history.csv\"");
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "movement-history", "csv")}"`);
   res.send(lines.join("\n"));
 });
 
@@ -2488,7 +2489,7 @@ router.get("/inventory/reports/movement-history/export/pdf", ...tenantUserMiddle
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", "attachment; filename=\"movement-history.pdf\"");
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "movement-history", "pdf")}"`);
   doc.pipe(res);
   doc.fontSize(16).text("Inventory Movement History", { align: "center" });
   doc.moveDown(0.5);
@@ -2542,7 +2543,7 @@ router.get("/inventory/reports/slow-moving/export/csv", ...tenantUserMiddleware,
     lines.push([r.itemCode, `"${r.itemName}"`, `"${r.warehouseName}"`, Number(r.qtyOnHand).toFixed(2), Number(r.totalValue).toFixed(2), Number(r.daysSinceMovement).toFixed(0)].join(","));
   }
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", "attachment; filename=\"slow-moving.csv\"");
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "slow-moving", "csv")}"`);
   res.send(lines.join("\n"));
 });
 
@@ -2573,7 +2574,7 @@ router.get("/inventory/reports/slow-moving/export/pdf", ...tenantUserMiddleware,
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="slow-moving-${days}d.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, `slow-moving-${days}d`, "pdf")}"`);
   doc.pipe(res);
   doc.fontSize(16).text(`Slow-Moving Items Report (${days}+ Days)`, { align: "center" });
   doc.moveDown(0.5);
@@ -2624,7 +2625,7 @@ router.get("/inventory/reports/stocktake-variance/export/csv", ...tenantUserMidd
     lines.push([r.runCode, r.itemCode, `"${r.itemName}"`, Number(r.qtyExpected).toFixed(2), Number(r.qtyActual).toFixed(2), Number(r.variance).toFixed(2), Number(r.varianceValue).toFixed(2)].join(","));
   }
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", "attachment; filename=\"stocktake-variance.csv\"");
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "stocktake-variance", "csv")}"`);
   res.send(lines.join("\n"));
 });
 
@@ -2652,7 +2653,7 @@ router.get("/inventory/reports/stocktake-variance/export/pdf", ...tenantUserMidd
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", "attachment; filename=\"stocktake-variance.pdf\"");
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "stocktake-variance", "pdf")}"`);
   doc.pipe(res);
   doc.fontSize(16).text("Stocktake Variance Report", { align: "center" });
   doc.moveDown(0.5);

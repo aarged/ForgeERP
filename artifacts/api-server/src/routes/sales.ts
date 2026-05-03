@@ -36,6 +36,7 @@ import {
   type TenantRequest,
 } from "../middlewares/tenantContext";
 import { writeAuditLog } from "../lib/audit";
+import { buildExportFilename } from "../lib/exportFilename";
 import { sendEmail } from "../lib/email";
 import { logger } from "../lib/logger";
 import type { Request, Response } from "express";
@@ -2950,7 +2951,7 @@ router.get("/sales/reports/invoice-aging/export/csv", ...tenantUserMiddleware, a
     ...rows.map(r => [r.code, r.customerName ?? "", r.invoiceDate ?? "", r.dueDate ?? "", Number(r.total).toFixed(2), Number(r.paidAmount).toFixed(2), Number(r.balance).toFixed(2), r.daysOverdue ?? 0, r.agingBucket].map(escape).join(",")),
   ];
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", `attachment; filename="invoice-aging.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "invoice-aging", "csv")}"`);
   res.send(lines.join("\r\n"));
 });
 
@@ -2984,7 +2985,7 @@ router.get("/sales/reports/invoice-aging/export/pdf", ...tenantUserMiddleware, a
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="invoice-aging.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "invoice-aging", "pdf")}"`);
   doc.pipe(res);
 
   doc.fontSize(16).font("Helvetica-Bold").text("Invoice Aging Report", { align: "center" });
@@ -3038,7 +3039,7 @@ router.get("/sales/reports/backorders/export/pdf", ...tenantUserMiddleware, asyn
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="backorders.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "backorders", "pdf")}"`);
   doc.pipe(res);
 
   doc.fontSize(16).font("Helvetica-Bold").text("Backorder Report", { align: "center" });
@@ -3097,7 +3098,7 @@ router.get("/sales/reports/backorders/export/csv", ...tenantUserMiddleware, asyn
     ...rows.map(r => [r.soId, r.soLineId, r.itemCode ?? "", r.itemName ?? "", r.qty, r.despatched, Number(r.backorderQty).toFixed(2)].map(escape).join(",")),
   ];
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", `attachment; filename="backorders.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "backorders", "csv")}"`);
   res.send(lines.join("\r\n"));
 });
 
@@ -3128,7 +3129,7 @@ router.get("/sales/reports/by-period/export/csv", ...tenantUserMiddleware, async
     lines.push([r.period, Number(r.totalRevenue).toFixed(2), r.invoiceCount].join(","));
   }
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", `attachment; filename="revenue-by-period.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "revenue-by-period", "csv")}"`);
   res.send(lines.join("\n"));
 });
 
@@ -3156,7 +3157,7 @@ router.get("/sales/reports/by-period/export/pdf", ...tenantUserMiddleware, async
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="revenue-by-period.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "revenue-by-period", "pdf")}"`);
   doc.pipe(res);
   doc.fontSize(16).text("Sales Revenue by Period", { align: "center" });
   doc.moveDown(0.5);
@@ -3210,7 +3211,7 @@ router.get("/sales/reports/by-item/export/csv", ...tenantUserMiddleware, async (
     lines.push([r.itemCode ?? "", `"${r.itemName ?? ""}"`, Number(r.totalQty).toFixed(2), Number(r.totalRevenue).toFixed(2), r.invoiceCount].join(","));
   }
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", `attachment; filename="sales-by-item.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "sales-by-item", "csv")}"`);
   res.send(lines.join("\n"));
 });
 
@@ -3241,7 +3242,7 @@ router.get("/sales/reports/by-item/export/pdf", ...tenantUserMiddleware, async (
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="sales-by-item.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "sales-by-item", "pdf")}"`);
   doc.pipe(res);
   doc.fontSize(16).text("Sales by Item Report", { align: "center" });
   doc.moveDown(0.5);
@@ -3295,7 +3296,7 @@ router.get("/sales/reports/by-customer/export/csv", ...tenantUserMiddleware, asy
     ...rows.map(r => [r.customerName ?? "", Number(r.totalRevenue).toFixed(2), r.invoiceCount, Number(r.avgInvoiceValue).toFixed(2)].map(escape).join(",")),
   ];
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", `attachment; filename="sales-by-customer.csv"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "sales-by-customer", "csv")}"`);
   res.send(lines.join("\r\n"));
 });
 
@@ -3324,7 +3325,7 @@ router.get("/sales/reports/by-customer/export/pdf", ...tenantUserMiddleware, asy
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="sales-by-customer.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${await buildExportFilename(tenantId, "sales-by-customer", "pdf")}"`);
   doc.pipe(res);
   doc.fontSize(16).text("Sales by Customer Report", { align: "center" });
   doc.moveDown(0.5);
