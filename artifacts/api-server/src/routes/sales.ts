@@ -673,7 +673,11 @@ router.post("/sales/quotations", ...tenantWriteMiddleware, async (req: Request, 
     lines: z.array(quotationLineSchema).default([]),
   });
   const parsed = schema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+  if (!parsed.success) {
+    req.log.warn({ issues: parsed.error.issues, body: req.body }, "[quotation.create] validation failed");
+    res.status(400).json({ error: "Validation failed", details: parsed.error.issues });
+    return;
+  }
   const { lines, customerId: rawCustomerId, ...rest } = parsed.data;
 
   // ── Resolve customerId (number-or-code) ─────────────────────────────────
