@@ -500,7 +500,7 @@ const adjustmentLineSchema = z.object({
 const createAdjustmentSchema = z.object({
   adjustmentType: z.enum(["increase", "decrease", "recount"]).default("increase"),
   reason: z.string().min(1),
-  glAccountId: z.number().int({ message: "A GL account is required for stock adjustments" }),
+  glAccountId: z.number().int().positive({ message: "A GL account is required for stock adjustments" }),
   glAccountCode: z.string().optional(),
   glAccountName: z.string().optional(),
   warehouseId: z.number().int().optional(),

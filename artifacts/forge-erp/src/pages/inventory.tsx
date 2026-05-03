@@ -480,15 +480,22 @@ function AdjustmentsTab() {
               </div>
               <div>
                 <Label>Reason *</Label>
-                <Input {...form.register("reason", { required: true })} placeholder="e.g. Damaged goods, cycle count variance" />
+                <Input {...form.register("reason", { required: "Reason is required" })} placeholder="e.g. Damaged goods, cycle count variance" />
+                {form.formState.errors.reason && (
+                  <p className="text-sm text-destructive mt-1">{form.formState.errors.reason.message || "Reason is required"}</p>
+                )}
               </div>
             </div>
             <div>
               <Label>GL Account *</Label>
-              <Select value={form.watch("glAccountId") ? String(form.watch("glAccountId")) : ""} onValueChange={(v) => form.setValue("glAccountId", Number(v))}>
+              <input type="hidden" {...form.register("glAccountId", { valueAsNumber: true, validate: (v) => (v && v > 0) || "GL account is required" })} />
+              <Select value={form.watch("glAccountId") ? String(form.watch("glAccountId")) : ""} onValueChange={(v) => form.setValue("glAccountId", Number(v), { shouldValidate: true })}>
                 <SelectTrigger><SelectValue placeholder="Select GL account…" /></SelectTrigger>
                 <SelectContent>{(glAccounts?.accounts ?? []).map((a) => <SelectItem key={a.id} value={String(a.id)}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
               </Select>
+              {form.formState.errors.glAccountId && (
+                <p className="text-sm text-destructive mt-1">{form.formState.errors.glAccountId.message || "GL account is required"}</p>
+              )}
             </div>
             <div>
               <Label>Notes</Label>
