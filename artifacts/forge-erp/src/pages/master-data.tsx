@@ -1256,7 +1256,7 @@ function ItemModal({
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <FormField label="Code" required>
+            <FormField label="Item Number" required>
               <Input {...register("code", { required: true })} placeholder="ITEM-001" />
               {errors.code && <p className="text-xs text-destructive">Required</p>}
             </FormField>
@@ -1273,11 +1273,11 @@ function ItemModal({
               )} />
             </FormField>
           </div>
-          <FormField label="Name" required>
+          <FormField label="Item Description" required>
             <Input {...register("name", { required: true })} placeholder="Item name" />
             {errors.name && <p className="text-xs text-destructive">Required</p>}
           </FormField>
-          <FormField label="Description">
+          <FormField label="Notes">
             <Textarea {...register("description")} rows={2} />
           </FormField>
           <div className="grid grid-cols-2 gap-4">
@@ -1301,9 +1301,6 @@ function ItemModal({
           </div>
           <FormField label="Category">
             <Input {...register("category")} />
-          </FormField>
-          <FormField label="Notes">
-            <Textarea {...register("notes")} rows={2} />
           </FormField>
           <div className="flex items-center gap-2">
             <Controller control={control} name="isActive" render={({ field }) => (
