@@ -847,6 +847,7 @@ function QuotationsTab() {
   const custList =
     (customers as { customers?: Array<{
       id: number;
+      code?: string | null;
       name: string;
       email?: string | null;
       shippingAddressLine1?: string | null;
@@ -860,6 +861,11 @@ function QuotationsTab() {
     (itemsData as { items?: ItemOption[] })?.items ?? [];
   const quotations = (list as { data?: Quotation[] })?.data ?? [];
   const det = detail as QuotationDetail | undefined;
+  const customerCodeById = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const c of custList) if (c.code) m.set(c.id, c.code);
+    return m;
+  }, [custList]);
 
   return (
     <div className="space-y-4">
@@ -896,6 +902,7 @@ function QuotationsTab() {
           <TableHeader>
             <TableRow>
               <TableHead>Code</TableHead>
+              <TableHead>Account</TableHead>
               <TableHead>Customer</TableHead>
               <TableHead>Expiry</TableHead>
               <TableHead>Status</TableHead>
@@ -907,14 +914,14 @@ function QuotationsTab() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={7}>
+                <TableCell colSpan={8}>
                   <Skeleton className="h-8 w-full" />
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && quotations.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                   No quotations found
                 </TableCell>
               </TableRow>
@@ -926,6 +933,9 @@ function QuotationsTab() {
                 onClick={() => setDetailId(q.id ?? null)}
               >
                 <TableCell className="font-mono text-sm">{q.code ?? ""}</TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  {q.customerId != null ? (customerCodeById.get(q.customerId) ?? "—") : "—"}
+                </TableCell>
                 <TableCell>{q.customerName ?? "—"}</TableCell>
                 <TableCell>{fmtDate(q.expiryDate)}</TableCell>
                 <TableCell>
@@ -1087,8 +1097,13 @@ function QuotationsTab() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{det?.code ?? "Quotation"}</DialogTitle>
-            <DialogDescription>
-              {det?.customerName ?? ""}{" "}
+            <DialogDescription className="flex items-center gap-2 flex-wrap">
+              {det?.customerId != null && customerCodeById.get(det.customerId) && (
+                <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted">
+                  {customerCodeById.get(det.customerId)}
+                </span>
+              )}
+              <span>{det?.customerName ?? ""}</span>
               {det?.status && <StatusBadge status={det.status} />}
             </DialogDescription>
           </DialogHeader>
@@ -1505,6 +1520,7 @@ function SalesOrdersTab() {
   const custList =
     (customers as { customers?: Array<{
       id: number;
+      code?: string | null;
       name: string;
       email?: string | null;
       shippingAddressLine1?: string | null;
@@ -2734,6 +2750,7 @@ function RmaTab() {
   const custList =
     (customers as { customers?: Array<{
       id: number;
+      code?: string | null;
       name: string;
       email?: string | null;
       shippingAddressLine1?: string | null;
