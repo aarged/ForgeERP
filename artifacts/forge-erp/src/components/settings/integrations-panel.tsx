@@ -171,7 +171,7 @@ export function IntegrationsPanel() {
   const keys = keysResponse?.data ?? [];
 
   const apiBaseUrl =
-    typeof window !== "undefined" ? `${window.location.origin}/api` : "/api";
+    typeof window !== "undefined" ? window.location.origin : "";
 
   return (
     <div className="space-y-4">
@@ -183,7 +183,10 @@ export function IntegrationsPanel() {
           </CardTitle>
           <CardDescription>
             External systems (e.g. Cyntric) should be configured with this base
-            URL together with a Bearer API key minted below.
+            URL together with a Bearer API key minted below. The base URL is
+            the host only — the API spec already anchors every endpoint under{" "}
+            <code className="font-mono">/api</code>, so do not append{" "}
+            <code className="font-mono">/api</code> here.
           </CardDescription>
         </CardHeader>
         <CardContent>
