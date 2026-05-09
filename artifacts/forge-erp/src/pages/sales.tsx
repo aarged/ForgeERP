@@ -63,8 +63,6 @@ import {
   useReleaseBackorder,
   useCancelBackorder,
   ListBackordersStatus,
-  useGetAtp,
-  getGetAtpQueryKey,
   useCancelDespatch,
   useVoidInvoice,
   useCancelRma,
@@ -225,35 +223,12 @@ type LineEditorFormBase = { lines: LineField[] };
 
 type ItemOption = { id: number; code: string; name: string; description?: string | null; salesPrice?: string | null; unitCost?: string | null };
 
-/** Shows real-time Available-to-Promise qty for a line item. */
-function AtpBadge({ itemId, warehouseId }: { itemId?: number; warehouseId?: number }) {
-  const { data, isFetching } = useGetAtp(
-    { itemId: itemId!, warehouseId: warehouseId ?? undefined },
-    {
-      query: {
-        enabled: !!itemId,
-        queryKey: getGetAtpQueryKey({ itemId: itemId!, warehouseId: warehouseId ?? undefined }),
-        staleTime: 30_000,
-      },
-    },
-  );
-  if (!itemId) return null;
-  if (isFetching) return <span className="text-xs text-muted-foreground ml-1">ATP…</span>;
-  const atp = data?.atpQty ?? 0;
-  return (
-    <span className={`text-xs font-medium ml-1 ${Number(atp) > 0 ? "text-emerald-600" : "text-red-500"}`}>
-      ATP: {Number(atp).toFixed(0)}
-    </span>
-  );
-}
-
 function LineItemEditor({
   fields,
   control,
   onAdd,
   onRemove,
   items,
-  warehouseId,
   setValue,
 }: {
   fields: LineField[];
@@ -261,7 +236,6 @@ function LineItemEditor({
   onAdd: () => void;
   onRemove: (idx: number) => void;
   items: ItemOption[];
-  warehouseId?: number;
   setValue?: (idx: number, patch: { description?: string; unitPrice?: number }) => void;
 }) {
   return (
@@ -276,7 +250,7 @@ function LineItemEditor({
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
-              <TableHead className="w-40">Item</TableHead>
+              <TableHead className="w-24">Item</TableHead>
               <TableHead>Description</TableHead>
               <TableHead className="w-20">Qty</TableHead>
               <TableHead className="w-24">Unit Price</TableHead>
@@ -316,12 +290,11 @@ function LineItemEditor({
                           <SelectContent>
                             {items.map((item) => (
                               <SelectItem key={item.id ?? 0} value={String(item.id)}>
-                                {item.code ?? ""} – {item.name}
+                                {item.code ?? ""}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        <AtpBadge itemId={f.value} warehouseId={warehouseId} />
                       </div>
                     )}
                   />
@@ -1322,7 +1295,6 @@ function SalesOrdersTab() {
 
   const form = useForm<SoForm>({ defaultValues: { lines: [] } });
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "lines" });
-  const soFormWarehouseId = form.watch("warehouseId");
 
   const despatchForm = useForm<DespatchForm>({ defaultValues: { lines: [] } });
   const { fields: despatchFields, remove: removeDespatch } = useFieldArray({
@@ -1659,7 +1631,6 @@ function SalesOrdersTab() {
               items={itemsList}
               onAdd={() => append({ quantity: 1, unitPrice: 0, discountPct: 0, taxPct: 10 })}
               onRemove={remove}
-              warehouseId={soFormWarehouseId}
               setValue={(idx, patch) => {
                 if (patch.description !== undefined) form.setValue(`lines.${idx}.description`, patch.description);
                 if (patch.unitPrice !== undefined) form.setValue(`lines.${idx}.unitPrice`, patch.unitPrice);
