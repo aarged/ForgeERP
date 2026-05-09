@@ -2649,11 +2649,10 @@ function SupplierCsvImportDialog({ open, onOpenChange, onSuccess }: {
           pricingTier: getCol(r, "pricingTier", "pricing_tier") || undefined,
           creditLimit: toNum(getCol(r, "creditLimit", "credit_limit")),
           notes: getCol(r, "notes") || undefined,
-        }))
-        .filter((s) => s.code && s.name);
+        }));
 
       if (!suppliers.length) {
-        toast({ title: "No valid rows found", description: "Ensure the CSV has 'code' and 'name' columns with at least one data row.", variant: "destructive" });
+        toast({ title: "No rows found", description: "The CSV file appears to be empty.", variant: "destructive" });
         return;
       }
 
@@ -2777,11 +2776,10 @@ function CustomerCsvImportDialog({ open, onOpenChange, onSuccess }: {
           currency: getCol(r, "currency") || undefined,
           pricingTier: getCol(r, "pricingTier", "pricing_tier") || undefined,
           notes: getCol(r, "notes") || undefined,
-        }))
-        .filter((c) => c.code && c.name);
+        }));
 
       if (!customers.length) {
-        toast({ title: "No valid rows found", description: "Ensure the CSV has 'code' and 'name' columns with at least one data row.", variant: "destructive" });
+        toast({ title: "No rows found", description: "The CSV file appears to be empty.", variant: "destructive" });
         return;
       }
 

@@ -867,42 +867,54 @@ router.post(
       currency: z.string().optional(),
       isActive: z.boolean().optional(),
     });
-    const schema = z.object({
-      suppliers: z.array(supplierImportSchema).min(1).max(5000),
+    // Validate the envelope loosely so a single bad row doesn't abort the
+    // whole import — per-row validation happens inside the loop and bad
+    // rows are reported in `errors[]`.
+    const envelopeSchema = z.object({
+      suppliers: z.array(z.record(z.string(), z.unknown())).min(1).max(5000),
     });
 
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+    const envelope = envelopeSchema.safeParse(req.body);
+    if (!envelope.success) { res.status(400).json({ error: "Validation failed", details: envelope.error.issues }); return; }
 
-    const { suppliers } = parsed.data;
+    const { suppliers } = envelope.data;
     let created = 0;
     let updated = 0;
     const errors: { row: number; code: string; error: string }[] = [];
 
-    for (let i = 0; i < suppliers.length; i += 100) {
-      const chunk = suppliers.slice(i, i + 100);
-      for (const supplier of chunk) {
-        try {
-          const existing = await withTenantDb(tenantId, (db) =>
-            db.select({ id: suppliersTable.id }).from(suppliersTable)
-              .where(and(eq(suppliersTable.code, supplier.code), eq(suppliersTable.tenantId, tenantId), isNull(suppliersTable.deletedAt)))
-              .limit(1),
+    for (let i = 0; i < suppliers.length; i++) {
+      const raw = suppliers[i]!;
+      const rowNum = i + 1;
+      const rowParse = supplierImportSchema.safeParse(raw);
+      if (!rowParse.success) {
+        errors.push({
+          row: rowNum,
+          code: typeof raw.code === "string" ? raw.code : "",
+          error: rowParse.error.issues.map((iss) => `${iss.path.join(".") || "row"}: ${iss.message}`).join("; "),
+        });
+        continue;
+      }
+      const supplier = rowParse.data;
+      try {
+        const existing = await withTenantDb(tenantId, (db) =>
+          db.select({ id: suppliersTable.id }).from(suppliersTable)
+            .where(and(eq(suppliersTable.code, supplier.code), eq(suppliersTable.tenantId, tenantId), isNull(suppliersTable.deletedAt)))
+            .limit(1),
+        );
+        if (existing.length > 0) {
+          await withTenantDb(tenantId, (db) =>
+            db.update(suppliersTable).set(supplier as Record<string, unknown>)
+              .where(and(eq(suppliersTable.id, existing[0]!.id), eq(suppliersTable.tenantId, tenantId))),
           );
-          if (existing.length > 0) {
-            await withTenantDb(tenantId, (db) =>
-              db.update(suppliersTable).set(supplier as Record<string, unknown>)
-                .where(and(eq(suppliersTable.id, existing[0]!.id), eq(suppliersTable.tenantId, tenantId))),
-            );
-            updated++;
-          } else {
-            await withTenantDb(tenantId, (db) =>
-              db.insert(suppliersTable).values({ ...supplier, tenantId } as typeof suppliersTable.$inferInsert),
-            );
-            created++;
-          }
-        } catch (err) {
-          errors.push({ row: i + chunk.indexOf(supplier) + 1, code: supplier.code, error: err instanceof Error ? err.message : "Unknown error" });
+          updated++;
+        } else {
+          await withTenantDb(tenantId, (db) =>
+            db.insert(suppliersTable).values({ ...supplier, tenantId } as typeof suppliersTable.$inferInsert),
+          );
+          created++;
         }
+      } catch (err) {
+        errors.push({ row: rowNum, code: supplier.code, error: err instanceof Error ? err.message : "Unknown error" });
       }
     }
 
@@ -1206,42 +1218,54 @@ router.post(
       currency: z.string().optional(),
       isActive: z.boolean().optional(),
     });
-    const schema = z.object({
-      customers: z.array(customerImportSchema).min(1).max(5000),
+    // Validate the envelope loosely so a single bad row doesn't abort the
+    // whole import — per-row validation happens inside the loop and bad
+    // rows are reported in `errors[]`.
+    const envelopeSchema = z.object({
+      customers: z.array(z.record(z.string(), z.unknown())).min(1).max(5000),
     });
 
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+    const envelope = envelopeSchema.safeParse(req.body);
+    if (!envelope.success) { res.status(400).json({ error: "Validation failed", details: envelope.error.issues }); return; }
 
-    const { customers } = parsed.data;
+    const { customers } = envelope.data;
     let created = 0;
     let updated = 0;
     const errors: { row: number; code: string; error: string }[] = [];
 
-    for (let i = 0; i < customers.length; i += 100) {
-      const chunk = customers.slice(i, i + 100);
-      for (const customer of chunk) {
-        try {
-          const existing = await withTenantDb(tenantId, (db) =>
-            db.select({ id: customersTable.id }).from(customersTable)
-              .where(and(eq(customersTable.code, customer.code), eq(customersTable.tenantId, tenantId), isNull(customersTable.deletedAt)))
-              .limit(1),
+    for (let i = 0; i < customers.length; i++) {
+      const raw = customers[i]!;
+      const rowNum = i + 1;
+      const rowParse = customerImportSchema.safeParse(raw);
+      if (!rowParse.success) {
+        errors.push({
+          row: rowNum,
+          code: typeof raw.code === "string" ? raw.code : "",
+          error: rowParse.error.issues.map((iss) => `${iss.path.join(".") || "row"}: ${iss.message}`).join("; "),
+        });
+        continue;
+      }
+      const customer = rowParse.data;
+      try {
+        const existing = await withTenantDb(tenantId, (db) =>
+          db.select({ id: customersTable.id }).from(customersTable)
+            .where(and(eq(customersTable.code, customer.code), eq(customersTable.tenantId, tenantId), isNull(customersTable.deletedAt)))
+            .limit(1),
+        );
+        if (existing.length > 0) {
+          await withTenantDb(tenantId, (db) =>
+            db.update(customersTable).set(customer as Record<string, unknown>)
+              .where(and(eq(customersTable.id, existing[0]!.id), eq(customersTable.tenantId, tenantId))),
           );
-          if (existing.length > 0) {
-            await withTenantDb(tenantId, (db) =>
-              db.update(customersTable).set(customer as Record<string, unknown>)
-                .where(and(eq(customersTable.id, existing[0]!.id), eq(customersTable.tenantId, tenantId))),
-            );
-            updated++;
-          } else {
-            await withTenantDb(tenantId, (db) =>
-              db.insert(customersTable).values({ ...customer, tenantId } as typeof customersTable.$inferInsert),
-            );
-            created++;
-          }
-        } catch (err) {
-          errors.push({ row: i + chunk.indexOf(customer) + 1, code: customer.code, error: err instanceof Error ? err.message : "Unknown error" });
+          updated++;
+        } else {
+          await withTenantDb(tenantId, (db) =>
+            db.insert(customersTable).values({ ...customer, tenantId } as typeof customersTable.$inferInsert),
+          );
+          created++;
         }
+      } catch (err) {
+        errors.push({ row: rowNum, code: customer.code, error: err instanceof Error ? err.message : "Unknown error" });
       }
     }
 
