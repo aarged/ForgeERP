@@ -789,14 +789,31 @@ function QuotationsTab() {
       toast({ title: "Select a customer", description: "Pick a customer from Master Data before saving.", variant: "destructive" });
       return;
     }
+    // Normalize only the date fields: empty strings clear the column (null).
+    // Other optional fields keep "" so users can clear them.
+    const dateKeys = new Set(["expiryDate", "requestedDate"]);
+    const payload: Record<string, unknown> = { ...values };
+    for (const k of dateKeys) {
+      if (payload[k] === "") payload[k] = null;
+    }
     try {
-      await updateMut.mutateAsync({ id: editId, data: values });
+      await updateMut.mutateAsync({ id: editId, data: payload as typeof values });
       toast({ title: "Quotation updated" });
       invalidate();
       qc.invalidateQueries({ queryKey: getGetQuotationQueryKey(editId) });
       setEditId(null);
-    } catch {
-      toast({ title: "Failed to update quotation", variant: "destructive" });
+    } catch (e: unknown) {
+      const err = e as {
+        data?: { error?: string };
+        response?: { data?: { error?: string } };
+        message?: string;
+      };
+      const msg =
+        err?.data?.error ??
+        err?.response?.data?.error ??
+        err?.message ??
+        "Unknown error";
+      toast({ title: "Failed to update quotation", description: msg, variant: "destructive" });
     }
   }
 

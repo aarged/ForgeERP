@@ -2,11 +2,13 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Copy, KeyRound, Link2, MoreHorizontal, Plus } from "lucide-react";
+import { Copy, KeyRound, Link2, MoreHorizontal, Plus, Wallet } from "lucide-react";
 import {
   useListApiKeys,
   useCreateApiKey,
   useRevokeApiKey,
+  useLookupCustomer,
+  getLookupCustomerQueryKey,
   getListApiKeysQueryKey,
 } from "@workspace/api-client-react";
 import type {
@@ -173,6 +175,15 @@ export function IntegrationsPanel() {
   const apiBaseUrl =
     typeof window !== "undefined" ? window.location.origin : "";
 
+  const { data: cashCustomerLookup, isLoading: cashCustomerLoading, error: cashCustomerError } =
+    useLookupCustomer(
+      { code: "C80000" },
+      { query: { queryKey: getLookupCustomerQueryKey({ code: "C80000" }), retry: false } },
+    );
+  const cashCustomer = cashCustomerLookup as { name?: string } | undefined;
+  const cashCustomerNotFound =
+    !!cashCustomerError && (cashCustomerError as { status?: number }).status === 404;
+
   return (
     <div className="space-y-4">
       <Card>
@@ -208,6 +219,44 @@ export function IntegrationsPanel() {
               Copy
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wallet className="h-5 w-5" />
+            Cash Customer fallback
+          </CardTitle>
+          <CardDescription>
+            When an inbound request (e.g. from Cyntric) can't be matched to a
+            customer in Master Data, the integration should post the quotation
+            against the umbrella Cash Customer account using code{" "}
+            <code className="font-mono">C80000</code>. This keeps unattributed
+            sales out of named customer histories while still letting them flow
+            through Forge.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {cashCustomerLoading ? (
+            <Skeleton className="h-5 w-64" />
+          ) : cashCustomer?.name ? (
+            <div className="flex items-center gap-2 text-sm" data-testid="cash-customer-status">
+              <Badge variant="default" className="font-mono">C80000</Badge>
+              <span>{cashCustomer.name}</span>
+              <span className="text-muted-foreground">— ready to receive unattributed quotations.</span>
+            </div>
+          ) : cashCustomerNotFound ? (
+            <div className="text-sm text-muted-foreground" data-testid="cash-customer-missing">
+              No customer with code <code className="font-mono">C80000</code> exists yet.
+              Create one in Master Data → Customers (name it "Cash Customer")
+              before pointing any integration at this convention.
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              Could not check for the Cash Customer right now.
+            </div>
+          )}
         </CardContent>
       </Card>
 
