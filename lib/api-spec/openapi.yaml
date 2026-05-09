@@ -9199,7 +9199,11 @@ components:
         billingPostalCode: { type: string, nullable: true }
         billingCountry: { type: string, nullable: true }
         shippingAddressLine1: { type: string, nullable: true }
+        shippingAddressLine2: { type: string, nullable: true }
         shippingCity: { type: string, nullable: true }
+        shippingState: { type: string, nullable: true }
+        shippingPostalCode: { type: string, nullable: true }
+        shippingCountry: { type: string, nullable: true }
         creditLimit: { type: string, nullable: true }
         paymentTerms: { type: string, nullable: true }
         currency: { type: string }
@@ -10110,6 +10114,12 @@ components:
         customerName: { type: string, nullable: true }
         customerEmail: { type: string, nullable: true }
         customerRef: { type: string, nullable: true }
+        deliveryAddressLine1: { type: string, nullable: true }
+        deliveryAddressLine2: { type: string, nullable: true }
+        deliveryCity: { type: string, nullable: true }
+        deliveryState: { type: string, nullable: true }
+        deliveryPostalCode: { type: string, nullable: true }
+        deliveryCountry: { type: string, nullable: true }
         expiryDate: { type: string, nullable: true }
         requestedDate: { type: string, nullable: true }
         currencyCode: { type: string }
@@ -10209,9 +10219,16 @@ components:
     UpdateQuotationBody:
       type: object
       properties:
+        customerId: { type: integer }
         customerName: { type: string }
         customerEmail: { type: string }
         customerRef: { type: string }
+        deliveryAddressLine1: { type: string }
+        deliveryAddressLine2: { type: string }
+        deliveryCity: { type: string }
+        deliveryState: { type: string }
+        deliveryPostalCode: { type: string }
+        deliveryCountry: { type: string }
         expiryDate: { type: string }
         requestedDate: { type: string }
         paymentTerms: { type: string }

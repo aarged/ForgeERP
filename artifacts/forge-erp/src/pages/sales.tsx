@@ -688,13 +688,21 @@ function QuotationsTab() {
   const sendMut = useSendQuotation();
   const convertMut = useConvertQuotationToSo();
   const deleteMut = useDeleteQuotation();
-  const editForm = useForm<{
+  type EditQuotForm = {
+    customerId?: number;
     customerName?: string;
     customerEmail?: string;
     expiryDate?: string;
     paymentTerms?: string;
     notes?: string;
-  }>();
+    deliveryAddressLine1?: string;
+    deliveryAddressLine2?: string;
+    deliveryCity?: string;
+    deliveryState?: string;
+    deliveryPostalCode?: string;
+    deliveryCountry?: string;
+  };
+  const editForm = useForm<EditQuotForm>();
 
   const form = useForm<QuotForm>({ defaultValues: { lines: [] } });
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "lines" });
@@ -760,22 +768,27 @@ function QuotationsTab() {
   function openEditDialog(q: Quotation) {
     setEditId(q.id ?? null);
     editForm.reset({
+      customerId: q.customerId ?? undefined,
       customerName: q.customerName ?? "",
       customerEmail: q.customerEmail ?? "",
       expiryDate: q.expiryDate ?? "",
       paymentTerms: q.paymentTerms ?? "",
       notes: q.notes ?? "",
+      deliveryAddressLine1: q.deliveryAddressLine1 ?? "",
+      deliveryAddressLine2: q.deliveryAddressLine2 ?? "",
+      deliveryCity: q.deliveryCity ?? "",
+      deliveryState: q.deliveryState ?? "",
+      deliveryPostalCode: q.deliveryPostalCode ?? "",
+      deliveryCountry: q.deliveryCountry ?? "",
     });
   }
 
-  async function handleEditSubmit(values: {
-    customerName?: string;
-    customerEmail?: string;
-    expiryDate?: string;
-    paymentTerms?: string;
-    notes?: string;
-  }) {
+  async function handleEditSubmit(values: EditQuotForm) {
     if (!editId) return;
+    if (!values.customerId) {
+      toast({ title: "Select a customer", description: "Pick a customer from Master Data before saving.", variant: "destructive" });
+      return;
+    }
     try {
       await updateMut.mutateAsync({ id: editId, data: values });
       toast({ title: "Quotation updated" });
@@ -832,7 +845,17 @@ function QuotationsTab() {
   }
 
   const custList =
-    (customers as { customers?: Array<{ id: number; name: string; email?: string | null }> })?.customers ?? [];
+    (customers as { customers?: Array<{
+      id: number;
+      name: string;
+      email?: string | null;
+      shippingAddressLine1?: string | null;
+      shippingAddressLine2?: string | null;
+      shippingCity?: string | null;
+      shippingState?: string | null;
+      shippingPostalCode?: string | null;
+      shippingCountry?: string | null;
+    }> })?.customers ?? [];
   const itemsList =
     (itemsData as { items?: ItemOption[] })?.items ?? [];
   const quotations = (list as { data?: Quotation[] })?.data ?? [];
@@ -1190,9 +1213,43 @@ function QuotationsTab() {
             className="space-y-3"
           >
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Customer Name</Label>
-                <Input {...editForm.register("customerName")} />
+              <div className="col-span-2">
+                <Label>Customer</Label>
+                <Controller
+                  control={editForm.control}
+                  name="customerId"
+                  render={({ field: f }) => (
+                    <Select
+                      value={f.value ? String(f.value) : ""}
+                      onValueChange={(v) => {
+                        const id = v ? Number(v) : undefined;
+                        f.onChange(id);
+                        const c = custList.find((c) => c.id === id);
+                        if (c) {
+                          editForm.setValue("customerName", c.name);
+                          editForm.setValue("customerEmail", c.email ?? "");
+                          editForm.setValue("deliveryAddressLine1", c.shippingAddressLine1 ?? "");
+                          editForm.setValue("deliveryAddressLine2", c.shippingAddressLine2 ?? "");
+                          editForm.setValue("deliveryCity", c.shippingCity ?? "");
+                          editForm.setValue("deliveryState", c.shippingState ?? "");
+                          editForm.setValue("deliveryPostalCode", c.shippingPostalCode ?? "");
+                          editForm.setValue("deliveryCountry", c.shippingCountry ?? "");
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select customer..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {custList.map((c) => (
+                          <SelectItem key={c.id} value={String(c.id)}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
               <div>
                 <Label>Customer Email</Label>
@@ -1202,9 +1259,38 @@ function QuotationsTab() {
                 <Label>Expiry Date</Label>
                 <Input type="date" {...editForm.register("expiryDate")} />
               </div>
-              <div>
+              <div className="col-span-2">
                 <Label>Payment Terms</Label>
                 <Input {...editForm.register("paymentTerms")} placeholder="Net 30" />
+              </div>
+            </div>
+            <div className="border-t pt-3 space-y-3">
+              <div className="text-sm font-medium">Ship-To Address</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <Label>Address Line 1</Label>
+                  <Input {...editForm.register("deliveryAddressLine1")} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Address Line 2</Label>
+                  <Input {...editForm.register("deliveryAddressLine2")} />
+                </div>
+                <div>
+                  <Label>City</Label>
+                  <Input {...editForm.register("deliveryCity")} />
+                </div>
+                <div>
+                  <Label>State / Region</Label>
+                  <Input {...editForm.register("deliveryState")} />
+                </div>
+                <div>
+                  <Label>Postal Code</Label>
+                  <Input {...editForm.register("deliveryPostalCode")} />
+                </div>
+                <div>
+                  <Label>Country</Label>
+                  <Input {...editForm.register("deliveryCountry")} />
+                </div>
               </div>
             </div>
             <div>
@@ -1417,7 +1503,17 @@ function SalesOrdersTab() {
   }
 
   const custList =
-    (customers as { customers?: Array<{ id: number; name: string; email?: string | null }> })?.customers ?? [];
+    (customers as { customers?: Array<{
+      id: number;
+      name: string;
+      email?: string | null;
+      shippingAddressLine1?: string | null;
+      shippingAddressLine2?: string | null;
+      shippingCity?: string | null;
+      shippingState?: string | null;
+      shippingPostalCode?: string | null;
+      shippingCountry?: string | null;
+    }> })?.customers ?? [];
   const warehouseList =
     (warehouses as { warehouses?: Array<{ id: number; name: string }> })?.warehouses ?? [];
   const itemsList = (itemsData as { items?: ItemOption[] })?.items ?? [];
@@ -2636,7 +2732,17 @@ function RmaTab() {
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "lines" });
 
   const custList =
-    (customers as { customers?: Array<{ id: number; name: string; email?: string | null }> })?.customers ?? [];
+    (customers as { customers?: Array<{
+      id: number;
+      name: string;
+      email?: string | null;
+      shippingAddressLine1?: string | null;
+      shippingAddressLine2?: string | null;
+      shippingCity?: string | null;
+      shippingState?: string | null;
+      shippingPostalCode?: string | null;
+      shippingCountry?: string | null;
+    }> })?.customers ?? [];
   const rmaOrders = (list as { data?: RmaOrder[] })?.data ?? [];
   const det = detail as RmaDetail | undefined;
 

@@ -1567,7 +1567,11 @@ export interface MasterCustomer {
   billingPostalCode?: string | null;
   billingCountry?: string | null;
   shippingAddressLine1?: string | null;
+  shippingAddressLine2?: string | null;
   shippingCity?: string | null;
+  shippingState?: string | null;
+  shippingPostalCode?: string | null;
+  shippingCountry?: string | null;
   creditLimit?: string | null;
   paymentTerms?: string | null;
   currency?: string;
@@ -2438,6 +2442,12 @@ export interface Quotation {
   customerName?: string | null;
   customerEmail?: string | null;
   customerRef?: string | null;
+  deliveryAddressLine1?: string | null;
+  deliveryAddressLine2?: string | null;
+  deliveryCity?: string | null;
+  deliveryState?: string | null;
+  deliveryPostalCode?: string | null;
+  deliveryCountry?: string | null;
   expiryDate?: string | null;
   requestedDate?: string | null;
   currencyCode?: string;
@@ -2521,9 +2531,16 @@ export interface CreateQuotationBody {
 }
 
 export interface UpdateQuotationBody {
+  customerId?: number;
   customerName?: string;
   customerEmail?: string;
   customerRef?: string;
+  deliveryAddressLine1?: string;
+  deliveryAddressLine2?: string;
+  deliveryCity?: string;
+  deliveryState?: string;
+  deliveryPostalCode?: string;
+  deliveryCountry?: string;
   expiryDate?: string;
   requestedDate?: string;
   paymentTerms?: string;

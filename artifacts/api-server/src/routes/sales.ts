@@ -772,9 +772,16 @@ router.patch("/sales/quotations/:id", ...tenantWriteMiddleware, async (req: Requ
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
   const schema = z.object({
+    customerId: z.number().int().positive().optional(),
     customerName: z.string().optional(),
     customerEmail: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
     customerRef: z.string().optional(),
+    deliveryAddressLine1: z.string().optional(),
+    deliveryAddressLine2: z.string().optional(),
+    deliveryCity: z.string().optional(),
+    deliveryState: z.string().optional(),
+    deliveryPostalCode: z.string().optional(),
+    deliveryCountry: z.string().optional(),
     expiryDate: z.string().optional().nullable(),
     requestedDate: z.string().optional().nullable(),
     paymentTerms: z.string().optional(),
@@ -786,8 +793,25 @@ router.patch("/sales/quotations/:id", ...tenantWriteMiddleware, async (req: Requ
   const [existing] = await withTenantDb(tenantId, (db) => db.select({ status: quotationsTable.status }).from(quotationsTable).where(and(eq(quotationsTable.id, id), eq(quotationsTable.tenantId, tenantId))).limit(1));
   if (!existing) { res.status(404).json({ error: "Quotation not found" }); return; }
   if (!["draft", "sent"].includes(existing.status)) { res.status(400).json({ error: "Cannot edit a quotation that is accepted, rejected, or converted" }); return; }
-  const [updated] = await withTenantDb(tenantId, (db) => db.update(quotationsTable).set(parsed.data as Record<string, unknown>).where(and(eq(quotationsTable.id, id), eq(quotationsTable.tenantId, tenantId))).returning());
-  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "quotation.updated", entityType: "quotation", entityId: String(id), newValues: parsed.data });
+  // Customer identity must come from Master Data: if customerId is supplied,
+  // verify it and derive customerName/customerEmail from the master record so
+  // free-text values cannot drift. If customerId is not supplied, strip any
+  // customerName/customerEmail in the payload to prevent bypassing Master Data.
+  const updatePayload: Record<string, unknown> = { ...parsed.data };
+  if (parsed.data.customerId !== undefined) {
+    const [cust] = await withTenantDb(tenantId, (db) =>
+      db.select({ id: customersTable.id, name: customersTable.name, email: customersTable.email }).from(customersTable)
+        .where(and(eq(customersTable.id, parsed.data.customerId!), eq(customersTable.tenantId, tenantId), isNull(customersTable.deletedAt)))
+        .limit(1));
+    if (!cust) { res.status(400).json({ error: `Customer with id ${parsed.data.customerId} not found` }); return; }
+    updatePayload.customerName = cust.name;
+    updatePayload.customerEmail = cust.email ?? null;
+  } else {
+    delete updatePayload.customerName;
+    delete updatePayload.customerEmail;
+  }
+  const [updated] = await withTenantDb(tenantId, (db) => db.update(quotationsTable).set(updatePayload).where(and(eq(quotationsTable.id, id), eq(quotationsTable.tenantId, tenantId))).returning());
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "quotation.updated", entityType: "quotation", entityId: String(id), newValues: updatePayload });
   res.json(updated);
 });
 
