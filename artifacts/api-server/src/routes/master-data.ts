@@ -854,6 +854,63 @@ router.post(
   },
 );
 
+// Supplier CSV bulk import
+router.post(
+  "/master-data/suppliers/import",
+  ...tenantWriteMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+
+    // For imports, omit zod defaults so omitted columns don't overwrite
+    // existing rows on update. DB columns supply defaults on insert.
+    const supplierImportSchema = supplierSchema.extend({
+      currency: z.string().optional(),
+      isActive: z.boolean().optional(),
+    });
+    const schema = z.object({
+      suppliers: z.array(supplierImportSchema).min(1).max(5000),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+
+    const { suppliers } = parsed.data;
+    let created = 0;
+    let updated = 0;
+    const errors: { row: number; code: string; error: string }[] = [];
+
+    for (let i = 0; i < suppliers.length; i += 100) {
+      const chunk = suppliers.slice(i, i + 100);
+      for (const supplier of chunk) {
+        try {
+          const existing = await withTenantDb(tenantId, (db) =>
+            db.select({ id: suppliersTable.id }).from(suppliersTable)
+              .where(and(eq(suppliersTable.code, supplier.code), eq(suppliersTable.tenantId, tenantId), isNull(suppliersTable.deletedAt)))
+              .limit(1),
+          );
+          if (existing.length > 0) {
+            await withTenantDb(tenantId, (db) =>
+              db.update(suppliersTable).set(supplier as Record<string, unknown>)
+                .where(and(eq(suppliersTable.id, existing[0]!.id), eq(suppliersTable.tenantId, tenantId))),
+            );
+            updated++;
+          } else {
+            await withTenantDb(tenantId, (db) =>
+              db.insert(suppliersTable).values({ ...supplier, tenantId } as typeof suppliersTable.$inferInsert),
+            );
+            created++;
+          }
+        } catch (err) {
+          errors.push({ row: i + chunk.indexOf(supplier) + 1, code: supplier.code, error: err instanceof Error ? err.message : "Unknown error" });
+        }
+      }
+    }
+
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "supplier.bulk_import", entityType: "supplier", entityId: tenantId, newValues: { created, updated, errorCount: errors.length } });
+    res.json({ created, updated, errors });
+  },
+);
+
 router.patch(
   "/master-data/suppliers/:id",
   ...tenantWriteMiddleware,
@@ -1133,6 +1190,63 @@ router.post(
 
     await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "customer.created", entityType: "customer", entityId: customer!.id, newValues: parsed.data });
     res.status(201).json(customer);
+  },
+);
+
+// Customer CSV bulk import
+router.post(
+  "/master-data/customers/import",
+  ...tenantWriteMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+
+    // For imports, omit zod defaults so omitted columns don't overwrite
+    // existing rows on update. DB columns supply defaults on insert.
+    const customerImportSchema = customerSchema.extend({
+      currency: z.string().optional(),
+      isActive: z.boolean().optional(),
+    });
+    const schema = z.object({
+      customers: z.array(customerImportSchema).min(1).max(5000),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
+
+    const { customers } = parsed.data;
+    let created = 0;
+    let updated = 0;
+    const errors: { row: number; code: string; error: string }[] = [];
+
+    for (let i = 0; i < customers.length; i += 100) {
+      const chunk = customers.slice(i, i + 100);
+      for (const customer of chunk) {
+        try {
+          const existing = await withTenantDb(tenantId, (db) =>
+            db.select({ id: customersTable.id }).from(customersTable)
+              .where(and(eq(customersTable.code, customer.code), eq(customersTable.tenantId, tenantId), isNull(customersTable.deletedAt)))
+              .limit(1),
+          );
+          if (existing.length > 0) {
+            await withTenantDb(tenantId, (db) =>
+              db.update(customersTable).set(customer as Record<string, unknown>)
+                .where(and(eq(customersTable.id, existing[0]!.id), eq(customersTable.tenantId, tenantId))),
+            );
+            updated++;
+          } else {
+            await withTenantDb(tenantId, (db) =>
+              db.insert(customersTable).values({ ...customer, tenantId } as typeof customersTable.$inferInsert),
+            );
+            created++;
+          }
+        } catch (err) {
+          errors.push({ row: i + chunk.indexOf(customer) + 1, code: customer.code, error: err instanceof Error ? err.message : "Unknown error" });
+        }
+      }
+    }
+
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "customer.bulk_import", entityType: "customer", entityId: tenantId, newValues: { created, updated, errorCount: errors.length } });
+    res.json({ created, updated, errors });
   },
 );
 

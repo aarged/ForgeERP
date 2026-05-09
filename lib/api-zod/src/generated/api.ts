@@ -1437,6 +1437,103 @@ export const ImportItemsResponse = zod.object({
 });
 
 /**
+ * @summary Bulk import suppliers from CSV data
+ */
+export const ImportSuppliersBody = zod.object({
+  suppliers: zod.array(
+    zod.object({
+      code: zod.string(),
+      name: zod.string(),
+      legalName: zod.string().optional(),
+      taxId: zod.string().optional(),
+      abn: zod.string().optional(),
+      email: zod.string().optional(),
+      phone: zod.string().optional(),
+      website: zod.string().optional(),
+      addressLine1: zod.string().optional(),
+      addressLine2: zod.string().optional(),
+      city: zod.string().optional(),
+      state: zod.string().optional(),
+      postalCode: zod.string().optional(),
+      country: zod.string().optional(),
+      deliveryAddressLine1: zod.string().optional(),
+      deliveryCity: zod.string().optional(),
+      deliveryState: zod.string().optional(),
+      deliveryPostalCode: zod.string().optional(),
+      deliveryCountry: zod.string().optional(),
+      paymentTerms: zod.string().optional(),
+      currency: zod.string().optional(),
+      pricingTier: zod.string().optional(),
+      creditLimit: zod.number().optional(),
+      notes: zod.string().optional(),
+    }),
+  ),
+});
+
+export const ImportSuppliersResponse = zod.object({
+  created: zod.number().optional(),
+  updated: zod.number().optional(),
+  errors: zod
+    .array(
+      zod.object({
+        row: zod.number().optional(),
+        code: zod.string().optional(),
+        error: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Bulk import customers from CSV data
+ */
+export const ImportCustomersBody = zod.object({
+  customers: zod.array(
+    zod.object({
+      code: zod.string(),
+      name: zod.string(),
+      legalName: zod.string().optional(),
+      taxId: zod.string().optional(),
+      abn: zod.string().optional(),
+      email: zod.string().optional(),
+      phone: zod.string().optional(),
+      website: zod.string().optional(),
+      billingAddressLine1: zod.string().optional(),
+      billingAddressLine2: zod.string().optional(),
+      billingCity: zod.string().optional(),
+      billingState: zod.string().optional(),
+      billingPostalCode: zod.string().optional(),
+      billingCountry: zod.string().optional(),
+      shippingAddressLine1: zod.string().optional(),
+      shippingAddressLine2: zod.string().optional(),
+      shippingCity: zod.string().optional(),
+      shippingState: zod.string().optional(),
+      shippingPostalCode: zod.string().optional(),
+      shippingCountry: zod.string().optional(),
+      creditLimit: zod.number().optional(),
+      paymentTerms: zod.string().optional(),
+      currency: zod.string().optional(),
+      pricingTier: zod.string().optional(),
+      notes: zod.string().optional(),
+    }),
+  ),
+});
+
+export const ImportCustomersResponse = zod.object({
+  created: zod.number().optional(),
+  updated: zod.number().optional(),
+  errors: zod
+    .array(
+      zod.object({
+        row: zod.number().optional(),
+        code: zod.string().optional(),
+        error: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
  * @summary Get item detail
  */
 export const GetItemParams = zod.object({

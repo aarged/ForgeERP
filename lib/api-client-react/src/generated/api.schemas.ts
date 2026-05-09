@@ -1385,6 +1385,69 @@ export interface ImportItemsBody {
   items: ImportItemsBodyItemsItem[];
 }
 
+export type ImportSuppliersBodySuppliersItem = {
+  code: string;
+  name: string;
+  legalName?: string;
+  taxId?: string;
+  abn?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  deliveryAddressLine1?: string;
+  deliveryCity?: string;
+  deliveryState?: string;
+  deliveryPostalCode?: string;
+  deliveryCountry?: string;
+  paymentTerms?: string;
+  currency?: string;
+  pricingTier?: string;
+  creditLimit?: number;
+  notes?: string;
+};
+
+export interface ImportSuppliersBody {
+  suppliers: ImportSuppliersBodySuppliersItem[];
+}
+
+export type ImportCustomersBodyCustomersItem = {
+  code: string;
+  name: string;
+  legalName?: string;
+  taxId?: string;
+  abn?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  billingAddressLine1?: string;
+  billingAddressLine2?: string;
+  billingCity?: string;
+  billingState?: string;
+  billingPostalCode?: string;
+  billingCountry?: string;
+  shippingAddressLine1?: string;
+  shippingAddressLine2?: string;
+  shippingCity?: string;
+  shippingState?: string;
+  shippingPostalCode?: string;
+  shippingCountry?: string;
+  creditLimit?: number;
+  paymentTerms?: string;
+  currency?: string;
+  pricingTier?: string;
+  notes?: string;
+};
+
+export interface ImportCustomersBody {
+  customers: ImportCustomersBodyCustomersItem[];
+}
+
 export type BulkImportResultErrorsItem = {
   row?: number;
   code?: string;

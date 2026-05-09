@@ -64,6 +64,8 @@ import {
   useLookupCustomer,
   useLookupWarehouse,
   useImportItems,
+  useImportSuppliers,
+  useImportCustomers,
 } from "@workspace/api-client-react";
 import type {
   CreateItemBody,
@@ -1937,6 +1939,7 @@ function SuppliersTab({ initialId, initialCode }: { initialId?: number; initialC
   }, [supplierLookup]);
 
   const deleteM = useDeleteSupplier();
+  const [importOpen, setImportOpen] = useState(false);
   const refresh = useCallback(() => { queryClient.invalidateQueries({ queryKey: getListSuppliersQueryKey() }); setPage(1); setAllRows([]); }, [queryClient]);
   const handleDelete = async () => {
     if (!deleteRow?.id) return;
@@ -1957,6 +1960,9 @@ function SuppliersTab({ initialId, initialCode }: { initialId?: number; initialC
           </Button>
           <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "suppliers.xlsx", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> Excel
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+            <Upload className="h-4 w-4 mr-1" /> Import CSV
           </Button>
           <Button onClick={() => { setEditRow(undefined); setModalOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New Supplier</Button>
         </div>
@@ -2014,6 +2020,7 @@ function SuppliersTab({ initialId, initialCode }: { initialId?: number; initialC
         <div ref={sentinelRef} className="h-1" />
       </Card>
       <SupplierModal open={modalOpen} onOpenChange={setModalOpen} supplier={editRow} onSuccess={refresh} />
+      <SupplierCsvImportDialog open={importOpen} onOpenChange={setImportOpen} onSuccess={refresh} />
       <DeleteConfirm open={!!deleteRow} onOpenChange={(v) => !v && setDeleteRow(undefined)} name={deleteRow?.name ?? "supplier"} onConfirm={handleDelete} isPending={deleteM.isPending} />
       {auditTarget && <AuditTrailDialog open={!!auditTarget} onOpenChange={(v) => !v && setAuditTarget(undefined)} entityType="supplier" entityId={auditTarget.id} entityName={auditTarget.name} />}
     </div>
@@ -2166,6 +2173,7 @@ function CustomersTab({ initialId, initialCode }: { initialId?: number; initialC
   }, [customerLookup]);
 
   const deleteM = useDeleteCustomer();
+  const [importOpen, setImportOpen] = useState(false);
   const refresh = useCallback(() => { queryClient.invalidateQueries({ queryKey: getListCustomersQueryKey() }); setPage(1); setAllRows([]); }, [queryClient]);
   const handleDelete = async () => {
     if (!deleteRow?.id) return;
@@ -2186,6 +2194,9 @@ function CustomersTab({ initialId, initialCode }: { initialId?: number; initialC
           </Button>
           <Button variant="outline" size="sm" onClick={() => exportExcel(allRows as Record<string, unknown>[], "customers.xlsx", tenant?.slug)} disabled={!allRows.length}>
             <Download className="h-4 w-4 mr-1" /> Excel
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+            <Upload className="h-4 w-4 mr-1" /> Import CSV
           </Button>
           <Button onClick={() => { setEditRow(undefined); setModalOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New Customer</Button>
         </div>
@@ -2243,6 +2254,7 @@ function CustomersTab({ initialId, initialCode }: { initialId?: number; initialC
         <div ref={sentinelRef} className="h-1" />
       </Card>
       <CustomerModal open={modalOpen} onOpenChange={setModalOpen} customer={editRow} onSuccess={refresh} />
+      <CustomerCsvImportDialog open={importOpen} onOpenChange={setImportOpen} onSuccess={refresh} />
       <DeleteConfirm open={!!deleteRow} onOpenChange={(v) => !v && setDeleteRow(undefined)} name={deleteRow?.name ?? "customer"} onConfirm={handleDelete} isPending={deleteM.isPending} />
       {auditTarget && <AuditTrailDialog open={!!auditTarget} onOpenChange={(v) => !v && setAuditTarget(undefined)} entityType="customer" entityId={auditTarget.id} entityName={auditTarget.name} />}
     </div>
@@ -2563,6 +2575,261 @@ function GlAccountModal({ open, onOpenChange, account, allAccounts, onSuccess }:
             <Button type="submit" disabled={isPending}>{isPending ? "Saving…" : isEdit ? "Save Changes" : "Create Account"}</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SupplierCsvImportDialog({ open, onOpenChange, onSuccess }: {
+  open: boolean; onOpenChange: (v: boolean) => void; onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const importM = useImportSuppliers();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [result, setResult] = useState<BulkImportResult | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+
+  const getCol = (row: Record<string, string>, ...keys: string[]): string | undefined => {
+    for (const k of keys) {
+      const v = row[k]?.trim();
+      if (v) return v;
+      const lower = Object.keys(row).find((rk) => rk.toLowerCase() === k.toLowerCase());
+      if (lower) { const v2 = row[lower]?.trim(); if (v2) return v2; }
+    }
+    return undefined;
+  };
+  const toNum = (v: string | undefined): number | undefined => {
+    if (!v) return undefined;
+    const n = Number(v);
+    return isNaN(n) ? undefined : n;
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsParsing(true);
+    try {
+      const parsed = await new Promise<Papa.ParseResult<Record<string, string>>>((resolve) => {
+        Papa.parse<Record<string, string>>(file, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (h) => h.trim().replace(/^\uFEFF/, ""),
+          complete: resolve,
+        });
+      });
+
+      if (parsed.errors.length > 0 && parsed.data.length === 0) {
+        toast({ title: "CSV parse error", description: parsed.errors[0]?.message, variant: "destructive" });
+        return;
+      }
+
+      const suppliers = parsed.data
+        .map((r) => ({
+          code: getCol(r, "code") ?? "",
+          name: getCol(r, "name") ?? "",
+          legalName: getCol(r, "legalName", "legal_name") || undefined,
+          taxId: getCol(r, "taxId", "tax_id") || undefined,
+          abn: getCol(r, "abn") || undefined,
+          email: getCol(r, "email") || undefined,
+          phone: getCol(r, "phone") || undefined,
+          website: getCol(r, "website") || undefined,
+          addressLine1: getCol(r, "addressLine1", "address_line_1", "address1", "address") || undefined,
+          addressLine2: getCol(r, "addressLine2", "address_line_2", "address2") || undefined,
+          city: getCol(r, "city") || undefined,
+          state: getCol(r, "state") || undefined,
+          postalCode: getCol(r, "postalCode", "postal_code", "zip", "postcode") || undefined,
+          country: getCol(r, "country") || undefined,
+          deliveryAddressLine1: getCol(r, "deliveryAddressLine1", "delivery_address_line_1", "deliveryAddress") || undefined,
+          deliveryCity: getCol(r, "deliveryCity", "delivery_city") || undefined,
+          deliveryState: getCol(r, "deliveryState", "delivery_state") || undefined,
+          deliveryPostalCode: getCol(r, "deliveryPostalCode", "delivery_postal_code") || undefined,
+          deliveryCountry: getCol(r, "deliveryCountry", "delivery_country") || undefined,
+          paymentTerms: getCol(r, "paymentTerms", "payment_terms", "terms") || undefined,
+          currency: getCol(r, "currency") || undefined,
+          pricingTier: getCol(r, "pricingTier", "pricing_tier") || undefined,
+          creditLimit: toNum(getCol(r, "creditLimit", "credit_limit")),
+          notes: getCol(r, "notes") || undefined,
+        }))
+        .filter((s) => s.code && s.name);
+
+      if (!suppliers.length) {
+        toast({ title: "No valid rows found", description: "Ensure the CSV has 'code' and 'name' columns with at least one data row.", variant: "destructive" });
+        return;
+      }
+
+      const res = await importM.mutateAsync({ data: { suppliers } });
+      setResult(res);
+      toast({ title: `Import complete: ${res.created} created, ${res.updated} updated${res.errors?.length ? `, ${res.errors.length} errors` : ""}` });
+      onSuccess();
+    } catch (err: unknown) {
+      toast({ title: "Import failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setIsParsing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleClose = () => { setResult(null); onOpenChange(false); };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Import Suppliers from CSV</DialogTitle>
+          <DialogDescription>
+            Upload a CSV file. Required columns: <code className="text-xs bg-muted px-1 rounded">code, name</code>.
+            Optional: <code className="text-xs bg-muted px-1 rounded">legalName, taxId, abn, email, phone, website, addressLine1, addressLine2, city, state, postalCode, country, deliveryAddressLine1, deliveryCity, deliveryState, deliveryPostalCode, deliveryCountry, paymentTerms, currency, pricingTier, creditLimit, notes</code>.
+            Existing suppliers (matched by code) will be updated.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFile} />
+          <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()} disabled={isParsing || importM.isPending}>
+            <Upload className="h-4 w-4 mr-2" />
+            {isParsing || importM.isPending ? "Processing…" : "Choose CSV file"}
+          </Button>
+          {result && (
+            <div className="rounded-md border p-3 text-sm space-y-1">
+              <div className="font-medium">Results</div>
+              <div className="text-muted-foreground">Created: <span className="text-foreground font-medium">{result.created}</span></div>
+              <div className="text-muted-foreground">Updated: <span className="text-foreground font-medium">{result.updated}</span></div>
+              {result.errors && result.errors.length > 0 && (
+                <div className="text-destructive">Errors: {result.errors.length} row(s) failed</div>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CustomerCsvImportDialog({ open, onOpenChange, onSuccess }: {
+  open: boolean; onOpenChange: (v: boolean) => void; onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const importM = useImportCustomers();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [result, setResult] = useState<BulkImportResult | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+
+  const getCol = (row: Record<string, string>, ...keys: string[]): string | undefined => {
+    for (const k of keys) {
+      const v = row[k]?.trim();
+      if (v) return v;
+      const lower = Object.keys(row).find((rk) => rk.toLowerCase() === k.toLowerCase());
+      if (lower) { const v2 = row[lower]?.trim(); if (v2) return v2; }
+    }
+    return undefined;
+  };
+  const toNum = (v: string | undefined): number | undefined => {
+    if (!v) return undefined;
+    const n = Number(v);
+    return isNaN(n) ? undefined : n;
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsParsing(true);
+    try {
+      const parsed = await new Promise<Papa.ParseResult<Record<string, string>>>((resolve) => {
+        Papa.parse<Record<string, string>>(file, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (h) => h.trim().replace(/^\uFEFF/, ""),
+          complete: resolve,
+        });
+      });
+
+      if (parsed.errors.length > 0 && parsed.data.length === 0) {
+        toast({ title: "CSV parse error", description: parsed.errors[0]?.message, variant: "destructive" });
+        return;
+      }
+
+      const customers = parsed.data
+        .map((r) => ({
+          code: getCol(r, "code") ?? "",
+          name: getCol(r, "name") ?? "",
+          legalName: getCol(r, "legalName", "legal_name") || undefined,
+          taxId: getCol(r, "taxId", "tax_id") || undefined,
+          abn: getCol(r, "abn") || undefined,
+          email: getCol(r, "email") || undefined,
+          phone: getCol(r, "phone") || undefined,
+          website: getCol(r, "website") || undefined,
+          billingAddressLine1: getCol(r, "billingAddressLine1", "billing_address_line_1", "billingAddress1", "billingAddress") || undefined,
+          billingAddressLine2: getCol(r, "billingAddressLine2", "billing_address_line_2", "billingAddress2") || undefined,
+          billingCity: getCol(r, "billingCity", "billing_city") || undefined,
+          billingState: getCol(r, "billingState", "billing_state") || undefined,
+          billingPostalCode: getCol(r, "billingPostalCode", "billing_postal_code", "billingZip") || undefined,
+          billingCountry: getCol(r, "billingCountry", "billing_country") || undefined,
+          shippingAddressLine1: getCol(r, "shippingAddressLine1", "shipping_address_line_1", "shippingAddress1", "shippingAddress") || undefined,
+          shippingAddressLine2: getCol(r, "shippingAddressLine2", "shipping_address_line_2", "shippingAddress2") || undefined,
+          shippingCity: getCol(r, "shippingCity", "shipping_city") || undefined,
+          shippingState: getCol(r, "shippingState", "shipping_state") || undefined,
+          shippingPostalCode: getCol(r, "shippingPostalCode", "shipping_postal_code", "shippingZip") || undefined,
+          shippingCountry: getCol(r, "shippingCountry", "shipping_country") || undefined,
+          creditLimit: toNum(getCol(r, "creditLimit", "credit_limit")),
+          paymentTerms: getCol(r, "paymentTerms", "payment_terms", "terms") || undefined,
+          currency: getCol(r, "currency") || undefined,
+          pricingTier: getCol(r, "pricingTier", "pricing_tier") || undefined,
+          notes: getCol(r, "notes") || undefined,
+        }))
+        .filter((c) => c.code && c.name);
+
+      if (!customers.length) {
+        toast({ title: "No valid rows found", description: "Ensure the CSV has 'code' and 'name' columns with at least one data row.", variant: "destructive" });
+        return;
+      }
+
+      const res = await importM.mutateAsync({ data: { customers } });
+      setResult(res);
+      toast({ title: `Import complete: ${res.created} created, ${res.updated} updated${res.errors?.length ? `, ${res.errors.length} errors` : ""}` });
+      onSuccess();
+    } catch (err: unknown) {
+      toast({ title: "Import failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setIsParsing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleClose = () => { setResult(null); onOpenChange(false); };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Import Customers from CSV</DialogTitle>
+          <DialogDescription>
+            Upload a CSV file. Required columns: <code className="text-xs bg-muted px-1 rounded">code, name</code>.
+            Optional: <code className="text-xs bg-muted px-1 rounded">legalName, taxId, abn, email, phone, website, billingAddressLine1, billingAddressLine2, billingCity, billingState, billingPostalCode, billingCountry, shippingAddressLine1, shippingAddressLine2, shippingCity, shippingState, shippingPostalCode, shippingCountry, creditLimit, paymentTerms, currency, pricingTier, notes</code>.
+            Existing customers (matched by code) will be updated.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFile} />
+          <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()} disabled={isParsing || importM.isPending}>
+            <Upload className="h-4 w-4 mr-2" />
+            {isParsing || importM.isPending ? "Processing…" : "Choose CSV file"}
+          </Button>
+          {result && (
+            <div className="rounded-md border p-3 text-sm space-y-1">
+              <div className="font-medium">Results</div>
+              <div className="text-muted-foreground">Created: <span className="text-foreground font-medium">{result.created}</span></div>
+              <div className="text-muted-foreground">Updated: <span className="text-foreground font-medium">{result.updated}</span></div>
+              {result.errors && result.errors.length > 0 && (
+                <div className="text-destructive">Errors: {result.errors.length} row(s) failed</div>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose}>Close</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

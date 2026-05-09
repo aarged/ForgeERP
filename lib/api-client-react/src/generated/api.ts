@@ -168,8 +168,10 @@ import type {
   GlobalAdminInviteRedeemed,
   GlobalAdminInviteRevoked,
   HealthStatus,
+  ImportCustomersBody,
   ImportGlAccountsBody,
   ImportItemsBody,
+  ImportSuppliersBody,
   InventoryAdjustment,
   InventoryStockList,
   InviteMemberBody,
@@ -4287,6 +4289,178 @@ export const useImportItems = <
   TContext
 > => {
   return useMutation(getImportItemsMutationOptions(options));
+};
+
+/**
+ * @summary Bulk import suppliers from CSV data
+ */
+export const getImportSuppliersUrl = () => {
+  return `/api/master-data/suppliers/import`;
+};
+
+export const importSuppliers = async (
+  importSuppliersBody: ImportSuppliersBody,
+  options?: RequestInit,
+): Promise<BulkImportResult> => {
+  return customFetch<BulkImportResult>(getImportSuppliersUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(importSuppliersBody),
+  });
+};
+
+export const getImportSuppliersMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importSuppliers>>,
+    TError,
+    { data: BodyType<ImportSuppliersBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof importSuppliers>>,
+  TError,
+  { data: BodyType<ImportSuppliersBody> },
+  TContext
+> => {
+  const mutationKey = ["importSuppliers"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof importSuppliers>>,
+    { data: BodyType<ImportSuppliersBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return importSuppliers(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ImportSuppliersMutationResult = NonNullable<
+  Awaited<ReturnType<typeof importSuppliers>>
+>;
+export type ImportSuppliersMutationBody = BodyType<ImportSuppliersBody>;
+export type ImportSuppliersMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Bulk import suppliers from CSV data
+ */
+export const useImportSuppliers = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importSuppliers>>,
+    TError,
+    { data: BodyType<ImportSuppliersBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof importSuppliers>>,
+  TError,
+  { data: BodyType<ImportSuppliersBody> },
+  TContext
+> => {
+  return useMutation(getImportSuppliersMutationOptions(options));
+};
+
+/**
+ * @summary Bulk import customers from CSV data
+ */
+export const getImportCustomersUrl = () => {
+  return `/api/master-data/customers/import`;
+};
+
+export const importCustomers = async (
+  importCustomersBody: ImportCustomersBody,
+  options?: RequestInit,
+): Promise<BulkImportResult> => {
+  return customFetch<BulkImportResult>(getImportCustomersUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(importCustomersBody),
+  });
+};
+
+export const getImportCustomersMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importCustomers>>,
+    TError,
+    { data: BodyType<ImportCustomersBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof importCustomers>>,
+  TError,
+  { data: BodyType<ImportCustomersBody> },
+  TContext
+> => {
+  const mutationKey = ["importCustomers"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof importCustomers>>,
+    { data: BodyType<ImportCustomersBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return importCustomers(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ImportCustomersMutationResult = NonNullable<
+  Awaited<ReturnType<typeof importCustomers>>
+>;
+export type ImportCustomersMutationBody = BodyType<ImportCustomersBody>;
+export type ImportCustomersMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Bulk import customers from CSV data
+ */
+export const useImportCustomers = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importCustomers>>,
+    TError,
+    { data: BodyType<ImportCustomersBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof importCustomers>>,
+  TError,
+  { data: BodyType<ImportCustomersBody> },
+  TContext
+> => {
+  return useMutation(getImportCustomersMutationOptions(options));
 };
 
 /**

@@ -1671,6 +1671,60 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /master-data/suppliers/import:
+    post:
+      operationId: importSuppliers
+      tags: [master-data]
+      summary: Bulk import suppliers from CSV data
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportSuppliersBody"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkImportResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /master-data/customers/import:
+    post:
+      operationId: importCustomers
+      tags: [master-data]
+      summary: Bulk import customers from CSV data
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportCustomersBody"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkImportResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /master-data/items/{id}:
     get:
       operationId: getItem
@@ -8934,6 +8988,77 @@ components:
               category: { type: string }
               itemType: { type: string }
               barcode: { type: string }
+
+    ImportSuppliersBody:
+      type: object
+      required: [suppliers]
+      properties:
+        suppliers:
+          type: array
+          items:
+            type: object
+            required: [code, name]
+            properties:
+              code: { type: string }
+              name: { type: string }
+              legalName: { type: string }
+              taxId: { type: string }
+              abn: { type: string }
+              email: { type: string }
+              phone: { type: string }
+              website: { type: string }
+              addressLine1: { type: string }
+              addressLine2: { type: string }
+              city: { type: string }
+              state: { type: string }
+              postalCode: { type: string }
+              country: { type: string }
+              deliveryAddressLine1: { type: string }
+              deliveryCity: { type: string }
+              deliveryState: { type: string }
+              deliveryPostalCode: { type: string }
+              deliveryCountry: { type: string }
+              paymentTerms: { type: string }
+              currency: { type: string }
+              pricingTier: { type: string }
+              creditLimit: { type: number }
+              notes: { type: string }
+
+    ImportCustomersBody:
+      type: object
+      required: [customers]
+      properties:
+        customers:
+          type: array
+          items:
+            type: object
+            required: [code, name]
+            properties:
+              code: { type: string }
+              name: { type: string }
+              legalName: { type: string }
+              taxId: { type: string }
+              abn: { type: string }
+              email: { type: string }
+              phone: { type: string }
+              website: { type: string }
+              billingAddressLine1: { type: string }
+              billingAddressLine2: { type: string }
+              billingCity: { type: string }
+              billingState: { type: string }
+              billingPostalCode: { type: string }
+              billingCountry: { type: string }
+              shippingAddressLine1: { type: string }
+              shippingAddressLine2: { type: string }
+              shippingCity: { type: string }
+              shippingState: { type: string }
+              shippingPostalCode: { type: string }
+              shippingCountry: { type: string }
+              creditLimit: { type: number }
+              paymentTerms: { type: string }
+              currency: { type: string }
+              pricingTier: { type: string }
+              notes: { type: string }
 
     BulkImportResult:
       type: object
