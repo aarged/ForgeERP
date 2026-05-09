@@ -823,6 +823,7 @@ const supplierSchema = z.object({
   postalCode: z.string().optional(),
   country: z.string().optional(),
   deliveryAddressLine1: z.string().optional(),
+  deliveryAddressLine2: z.string().optional(),
   deliveryCity: z.string().optional(),
   deliveryState: z.string().optional(),
   deliveryPostalCode: z.string().optional(),

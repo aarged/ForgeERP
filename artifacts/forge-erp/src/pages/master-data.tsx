@@ -2640,6 +2640,7 @@ function SupplierCsvImportDialog({ open, onOpenChange, onSuccess }: {
           postalCode: getCol(r, "postalCode", "postal_code", "zip", "postcode") || undefined,
           country: getCol(r, "country") || undefined,
           deliveryAddressLine1: getCol(r, "deliveryAddressLine1", "delivery_address_line_1", "deliveryAddress") || undefined,
+          deliveryAddressLine2: getCol(r, "deliveryAddressLine2", "delivery_address_line_2", "deliveryAddress2") || undefined,
           deliveryCity: getCol(r, "deliveryCity", "delivery_city") || undefined,
           deliveryState: getCol(r, "deliveryState", "delivery_state") || undefined,
           deliveryPostalCode: getCol(r, "deliveryPostalCode", "delivery_postal_code") || undefined,
@@ -2677,7 +2678,7 @@ function SupplierCsvImportDialog({ open, onOpenChange, onSuccess }: {
           <DialogTitle>Import Suppliers from CSV</DialogTitle>
           <DialogDescription>
             Upload a CSV file. Required columns: <code className="text-xs bg-muted px-1 rounded">code, name</code>.
-            Optional: <code className="text-xs bg-muted px-1 rounded">legalName, taxId, abn, email, phone, website, addressLine1, addressLine2, city, state, postalCode, country, deliveryAddressLine1, deliveryCity, deliveryState, deliveryPostalCode, deliveryCountry, paymentTerms, currency, pricingTier, creditLimit, notes</code>.
+            Optional: <code className="text-xs bg-muted px-1 rounded">legalName, taxId, abn, email, phone, website, addressLine1, addressLine2, city, state, postalCode, country, deliveryAddressLine1, deliveryAddressLine2, deliveryCity, deliveryState, deliveryPostalCode, deliveryCountry, paymentTerms, currency, pricingTier, creditLimit, notes</code>.
             Existing suppliers (matched by code) will be updated.
           </DialogDescription>
         </DialogHeader>

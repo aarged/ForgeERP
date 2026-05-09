@@ -9014,6 +9014,7 @@ components:
               postalCode: { type: string }
               country: { type: string }
               deliveryAddressLine1: { type: string }
+              deliveryAddressLine2: { type: string }
               deliveryCity: { type: string }
               deliveryState: { type: string }
               deliveryPostalCode: { type: string }

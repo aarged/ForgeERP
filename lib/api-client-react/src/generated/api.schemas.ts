@@ -1401,6 +1401,7 @@ export type ImportSuppliersBodySuppliersItem = {
   postalCode?: string;
   country?: string;
   deliveryAddressLine1?: string;
+  deliveryAddressLine2?: string;
   deliveryCity?: string;
   deliveryState?: string;
   deliveryPostalCode?: string;

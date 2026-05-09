@@ -1457,6 +1457,7 @@ export const ImportSuppliersBody = zod.object({
       postalCode: zod.string().optional(),
       country: zod.string().optional(),
       deliveryAddressLine1: zod.string().optional(),
+      deliveryAddressLine2: zod.string().optional(),
       deliveryCity: zod.string().optional(),
       deliveryState: zod.string().optional(),
       deliveryPostalCode: zod.string().optional(),
