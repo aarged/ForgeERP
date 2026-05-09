@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Copy, KeyRound, MoreHorizontal, Plus } from "lucide-react";
+import { Copy, KeyRound, Link2, MoreHorizontal, Plus } from "lucide-react";
 import {
   useListApiKeys,
   useCreateApiKey,
@@ -170,8 +170,45 @@ export function IntegrationsPanel() {
 
   const keys = keysResponse?.data ?? [];
 
+  const apiBaseUrl =
+    typeof window !== "undefined" ? `${window.location.origin}/api` : "/api";
+
   return (
-    <Card>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Link2 className="h-5 w-5" />
+            API base URL
+          </CardTitle>
+          <CardDescription>
+            External systems (e.g. Cyntric) should be configured with this base
+            URL together with a Bearer API key minted below.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2">
+            <Input
+              readOnly
+              value={apiBaseUrl}
+              className="font-mono text-sm"
+              data-testid="api-base-url"
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => copyToClipboard(apiBaseUrl, "API base URL")}
+              data-testid="copy-api-base-url"
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              Copy
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2">
@@ -410,6 +447,7 @@ export function IntegrationsPanel() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+      </Card>
+    </div>
   );
 }
