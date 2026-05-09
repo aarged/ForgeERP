@@ -57,11 +57,26 @@ export async function applyRLSPolicies(): Promise<void> {
   try {
     await client.query("BEGIN");
 
-    // Sync forge_app password if the env var is present (idempotent).
+    // Ensure the forge_app role exists and has the configured password.
+    // Idempotent: CREATE ROLE on first deploy, ALTER ROLE on every restart.
+    // We require FORGE_APP_DB_PASSWORD because creating a role without one
+    // would leave the application unable to connect.
     const forgeAppPw = process.env.FORGE_APP_DB_PASSWORD;
     if (forgeAppPw) {
       const escapedPw = forgeAppPw.replace(/'/g, "''");
-      await client.query(`ALTER ROLE forge_app WITH PASSWORD '${escapedPw}'`);
+      await client.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'forge_app') THEN
+            CREATE ROLE forge_app LOGIN PASSWORD '${escapedPw}';
+          ELSE
+            ALTER ROLE forge_app WITH PASSWORD '${escapedPw}';
+          END IF;
+        END
+        $$;
+      `);
+      // Schema usage is needed before any table-level GRANTs are useful.
+      await client.query(`GRANT USAGE ON SCHEMA public TO forge_app;`);
     }
 
     // Grant forge_app full DML on every user table and all sequences.
