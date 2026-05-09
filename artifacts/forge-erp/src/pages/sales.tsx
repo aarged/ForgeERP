@@ -789,11 +789,27 @@ function QuotationsTab() {
       toast({ title: "Select a customer", description: "Pick a customer from Master Data before saving.", variant: "destructive" });
       return;
     }
-    // Normalize only the date fields: empty strings clear the column (null).
-    // Other optional fields keep "" so users can clear them.
-    const dateKeys = new Set(["expiryDate", "requestedDate"]);
+    // Normalize empty strings on every optional field to an explicit null so
+    // the backend always sees a definite "clear this column" signal — no more
+    // ambiguity between "user wants to clear" and "user left blank". Required
+    // fields (customerId) are validated above.
+    const clearableKeys = [
+      "customerEmail",
+      "customerRef",
+      "deliveryAddressLine1",
+      "deliveryAddressLine2",
+      "deliveryCity",
+      "deliveryState",
+      "deliveryPostalCode",
+      "deliveryCountry",
+      "expiryDate",
+      "requestedDate",
+      "paymentTerms",
+      "notes",
+      "internalNotes",
+    ];
     const payload: Record<string, unknown> = { ...values };
-    for (const k of dateKeys) {
+    for (const k of clearableKeys) {
       if (payload[k] === "") payload[k] = null;
     }
     try {
