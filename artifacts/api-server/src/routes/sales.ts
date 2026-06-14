@@ -2399,6 +2399,30 @@ router.post("/sales/invoices/import", ...tenantWriteMiddleware, async (req: Requ
   const usedCodes = new Set<string>([...existingInvCodes.map((r) => r.code), ...existingCnCodes.map((r) => r.code)]);
   const customerByCode = new Map(customers.map((c) => [c.code, c]));
 
+  // Normalize a legacy date to ISO YYYY-MM-DD. Legacy CSVs use day-first
+  // DD/MM/YYYY (or DD-MM-YYYY); ISO YYYY-MM-DD is passed through. Returns null
+  // for anything that is not a real calendar date so the row errors cleanly
+  // instead of relying on Date.parse (which assumes US MM/DD and silently swaps
+  // day/month or rejects day > 12).
+  const normalizeImportDate = (input: string): string | null => {
+    const s = input.trim();
+    let y: number, m: number, d: number;
+    let match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+    if (match) {
+      y = Number(match[1]); m = Number(match[2]); d = Number(match[3]);
+    } else {
+      match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(s);
+      if (!match) return null;
+      d = Number(match[1]); m = Number(match[2]); y = Number(match[3]);
+    }
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+    const iso = `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    // Reject impossible days (e.g. 31/02) by round-tripping through UTC.
+    const dt = new Date(`${iso}T00:00:00Z`);
+    if (Number.isNaN(dt.getTime()) || dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d) return null;
+    return iso;
+  };
+
   const documents = envelope.data.documents;
   let created = 0;
   const errors: { row: number; code: string; error: string }[] = [];
@@ -2426,15 +2450,22 @@ router.post("/sales/invoices/import", ...tenantWriteMiddleware, async (req: Requ
       errors.push({ row: rowNum, code, error: `Customer code "${doc.customerCode}" not found` });
       continue;
     }
-    // Validate (backdated) dates up front so we can store them and give a clear
-    // per-document error instead of a cryptic DB failure.
-    if (Number.isNaN(Date.parse(doc.documentDate))) {
-      errors.push({ row: rowNum, code, error: `Invalid documentDate "${doc.documentDate}"` });
+    // Validate + normalize (backdated) dates up front. Legacy dates are
+    // day-first DD/MM/YYYY; normalize to ISO so they store correctly and bad
+    // dates give a clear per-document error instead of a silent day/month swap.
+    const isoDocDate = normalizeImportDate(doc.documentDate);
+    if (!isoDocDate) {
+      errors.push({ row: rowNum, code, error: `Invalid documentDate "${doc.documentDate}" — use DD/MM/YYYY` });
       continue;
     }
-    if (doc.dueDate && Number.isNaN(Date.parse(doc.dueDate))) {
-      errors.push({ row: rowNum, code, error: `Invalid dueDate "${doc.dueDate}"` });
-      continue;
+    let isoDueDate: string | undefined;
+    if (doc.dueDate) {
+      const normalizedDue = normalizeImportDate(doc.dueDate);
+      if (!normalizedDue) {
+        errors.push({ row: rowNum, code, error: `Invalid dueDate "${doc.dueDate}" — use DD/MM/YYYY` });
+        continue;
+      }
+      isoDueDate = normalizedDue;
     }
 
     // Header totals (discount + tax) computed the same way as the standard
@@ -2454,7 +2485,7 @@ router.post("/sales/invoices/import", ...tenantWriteMiddleware, async (req: Requ
           const [invoice] = await db.insert(customerInvoicesTable).values({
             tenantId, code, status: "draft", source: "migration",
             customerId: customer.id, customerName: customer.name, customerEmail: customer.email ?? undefined,
-            invoiceDate: doc.documentDate, dueDate: doc.dueDate ?? undefined,
+            invoiceDate: isoDocDate, dueDate: isoDueDate ?? undefined,
             subtotal: subtotal.toFixed(2), taxAmount: taxAmount.toFixed(2), total: total.toFixed(2),
             notes: doc.notes ?? undefined, createdByClerkId: clerkUserId, createdByEmail: userEmail,
           } as typeof customerInvoicesTable.$inferInsert).returning();
@@ -2472,7 +2503,7 @@ router.post("/sales/invoices/import", ...tenantWriteMiddleware, async (req: Requ
         await withTenantDb(tenantId, async (db) => {
           const [cn] = await db.insert(creditNotesTable).values({
             // Backdated: issuedAt carries the legacy document date (credit notes have no separate date column).
-            tenantId, code, status: "issued", source: "migration", issuedAt: new Date(doc.documentDate),
+            tenantId, code, status: "issued", source: "migration", issuedAt: new Date(`${isoDocDate}T00:00:00Z`),
             customerId: customer.id, customerName: customer.name, reason: doc.reason ?? undefined,
             subtotal: subtotal.toFixed(2), taxAmount: taxAmount.toFixed(2), total: total.toFixed(2),
             notes: doc.notes ?? undefined, createdByClerkId: clerkUserId, createdByEmail: userEmail,

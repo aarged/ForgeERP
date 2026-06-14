@@ -3200,6 +3200,27 @@ function InvoiceCsvImportDialog({ open, onOpenChange }: {
     if (s === "" || s === "invoice" || s === "inv" || s === "taxinvoice" || s === "invoicenote") return "invoice";
     return "unknown";
   };
+  // Legacy dates are day-first DD/MM/YYYY (or DD-MM-YYYY); ISO YYYY-MM-DD is
+  // passed through. Returns ISO YYYY-MM-DD, or null for non-calendar dates.
+  // Mirrors the backend normalizer so grouping/conflict checks use one format.
+  const normDate = (v: string | undefined): string | null => {
+    const s = (v ?? "").trim();
+    if (!s) return null;
+    let y: number, m: number, d: number;
+    let match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+    if (match) {
+      y = Number(match[1]); m = Number(match[2]); d = Number(match[3]);
+    } else {
+      match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(s);
+      if (!match) return null;
+      d = Number(match[1]); m = Number(match[2]); y = Number(match[3]);
+    }
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+    const iso = `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const dt = new Date(`${iso}T00:00:00Z`);
+    if (isNaN(dt.getTime()) || dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d) return null;
+    return iso;
+  };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -3227,7 +3248,10 @@ function InvoiceCsvImportDialog({ open, onOpenChange }: {
       parsed.data.forEach((r, idx) => {
         const documentNumber = getCol(r, "documentNumber", "document_number", "docNumber", "number", "invoiceNumber", "invoice_number", "code") ?? "";
         const rowCustomerCode = getCol(r, "customerCode", "customer_code", "customer") ?? "";
-        const rowDocumentDate = getCol(r, "documentDate", "document_date", "date", "invoiceDate", "invoice_date") ?? "";
+        const rawDocumentDate = getCol(r, "documentDate", "document_date", "date", "invoiceDate", "invoice_date") ?? "";
+        // Normalize to ISO when valid; keep the raw string for invalid dates so the
+        // backend reports a clear per-row error with the original value.
+        const rowDocumentDate = normDate(rawDocumentDate) ?? rawDocumentDate;
         const hasContent = !!(rowCustomerCode || rowDocumentDate
           || getCol(r, "itemCode", "item_code") || getCol(r, "itemName", "item_name")
           || getCol(r, "description", "desc")
@@ -3254,7 +3278,11 @@ function InvoiceCsvImportDialog({ open, onOpenChange }: {
             documentNumber,
             customerCode: rowCustomerCode,
             documentDate: rowDocumentDate,
-            dueDate: getCol(r, "dueDate", "due_date") || undefined,
+            dueDate: (() => {
+              const rawDue = getCol(r, "dueDate", "due_date");
+              if (!rawDue) return undefined;
+              return normDate(rawDue) ?? rawDue;
+            })(),
             reason: getCol(r, "reason") || undefined,
             notes: getCol(r, "notes") || undefined,
             lines: [],
