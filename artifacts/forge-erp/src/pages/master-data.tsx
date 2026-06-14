@@ -2882,7 +2882,6 @@ function ItemCsvImportDialog({ open, onOpenChange, onSuccess }: {
           return {
             code: getCol(r, "code", "Code") ?? "",
             name: getCol(r, "name", "Name") ?? "",
-            description: getCol(r, "description", "Description") || undefined,
             unitOfMeasure: getCol(r, "unitOfMeasure", "unit_of_measure", "UoM", "uom") || undefined,
             unitCost: toNum(getCol(r, "unitCost", "unit_cost", "cost")),
             salesPrice: toNum(getCol(r, "salesPrice", "sales_price", "price")),
@@ -2917,7 +2916,7 @@ function ItemCsvImportDialog({ open, onOpenChange, onSuccess }: {
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Import Items from CSV</DialogTitle>
-          <DialogDescription>Upload a CSV file with columns: <code className="text-xs bg-muted px-1 rounded">code, name, description, unitOfMeasure, unitCost, salesPrice, category, itemType, barcode</code>. Existing items (matched by code) will be updated.</DialogDescription>
+          <DialogDescription>Upload a CSV file with columns: <code className="text-xs bg-muted px-1 rounded">code, name, unitOfMeasure, unitCost, salesPrice, category, itemType, barcode</code>. Existing items (matched by code) will be updated.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFile} />

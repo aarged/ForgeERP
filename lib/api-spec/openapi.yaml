@@ -8981,7 +8981,6 @@ components:
             properties:
               code: { type: string }
               name: { type: string }
-              description: { type: string }
               unitOfMeasure: { type: string }
               unitCost: { type: number }
               salesPrice: { type: number }

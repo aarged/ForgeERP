@@ -468,7 +468,6 @@ router.post(
       items: z.array(z.object({
         code: z.string().min(1),
         name: z.string().min(1),
-        description: z.string().optional(),
         unitOfMeasure: z.string().optional(),
         unitCost: z.coerce.number().optional(),
         salesPrice: z.coerce.number().optional(),

@@ -1372,7 +1372,6 @@ export interface ItemCrossReferenceInput {
 export type ImportItemsBodyItemsItem = {
   code: string;
   name: string;
-  description?: string;
   unitOfMeasure?: string;
   unitCost?: number;
   salesPrice?: number;

@@ -1411,7 +1411,6 @@ export const ImportItemsBody = zod.object({
     zod.object({
       code: zod.string(),
       name: zod.string(),
-      description: zod.string().optional(),
       unitOfMeasure: zod.string().optional(),
       unitCost: zod.number().optional(),
       salesPrice: zod.number().optional(),
