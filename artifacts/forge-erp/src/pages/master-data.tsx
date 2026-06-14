@@ -3223,9 +3223,20 @@ function InvoiceCsvImportDialog({ open, onOpenChange }: {
       const docMap = new Map<string, ImportInvoicesBody["documents"][number]>();
       const clientErrors: ImportInvoicesResult["errors"] = [];
       const badDocTypes = new Set<string>();
+      const conflictKeys = new Set<string>();
       parsed.data.forEach((r, idx) => {
         const documentNumber = getCol(r, "documentNumber", "document_number", "docNumber", "number", "invoiceNumber", "invoice_number", "code") ?? "";
-        if (!documentNumber) return;
+        const rowCustomerCode = getCol(r, "customerCode", "customer_code", "customer") ?? "";
+        const rowDocumentDate = getCol(r, "documentDate", "document_date", "date", "invoiceDate", "invoice_date") ?? "";
+        const hasContent = !!(rowCustomerCode || rowDocumentDate
+          || getCol(r, "itemCode", "item_code") || getCol(r, "itemName", "item_name")
+          || getCol(r, "description", "desc")
+          || getCol(r, "quantity", "qty") || getCol(r, "unitPrice", "unit_price", "price"));
+        if (!documentNumber) {
+          // Report rather than silently drop rows that carry data but no document number.
+          if (hasContent) clientErrors.push({ row: idx + 2, code: "", error: "Missing documentNumber" });
+          return;
+        }
         const rawDocType = normDocType(getCol(r, "docType", "doc_type", "type"));
         if (rawDocType === "unknown") {
           if (!badDocTypes.has(documentNumber)) {
@@ -3241,14 +3252,20 @@ function InvoiceCsvImportDialog({ open, onOpenChange }: {
           doc = {
             docType,
             documentNumber,
-            customerCode: getCol(r, "customerCode", "customer_code", "customer") ?? "",
-            documentDate: getCol(r, "documentDate", "document_date", "date", "invoiceDate", "invoice_date") ?? "",
+            customerCode: rowCustomerCode,
+            documentDate: rowDocumentDate,
             dueDate: getCol(r, "dueDate", "due_date") || undefined,
             reason: getCol(r, "reason") || undefined,
             notes: getCol(r, "notes") || undefined,
             lines: [],
           };
           docMap.set(key, doc);
+        } else if (!conflictKeys.has(key)
+          && ((rowCustomerCode && rowCustomerCode !== doc.customerCode)
+            || (rowDocumentDate && rowDocumentDate !== doc.documentDate))) {
+          // Same document number with mismatched header values across its line rows.
+          conflictKeys.add(key);
+          clientErrors.push({ row: idx + 2, code: documentNumber, error: `Conflicting header values (customerCode / documentDate) for document "${documentNumber}"` });
         }
         const quantity = toNum(getCol(r, "quantity", "qty"));
         const unitPrice = toNum(getCol(r, "unitPrice", "unit_price", "price"));
@@ -3265,7 +3282,10 @@ function InvoiceCsvImportDialog({ open, onOpenChange }: {
         });
       });
 
-      const documents = Array.from(docMap.values());
+      // Exclude documents with conflicting header rows — they're already reported above.
+      const documents = Array.from(docMap.entries())
+        .filter(([key]) => !conflictKeys.has(key))
+        .map(([, doc]) => doc);
       if (!documents.length && !clientErrors.length) {
         toast({ title: "No rows found", description: "The CSV file appears to be empty or is missing a documentNumber column.", variant: "destructive" });
         return;
