@@ -170,6 +170,8 @@ import type {
   HealthStatus,
   ImportCustomersBody,
   ImportGlAccountsBody,
+  ImportInvoicesBody,
+  ImportInvoicesResult,
   ImportItemsBody,
   ImportSuppliersBody,
   InventoryAdjustment,
@@ -17777,6 +17779,92 @@ export const useCreateCustomerInvoice = <
   TContext
 > => {
   return useMutation(getCreateCustomerInvoiceMutationOptions(options));
+};
+
+/**
+ * @summary Bulk import legacy customer invoices and credit notes
+ */
+export const getImportInvoicesUrl = () => {
+  return `/api/sales/invoices/import`;
+};
+
+export const importInvoices = async (
+  importInvoicesBody: ImportInvoicesBody,
+  options?: RequestInit,
+): Promise<ImportInvoicesResult> => {
+  return customFetch<ImportInvoicesResult>(getImportInvoicesUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(importInvoicesBody),
+  });
+};
+
+export const getImportInvoicesMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importInvoices>>,
+    TError,
+    { data: BodyType<ImportInvoicesBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof importInvoices>>,
+  TError,
+  { data: BodyType<ImportInvoicesBody> },
+  TContext
+> => {
+  const mutationKey = ["importInvoices"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof importInvoices>>,
+    { data: BodyType<ImportInvoicesBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return importInvoices(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ImportInvoicesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof importInvoices>>
+>;
+export type ImportInvoicesMutationBody = BodyType<ImportInvoicesBody>;
+export type ImportInvoicesMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Bulk import legacy customer invoices and credit notes
+ */
+export const useImportInvoices = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importInvoices>>,
+    TError,
+    { data: BodyType<ImportInvoicesBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof importInvoices>>,
+  TError,
+  { data: BodyType<ImportInvoicesBody> },
+  TContext
+> => {
+  return useMutation(getImportInvoicesMutationOptions(options));
 };
 
 /**

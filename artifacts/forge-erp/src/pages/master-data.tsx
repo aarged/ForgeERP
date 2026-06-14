@@ -66,6 +66,7 @@ import {
   useImportItems,
   useImportSuppliers,
   useImportCustomers,
+  useImportInvoices,
 } from "@workspace/api-client-react";
 import type {
   CreateItemBody,
@@ -95,6 +96,8 @@ import type {
   WarehouseLocation,
   CustomerSalesSummary,
   BulkImportResult,
+  ImportInvoicesResult,
+  ImportInvoicesBody,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -154,6 +157,7 @@ import {
   ArrowDown,
   Loader2,
   Upload,
+  Receipt,
 } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -3137,12 +3141,205 @@ function GlAccountsTab({ initialId }: { initialId?: number }) {
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
+// ─── Legacy invoice / credit-note bulk import ────────────────────────────────
+
+function InvoiceImportTab() {
+  const [importOpen, setImportOpen] = useState(false);
+  return (
+    <div className="space-y-4">
+      <Card className="p-6 space-y-4 max-w-2xl">
+        <div className="flex items-start gap-3">
+          <div className="rounded-md bg-muted p-2"><Receipt className="h-5 w-5" /></div>
+          <div className="space-y-1">
+            <h3 className="font-semibold">Legacy Invoice &amp; Credit Note Import</h3>
+            <p className="text-sm text-muted-foreground">
+              Bulk import historical customer invoices and credit notes from your previous system in a
+              single CSV. Each document keeps its original document number as its Forge code, and
+              balances post straight to the general ledger. These documents are standalone — no sales
+              order, despatch, or stock movement is created.
+            </p>
+          </div>
+        </div>
+        <Button onClick={() => setImportOpen(true)}>
+          <Upload className="h-4 w-4 mr-1" /> Import Invoices &amp; Credits
+        </Button>
+      </Card>
+      <InvoiceCsvImportDialog open={importOpen} onOpenChange={setImportOpen} />
+    </div>
+  );
+}
+
+function InvoiceCsvImportDialog({ open, onOpenChange }: {
+  open: boolean; onOpenChange: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const importM = useImportInvoices();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [result, setResult] = useState<ImportInvoicesResult | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+
+  const getCol = (row: Record<string, string>, ...keys: string[]): string | undefined => {
+    for (const k of keys) {
+      const v = row[k]?.trim();
+      if (v) return v;
+      const lower = Object.keys(row).find((rk) => rk.toLowerCase() === k.toLowerCase());
+      if (lower) { const v2 = row[lower]?.trim(); if (v2) return v2; }
+    }
+    return undefined;
+  };
+  const toNum = (v: string | undefined): number | undefined => {
+    if (v == null || v === "") return undefined;
+    const n = Number(v);
+    return isNaN(n) ? undefined : n;
+  };
+  const normDocType = (v: string | undefined): "invoice" | "credit" | "unknown" => {
+    const s = (v ?? "").toLowerCase().replace(/[\s_-]/g, "");
+    if (s === "credit" || s === "creditnote" || s === "cn" || s === "creditmemo") return "credit";
+    // Blank defaults to invoice (most rows); an explicit unrecognized value is rejected
+    // so a mistyped credit isn't silently imported as an invoice.
+    if (s === "" || s === "invoice" || s === "inv" || s === "taxinvoice" || s === "invoicenote") return "invoice";
+    return "unknown";
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsParsing(true);
+    try {
+      const parsed = await new Promise<Papa.ParseResult<Record<string, string>>>((resolve) => {
+        Papa.parse<Record<string, string>>(file, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (h) => h.trim().replace(/^\uFEFF/, ""),
+          complete: resolve,
+        });
+      });
+      if (parsed.errors.length > 0 && parsed.data.length === 0) {
+        toast({ title: "CSV parse error", description: parsed.errors[0]?.message, variant: "destructive" });
+        return;
+      }
+
+      // One row per line item — group rows into documents by docType + documentNumber.
+      const docMap = new Map<string, ImportInvoicesBody["documents"][number]>();
+      const clientErrors: ImportInvoicesResult["errors"] = [];
+      const badDocTypes = new Set<string>();
+      parsed.data.forEach((r, idx) => {
+        const documentNumber = getCol(r, "documentNumber", "document_number", "docNumber", "number", "invoiceNumber", "invoice_number", "code") ?? "";
+        if (!documentNumber) return;
+        const rawDocType = normDocType(getCol(r, "docType", "doc_type", "type"));
+        if (rawDocType === "unknown") {
+          if (!badDocTypes.has(documentNumber)) {
+            badDocTypes.add(documentNumber);
+            clientErrors.push({ row: idx + 2, code: documentNumber, error: `Unrecognized docType "${getCol(r, "docType", "doc_type", "type")}" — use "invoice" or "credit"` });
+          }
+          return;
+        }
+        const docType = rawDocType;
+        const key = `${docType}::${documentNumber}`;
+        let doc = docMap.get(key);
+        if (!doc) {
+          doc = {
+            docType,
+            documentNumber,
+            customerCode: getCol(r, "customerCode", "customer_code", "customer") ?? "",
+            documentDate: getCol(r, "documentDate", "document_date", "date", "invoiceDate", "invoice_date") ?? "",
+            dueDate: getCol(r, "dueDate", "due_date") || undefined,
+            reason: getCol(r, "reason") || undefined,
+            notes: getCol(r, "notes") || undefined,
+            lines: [],
+          };
+          docMap.set(key, doc);
+        }
+        const quantity = toNum(getCol(r, "quantity", "qty"));
+        const unitPrice = toNum(getCol(r, "unitPrice", "unit_price", "price"));
+        if (quantity == null && unitPrice == null && !getCol(r, "itemCode", "item_code")) return;
+        doc.lines.push({
+          itemCode: getCol(r, "itemCode", "item_code") || undefined,
+          itemName: getCol(r, "itemName", "item_name") || undefined,
+          description: getCol(r, "description", "desc") || undefined,
+          quantity: quantity ?? 0,
+          unitPrice: unitPrice ?? 0,
+          discountPct: toNum(getCol(r, "discountPct", "discount_pct", "discount")),
+          taxPct: toNum(getCol(r, "taxPct", "tax_pct", "tax")),
+          notes: getCol(r, "lineNotes", "line_notes") || undefined,
+        });
+      });
+
+      const documents = Array.from(docMap.values());
+      if (!documents.length && !clientErrors.length) {
+        toast({ title: "No rows found", description: "The CSV file appears to be empty or is missing a documentNumber column.", variant: "destructive" });
+        return;
+      }
+
+      const res = documents.length
+        ? await importM.mutateAsync({ data: { documents } })
+        : { created: 0, failed: 0, errors: [] as ImportInvoicesResult["errors"] };
+      const merged: ImportInvoicesResult = {
+        created: res.created,
+        failed: (res.failed ?? 0) + clientErrors.length,
+        errors: [...clientErrors, ...(res.errors ?? [])],
+      };
+      setResult(merged);
+      toast({ title: `Import complete: ${merged.created} created${merged.failed ? `, ${merged.failed} failed` : ""}` });
+    } catch (err: unknown) {
+      toast({ title: "Import failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setIsParsing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleClose = () => { setResult(null); onOpenChange(false); };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>Import Invoices &amp; Credit Notes from CSV</DialogTitle>
+          <DialogDescription>
+            One row per line item. Rows are grouped into documents by <code className="text-xs bg-muted px-1 rounded">docType + documentNumber</code>.
+            Required columns: <code className="text-xs bg-muted px-1 rounded">docType, documentNumber, customerCode, documentDate, quantity, unitPrice</code>.
+            Optional: <code className="text-xs bg-muted px-1 rounded">dueDate, reason, notes, itemCode, itemName, description, discountPct, taxPct, lineNotes</code>.
+            Set <code className="text-xs bg-muted px-1 rounded">docType</code> to <code className="text-xs bg-muted px-1 rounded">invoice</code> or <code className="text-xs bg-muted px-1 rounded">credit</code>.
+            The document number is used exactly as entered (no INV-/CN- prefix) and must be unique.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFile} />
+          <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()} disabled={isParsing || importM.isPending}>
+            <Upload className="h-4 w-4 mr-2" />
+            {isParsing || importM.isPending ? "Processing…" : "Choose CSV file"}
+          </Button>
+          {result && (
+            <div className="rounded-md border p-3 text-sm space-y-1">
+              <div className="font-medium">Results</div>
+              <div className="text-muted-foreground">Created: <span className="text-foreground font-medium">{result.created}</span></div>
+              {!!result.failed && <div className="text-destructive">Failed: {result.failed} document(s)</div>}
+              {result.errors && result.errors.length > 0 && (
+                <div className="max-h-40 overflow-auto space-y-1 pt-1">
+                  {result.errors.map((er, idx) => (
+                    <div key={idx} className="text-xs text-destructive">Row {er.row}{er.code ? ` (${er.code})` : ""}: {er.error}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 const TABS = [
   { id: "items", label: "Items", icon: Package },
   { id: "suppliers", label: "Suppliers", icon: Truck },
   { id: "customers", label: "Customers", icon: Users },
   { id: "warehouses", label: "Warehouses", icon: Warehouse },
   { id: "gl-accounts", label: "GL Accounts", icon: BookOpen },
+  { id: "invoice-import", label: "Invoice Import", icon: Receipt },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -3196,6 +3393,9 @@ export default function MasterData() {
         </TabsContent>
         <TabsContent value="gl-accounts" className="mt-0">
           <GlAccountsTab initialId={activeTab === "gl-accounts" ? initialId : undefined} />
+        </TabsContent>
+        <TabsContent value="invoice-import" className="mt-0">
+          <InvoiceImportTab />
         </TabsContent>
       </Tabs>
     </div>

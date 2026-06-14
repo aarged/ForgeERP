@@ -1460,6 +1460,52 @@ export interface BulkImportResult {
   errors?: BulkImportResultErrorsItem[];
 }
 
+export type ImportInvoicesBodyDocumentsItemDocType =
+  (typeof ImportInvoicesBodyDocumentsItemDocType)[keyof typeof ImportInvoicesBodyDocumentsItemDocType];
+
+export const ImportInvoicesBodyDocumentsItemDocType = {
+  invoice: "invoice",
+  credit: "credit",
+} as const;
+
+export type ImportInvoicesBodyDocumentsItemLinesItem = {
+  itemCode?: string;
+  itemName?: string;
+  description?: string;
+  quantity: number;
+  unitPrice: number;
+  discountPct?: number;
+  taxPct?: number;
+  notes?: string;
+};
+
+export type ImportInvoicesBodyDocumentsItem = {
+  docType: ImportInvoicesBodyDocumentsItemDocType;
+  documentNumber: string;
+  customerCode: string;
+  documentDate: string;
+  dueDate?: string;
+  reason?: string;
+  notes?: string;
+  lines: ImportInvoicesBodyDocumentsItemLinesItem[];
+};
+
+export interface ImportInvoicesBody {
+  documents: ImportInvoicesBodyDocumentsItem[];
+}
+
+export type ImportInvoicesResultErrorsItem = {
+  row?: number;
+  code?: string;
+  error?: string;
+};
+
+export interface ImportInvoicesResult {
+  created?: number;
+  failed?: number;
+  errors?: ImportInvoicesResultErrorsItem[];
+}
+
 export interface MasterContact {
   id?: number;
   firstName?: string;

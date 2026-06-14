@@ -307,14 +307,14 @@ export const customerInvoicesTable = pgTable("customer_invoices", {
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   code: text("code").notNull(),
-  soId: integer("so_id")
-    .notNull()
-    .references(() => salesOrdersTable.id, { onDelete: "cascade" }),
+  // Nullable: legacy/migration invoices are standalone and have no sales order.
+  soId: integer("so_id").references(() => salesOrdersTable.id, { onDelete: "cascade" }),
   despatchId: integer("despatch_id").references(() => despatchesTable.id),
   customerId: integer("customer_id").references(() => customersTable.id),
   customerName: text("customer_name"),
   customerEmail: text("customer_email"),
   status: text("status").notNull().default("draft"), // draft | sent | paid | cancelled
+  source: text("source").notNull().default("manual"), // manual | migration (legacy CSV import)
   invoiceDate: date("invoice_date"),
   dueDate: date("due_date"),
   currencyCode: text("currency_code").notNull().default("AUD"),
@@ -371,6 +371,7 @@ export const creditNotesTable = pgTable("credit_notes", {
   customerName: text("customer_name"),
   reason: text("reason"),
   status: text("status").notNull().default("draft"), // draft | issued | cancelled
+  source: text("source").notNull().default("manual"), // manual | migration (legacy CSV import)
   subtotal: numeric("subtotal", { precision: 18, scale: 2 }).notNull().default("0"),
   taxAmount: numeric("tax_amount", { precision: 18, scale: 2 }).notNull().default("0"),
   total: numeric("total", { precision: 18, scale: 2 }).notNull().default("0"),

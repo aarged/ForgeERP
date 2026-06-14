@@ -6520,6 +6520,53 @@ export const CreateCustomerInvoiceBody = zod.object({
 });
 
 /**
+ * @summary Bulk import legacy customer invoices and credit notes
+ */
+export const ImportInvoicesHeader = zod.object({
+  "x-tenant-id": zod.number(),
+});
+
+export const ImportInvoicesBody = zod.object({
+  documents: zod.array(
+    zod.object({
+      docType: zod.enum(["invoice", "credit"]),
+      documentNumber: zod.string(),
+      customerCode: zod.string(),
+      documentDate: zod.string(),
+      dueDate: zod.string().optional(),
+      reason: zod.string().optional(),
+      notes: zod.string().optional(),
+      lines: zod.array(
+        zod.object({
+          itemCode: zod.string().optional(),
+          itemName: zod.string().optional(),
+          description: zod.string().optional(),
+          quantity: zod.number(),
+          unitPrice: zod.number(),
+          discountPct: zod.number().optional(),
+          taxPct: zod.number().optional(),
+          notes: zod.string().optional(),
+        }),
+      ),
+    }),
+  ),
+});
+
+export const ImportInvoicesResponse = zod.object({
+  created: zod.number().optional(),
+  failed: zod.number().optional(),
+  errors: zod
+    .array(
+      zod.object({
+        row: zod.number().optional(),
+        code: zod.string().optional(),
+        error: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
  * @summary Get customer invoice with lines
  */
 export const GetCustomerInvoiceParams = zod.object({

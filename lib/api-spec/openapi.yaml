@@ -5023,6 +5023,26 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/CustomerInvoiceDetail" }
 
+  /sales/invoices/import:
+    post:
+      operationId: importInvoices
+      summary: Bulk import legacy customer invoices and credit notes
+      tags: [Sales]
+      security: [{ clerkAuth: [] }]
+      parameters:
+        - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ImportInvoicesBody" }
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportInvoicesResult" }
+
   /sales/invoices/{id}:
     get:
       operationId: getCustomerInvoice
@@ -9065,6 +9085,52 @@ components:
       properties:
         created: { type: integer }
         updated: { type: integer }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              code: { type: string }
+              error: { type: string }
+
+    ImportInvoicesBody:
+      type: object
+      required: [documents]
+      properties:
+        documents:
+          type: array
+          items:
+            type: object
+            required: [docType, documentNumber, customerCode, documentDate, lines]
+            properties:
+              docType: { type: string, enum: [invoice, credit] }
+              documentNumber: { type: string }
+              customerCode: { type: string }
+              documentDate: { type: string }
+              dueDate: { type: string }
+              reason: { type: string }
+              notes: { type: string }
+              lines:
+                type: array
+                items:
+                  type: object
+                  required: [quantity, unitPrice]
+                  properties:
+                    itemCode: { type: string }
+                    itemName: { type: string }
+                    description: { type: string }
+                    quantity: { type: number }
+                    unitPrice: { type: number }
+                    discountPct: { type: number }
+                    taxPct: { type: number }
+                    notes: { type: string }
+
+    ImportInvoicesResult:
+      type: object
+      properties:
+        created: { type: integer }
+        failed: { type: integer }
         errors:
           type: array
           items:

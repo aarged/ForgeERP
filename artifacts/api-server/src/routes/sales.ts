@@ -2345,6 +2345,161 @@ router.post("/sales/credit-notes/:id/issue", ...tenantWriteMiddleware, async (re
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ── Legacy invoice / credit-note bulk import ────────────════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// Imports historical customer invoices AND credit notes from legacy systems in a
+// single upload (discriminated by docType). These documents are standalone: no
+// sales order, no despatch, no stock movement, and the credit limit is bypassed.
+// The original document number is used VERBATIM as the Forge code (no INV-/CN-
+// prefix) so legacy documents are visually distinct from Forge-generated ones.
+// Backdated dates are honored. Accounting integrity is preserved by routing
+// through the same GL posting helpers as the standard endpoints
+// (createInvoiceGlPosting / createCreditNoteGlPosting).
+router.post("/sales/invoices/import", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+
+  const lineSchema = z.object({
+    itemCode: z.string().optional(),
+    itemName: z.string().optional(),
+    description: z.string().optional(),
+    quantity: z.number().positive(),
+    unitPrice: z.number().nonnegative(),
+    discountPct: z.number().min(0).max(100).default(0),
+    taxPct: z.number().min(0).max(100).default(0),
+    notes: z.string().optional(),
+  });
+  const docSchema = z.object({
+    docType: z.enum(["invoice", "credit"]),
+    documentNumber: z.string().trim().min(1, "documentNumber is required"),
+    customerCode: z.string().trim().min(1, "customerCode is required"),
+    documentDate: z.string().trim().min(1, "documentDate is required"),
+    dueDate: z.string().trim().optional(),
+    reason: z.string().optional(),
+    notes: z.string().optional(),
+    lines: z.array(lineSchema).min(1, "At least one line required"),
+  });
+  // Validate the envelope loosely so one bad document does not abort the whole
+  // import — per-document validation happens in the loop and bad rows are
+  // reported in errors[].
+  const envelopeSchema = z.object({
+    documents: z.array(z.record(z.string(), z.unknown())).min(1).max(5000),
+  });
+  const envelope = envelopeSchema.safeParse(req.body);
+  if (!envelope.success) { res.status(400).json({ error: "Validation failed", details: envelope.error.issues }); return; }
+
+  // Pre-fetch existing codes (across BOTH invoice + credit-note tables) and
+  // tenant customers once so the per-document loop stays in memory.
+  const [existingInvCodes, existingCnCodes, customers] = await withTenantDb(tenantId, async (db) => {
+    const inv = await db.select({ code: customerInvoicesTable.code }).from(customerInvoicesTable).where(eq(customerInvoicesTable.tenantId, tenantId));
+    const cn = await db.select({ code: creditNotesTable.code }).from(creditNotesTable).where(eq(creditNotesTable.tenantId, tenantId));
+    const custs = await db.select({ id: customersTable.id, code: customersTable.code, name: customersTable.name, email: customersTable.email })
+      .from(customersTable).where(and(eq(customersTable.tenantId, tenantId), isNull(customersTable.deletedAt)));
+    return [inv, cn, custs] as const;
+  });
+  const usedCodes = new Set<string>([...existingInvCodes.map((r) => r.code), ...existingCnCodes.map((r) => r.code)]);
+  const customerByCode = new Map(customers.map((c) => [c.code, c]));
+
+  const documents = envelope.data.documents;
+  let created = 0;
+  const errors: { row: number; code: string; error: string }[] = [];
+
+  for (let i = 0; i < documents.length; i++) {
+    const raw = documents[i]!;
+    const rowNum = i + 1;
+    const rawCode = typeof raw.documentNumber === "string" ? raw.documentNumber : "";
+    const parsed = docSchema.safeParse(raw);
+    if (!parsed.success) {
+      errors.push({ row: rowNum, code: rawCode, error: parsed.error.issues.map((iss) => `${iss.path.join(".") || "row"}: ${iss.message}`).join("; ") });
+      continue;
+    }
+    const doc = parsed.data;
+    const code = doc.documentNumber;
+
+    // Document number must be unique within the tenant (across both tables) and
+    // within this batch — numbers are used verbatim as the Forge code.
+    if (usedCodes.has(code)) {
+      errors.push({ row: rowNum, code, error: `Document number "${code}" already exists or is duplicated in this file` });
+      continue;
+    }
+    const customer = customerByCode.get(doc.customerCode);
+    if (!customer) {
+      errors.push({ row: rowNum, code, error: `Customer code "${doc.customerCode}" not found` });
+      continue;
+    }
+    // Validate (backdated) dates up front so we can store them and give a clear
+    // per-document error instead of a cryptic DB failure.
+    if (Number.isNaN(Date.parse(doc.documentDate))) {
+      errors.push({ row: rowNum, code, error: `Invalid documentDate "${doc.documentDate}"` });
+      continue;
+    }
+    if (doc.dueDate && Number.isNaN(Date.parse(doc.dueDate))) {
+      errors.push({ row: rowNum, code, error: `Invalid dueDate "${doc.dueDate}"` });
+      continue;
+    }
+
+    // Header totals (discount + tax) computed the same way as the standard
+    // invoice/credit-note endpoints.
+    let subtotal = 0; let taxAmount = 0;
+    const lineValues = doc.lines.map((l) => {
+      const base = l.quantity * l.unitPrice * (1 - l.discountPct / 100);
+      const tax = base * (l.taxPct / 100);
+      subtotal += base; taxAmount += tax;
+      return { ...l, lineTotal: (base + tax).toFixed(2) };
+    });
+    const total = subtotal + taxAmount;
+
+    try {
+      if (doc.docType === "invoice") {
+        await withTenantDb(tenantId, async (db) => {
+          const [invoice] = await db.insert(customerInvoicesTable).values({
+            tenantId, code, status: "draft", source: "migration",
+            customerId: customer.id, customerName: customer.name, customerEmail: customer.email ?? undefined,
+            invoiceDate: doc.documentDate, dueDate: doc.dueDate ?? undefined,
+            subtotal: subtotal.toFixed(2), taxAmount: taxAmount.toFixed(2), total: total.toFixed(2),
+            notes: doc.notes ?? undefined, createdByClerkId: clerkUserId, createdByEmail: userEmail,
+          } as typeof customerInvoicesTable.$inferInsert).returning();
+          const id = invoice!.id;
+          await db.insert(customerInvoiceLinesTable).values(lineValues.map((l) => ({
+            tenantId, invoiceId: id, itemCode: l.itemCode, itemName: l.itemName, description: l.description,
+            quantity: String(l.quantity), unitPrice: String(l.unitPrice), discountPct: String(l.discountPct), taxPct: String(l.taxPct),
+            lineTotal: l.lineTotal, notes: l.notes,
+          }) as typeof customerInvoiceLinesTable.$inferInsert));
+          // Dr AR / Cr Revenue (+Cr Tax) — matches the standard create, which posts GL on draft.
+          const posting = await createInvoiceGlPosting(db, tenantId, id, clerkUserId, userEmail);
+          if (posting?.id) await db.update(customerInvoicesTable).set({ glPostingId: posting.id }).where(eq(customerInvoicesTable.id, id));
+        });
+      } else {
+        await withTenantDb(tenantId, async (db) => {
+          const [cn] = await db.insert(creditNotesTable).values({
+            // Backdated: issuedAt carries the legacy document date (credit notes have no separate date column).
+            tenantId, code, status: "issued", source: "migration", issuedAt: new Date(doc.documentDate),
+            customerId: customer.id, customerName: customer.name, reason: doc.reason ?? undefined,
+            subtotal: subtotal.toFixed(2), taxAmount: taxAmount.toFixed(2), total: total.toFixed(2),
+            notes: doc.notes ?? undefined, createdByClerkId: clerkUserId, createdByEmail: userEmail,
+          } as typeof creditNotesTable.$inferInsert).returning();
+          const id = cn!.id;
+          await db.insert(creditNoteLinesTable).values(lineValues.map((l) => ({
+            tenantId, creditNoteId: id, itemCode: l.itemCode, itemName: l.itemName, description: l.description,
+            quantity: String(l.quantity), unitPrice: String(l.unitPrice), taxPct: String(l.taxPct),
+            lineTotal: l.lineTotal, notes: l.notes,
+          }) as typeof creditNoteLinesTable.$inferInsert));
+          // Dr Revenue / Cr AR — CN GL only posts on issue, so imported credits are issued immediately.
+          const posting = await createCreditNoteGlPosting(db, tenantId, id, clerkUserId, userEmail);
+          if (posting?.id) await db.update(creditNotesTable).set({ glPostingId: posting.id }).where(eq(creditNotesTable.id, id));
+        });
+      }
+      usedCodes.add(code);
+      created++;
+    } catch (err) {
+      errors.push({ row: rowNum, code, error: err instanceof Error ? err.message : "Unknown error" });
+    }
+  }
+
+  await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "invoice.bulk_import", entityType: "customer_invoice", entityId: tenantId, newValues: { created, failed: errors.length } });
+  res.json({ created, failed: errors.length, errors });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ── RMA (Returns) ─────────────────────────────════════════════════════════════
 // ═══════════════════════════════════════════════════════════════════════════════
 
