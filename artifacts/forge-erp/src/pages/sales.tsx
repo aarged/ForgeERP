@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Bar,
@@ -72,8 +72,10 @@ import {
   useReportCustomerStatement,
   getReportCustomerStatementQueryKey,
   useListCustomers,
+  getListCustomersQueryKey,
   useListWarehouses,
   useListItems,
+  lookupItem,
 } from "@workspace/api-client-react";
 import type {
   Quotation,
@@ -156,7 +158,19 @@ import {
   Image as ImageIcon,
   Pencil,
   Download,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -228,11 +242,126 @@ type LineEditorFormBase = { lines: LineField[] };
 
 type ItemOption = { id: number; code: string; name: string; description?: string | null; salesPrice?: string | null; unitCost?: string | null };
 
+type CustomerOption = {
+  id: number;
+  code?: string | null;
+  name: string;
+  email?: string | null;
+};
+
+/**
+ * Customer picker backed by a live, server-side search. The preloaded list is
+ * capped server-side (so customers beyond the first page are absent from it);
+ * typing queries the catalog by code/name/email so any active customer is
+ * selectable. The empty-search view falls back to the preloaded list.
+ */
+function CustomerCombobox({
+  value,
+  preloaded,
+  onChange,
+}: {
+  value?: number;
+  preloaded: CustomerOption[];
+  onChange: (customer: CustomerOption | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [selected, setSelected] = useState<CustomerOption | null>(
+    () => preloaded.find((c) => c.id === value) ?? null,
+  );
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Keep the trigger label in sync with the external value (e.g. form reset).
+  useEffect(() => {
+    if (value == null) { setSelected(null); return; }
+    const match = preloaded.find((c) => c.id === value);
+    if (match) setSelected(match);
+  }, [value, preloaded]);
+
+  const customerParams = { q: debounced || undefined, limit: 50, activeOnly: "true" };
+  const { data } = useListCustomers(customerParams, {
+    query: { enabled: open, queryKey: getListCustomersQueryKey(customerParams) },
+  });
+  const results: CustomerOption[] =
+    (data as { customers?: CustomerOption[] } | undefined)?.customers ??
+    (debounced ? [] : preloaded);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal"
+        >
+          <span className={cn("truncate", !selected && "text-muted-foreground")}>
+            {selected ? selected.name : "Select customer..."}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] p-0"
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Search customers…"
+            value={search}
+            onValueChange={setSearch}
+            autoFocus
+          />
+          <CommandList>
+            <CommandEmpty>No customer found.</CommandEmpty>
+            <CommandGroup>
+              {results.map((c) => {
+                const isSelected = c.id === value;
+                return (
+                  <CommandItem
+                    key={c.id}
+                    value={String(c.id)}
+                    onSelect={() => {
+                      setSelected(c);
+                      onChange(c);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check className={cn("mr-2 h-4 w-4", isSelected ? "opacity-100" : "opacity-0")} />
+                    <div className="flex flex-col min-w-0">
+                      <span className="truncate">{c.name}</span>
+                      {(c.code || c.email) && (
+                        <span className="text-xs text-muted-foreground truncate">
+                          {[c.code, c.email].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
+                    </div>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /**
  * Free-text item code entry. The user types an item code; on blur it is matched
- * case-insensitively against the known items. A match resolves the line to that
- * item; an unknown code is rejected (kept visible with an error, no item set);
- * an empty field clears the item (description-only lines remain allowed).
+ * case-insensitively against the preloaded items. If not found locally (the
+ * preloaded list is capped server-side, so items beyond the first page are
+ * absent), the code is resolved against the live catalog via an exact-code
+ * server lookup. A match resolves the line to that item; an unknown code is
+ * rejected (kept visible with an error, no item set); an empty field clears the
+ * item (description-only lines remain allowed).
  */
 function ItemCodeInput({
   value,
@@ -246,6 +375,9 @@ function ItemCodeInput({
   const codeForId = (id?: number) => items.find((i) => i.id === id)?.code ?? "";
   const [text, setText] = useState(() => codeForId(value));
   const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+  // Monotonic token so a slow in-flight lookup can't overwrite a newer commit.
+  const commitToken = useRef(0);
 
   // When the resolved item id (or the items list) changes, reflect the canonical
   // code in the input. Guarded to a known id so rejecting a code never wipes the
@@ -258,25 +390,51 @@ function ItemCodeInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, items]);
 
-  const commit = () => {
+  const commit = async () => {
+    const token = ++commitToken.current;
     const t = text.trim();
     if (!t) { setError(false); onResolve(null); return; }
     const match = items.find((i) => (i.code ?? "").toLowerCase() === t.toLowerCase());
-    if (match) { setError(false); setText(match.code); onResolve(match); }
-    else { setError(true); onResolve(null); }
+    if (match) { setError(false); setText(match.code); onResolve(match); return; }
+
+    // Not in the preloaded page — resolve against the live catalog by exact code.
+    setLoading(true);
+    try {
+      const found = await lookupItem({ code: t });
+      // A newer commit superseded this lookup — drop the stale result.
+      if (token !== commitToken.current) return;
+      setError(false);
+      setText(found.code ?? t);
+      onResolve({
+        id: found.id ?? 0,
+        code: found.code ?? t,
+        name: found.name ?? "",
+        description: found.description,
+        salesPrice: found.salesPrice,
+        unitCost: found.unitCost,
+      });
+    } catch {
+      if (token !== commitToken.current) return;
+      setError(true);
+      onResolve(null);
+    } finally {
+      if (token === commitToken.current) setLoading(false);
+    }
   };
 
   return (
     <div>
       <Input
         value={text}
+        data-line-item-code
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void commit(); } }}
         placeholder="Item code"
         className={`h-7 text-xs w-24 ${error ? "border-red-500 focus-visible:ring-red-500" : ""}`}
       />
-      {error && <p className="text-[10px] text-red-600 mt-0.5">Not found</p>}
+      {loading && <p className="text-[10px] text-muted-foreground mt-0.5">Checking…</p>}
+      {error && !loading && <p className="text-[10px] text-red-600 mt-0.5">Not found</p>}
     </div>
   );
 }
@@ -412,15 +570,28 @@ function LineItemEditor({
   items: ItemOption[];
   setValue?: (idx: number, patch: { description?: string; unitPrice?: number }) => void;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  // After appending a line, move focus to the new row's Item field (it is the
+  // first thing the user fills in), rather than letting focus stay/skip to
+  // Description.
+  const handleAdd = () => {
+    onAdd();
+    requestAnimationFrame(() => {
+      const inputs = containerRef.current?.querySelectorAll<HTMLInputElement>(
+        "input[data-line-item-code]",
+      );
+      inputs?.[inputs.length - 1]?.focus();
+    });
+  };
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <Label className="text-sm font-medium">Lines</Label>
-        <Button type="button" size="sm" variant="outline" onClick={onAdd}>
+        <Button type="button" size="sm" variant="outline" onClick={handleAdd}>
           <Plus className="w-3 h-3 mr-1" /> Add Line
         </Button>
       </div>
-      <div className="border rounded-md overflow-hidden">
+      <div ref={containerRef} className="border rounded-md overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
@@ -1253,28 +1424,17 @@ function QuotationsTab() {
                   control={form.control}
                   name="customerId"
                   render={({ field: f }) => (
-                    <Select
-                      value={f.value ? String(f.value) : ""}
-                      onValueChange={(v) => {
-                        f.onChange(v ? Number(v) : undefined);
-                        const c = custList.find((c) => c.id === Number(v));
+                    <CustomerCombobox
+                      value={f.value ?? undefined}
+                      preloaded={custList}
+                      onChange={(c) => {
+                        f.onChange(c ? c.id : undefined);
                         if (c) {
                           form.setValue("customerName", c.name);
                           form.setValue("customerEmail", c.email ?? undefined);
                         }
                       }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select customer..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {custList.map((c) => (
-                          <SelectItem key={c.id ?? 0} value={String(c.id)}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
                   )}
                 />
               </div>
@@ -1954,28 +2114,17 @@ function SalesOrdersTab() {
                   control={form.control}
                   name="customerId"
                   render={({ field: f }) => (
-                    <Select
-                      value={f.value ? String(f.value) : ""}
-                      onValueChange={(v) => {
-                        f.onChange(v ? Number(v) : undefined);
-                        const c = custList.find((c) => c.id === Number(v));
+                    <CustomerCombobox
+                      value={f.value ?? undefined}
+                      preloaded={custList}
+                      onChange={(c) => {
+                        f.onChange(c ? c.id : undefined);
                         if (c) {
                           form.setValue("customerName", c.name);
                           form.setValue("customerEmail", c.email ?? undefined);
                         }
                       }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select customer..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {custList.map((c) => (
-                          <SelectItem key={c.id ?? 0} value={String(c.id)}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
                   )}
                 />
               </div>
@@ -3258,28 +3407,17 @@ function RmaTab() {
                   control={form.control}
                   name="customerId"
                   render={({ field: f }) => (
-                    <Select
-                      value={f.value ? String(f.value) : ""}
-                      onValueChange={(v) => {
-                        f.onChange(v ? Number(v) : undefined);
-                        const c = custList.find((c) => c.id === Number(v));
+                    <CustomerCombobox
+                      value={f.value ?? undefined}
+                      preloaded={custList}
+                      onChange={(c) => {
+                        f.onChange(c ? c.id : undefined);
                         if (c) {
                           form.setValue("customerName", c.name);
                           form.setValue("customerEmail", c.email ?? undefined);
                         }
                       }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select customer..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {custList.map((c) => (
-                          <SelectItem key={c.id ?? 0} value={String(c.id)}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
                   )}
                 />
               </div>
