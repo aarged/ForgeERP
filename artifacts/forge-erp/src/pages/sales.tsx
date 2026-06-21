@@ -153,7 +153,7 @@ import {
   Download,
 } from "lucide-react";
 
-// ââ Helpers ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(val: string | number | null | undefined, decimals = 2): string {
   const n = Number(val ?? 0);
@@ -161,12 +161,12 @@ function fmt(val: string | number | null | undefined, decimals = 2): string {
 }
 
 function fmtDate(val: string | null | undefined): string {
-  if (!val) return "â";
+  if (!val) return "—";
   return new Date(val).toLocaleDateString();
 }
 
 function fmtDateTime(val: string | Date | null | undefined): string {
-  if (!val) return "â";
+  if (!val) return "—";
   const d = val instanceof Date ? val : new Date(val);
   return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
@@ -206,7 +206,7 @@ function StatusBadge({ status }: { status?: string }) {
   );
 }
 
-// ââ Line editor shared sub-component âââââââââââââââââââââââââââââââââââââââââ
+// ── Line editor shared sub-component ─────────────────────────────────────────
 
 type LineField = {
   id: string;
@@ -218,7 +218,7 @@ type LineField = {
   taxPct: number;
 };
 
-/** Minimal form shape accepted by LineItemEditor â both QuotForm and SoForm satisfy this. */
+/** Minimal form shape accepted by LineItemEditor — both QuotForm and SoForm satisfy this. */
 type LineEditorFormBase = { lines: LineField[] };
 
 type ItemOption = { id: number; code: string; name: string; description?: string | null; salesPrice?: string | null; unitCost?: string | null };
@@ -389,9 +389,9 @@ function LineItemEditor({
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ââ Dashboard Tab âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Dashboard Tab ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function fmtCurrencyCompact(n: number): string {
   if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -636,9 +636,9 @@ function DashboardTab({ onNavigate }: { onNavigate: (tab: string) => void }) {
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ââ Quotations Tab ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Quotations Tab ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
 type QuotLineForm = {
   itemId?: number;
@@ -790,7 +790,7 @@ function QuotationsTab() {
       return;
     }
     // Normalize empty strings on every optional field to an explicit null so
-    // the backend always sees a definite "clear this column" signal â no more
+    // the backend always sees a definite "clear this column" signal — no more
     // ambiguity between "user wants to clear" and "user left blank". Required
     // fields (customerId) are validated above.
     const clearableKeys = [
@@ -968,9 +968,9 @@ function QuotationsTab() {
               >
                 <TableCell className="font-mono text-sm">{q.code ?? ""}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">
-                  {q.customerId != null ? (customerCodeById.get(q.customerId) ?? "â") : "â"}
+                  {q.customerId != null ? (customerCodeById.get(q.customerId) ?? "—") : "—"}
                 </TableCell>
-                <TableCell>{q.customerName ?? "â"}</TableCell>
+                <TableCell>{q.customerName ?? "—"}</TableCell>
                 <TableCell>{fmtDate(q.expiryDate)}</TableCell>
                 <TableCell>
                   <StatusBadge status={q.status} />
@@ -980,12 +980,12 @@ function QuotationsTab() {
                   {fmtDate(q.createdAt)}
                 </TableCell>
                 <TableCell className="max-w-[200px]">
-                  {q.notes ? (
+                  {q.notes?.trim() ? (
                     <span className="block truncate text-xs text-muted-foreground" title={q.notes}>
                       {q.notes}
                     </span>
                   ) : (
-                    <span className="text-muted-foreground">â</span>
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
@@ -1159,7 +1159,7 @@ function QuotationsTab() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Payment:</span>{" "}
-                  {det.paymentTerms ?? "â"}
+                  {det.paymentTerms ?? "—"}
                 </div>
                 <div>
                   <span className="text-muted-foreground">Currency:</span>{" "}
@@ -1189,7 +1189,7 @@ function QuotationsTab() {
                     <TableRow key={l.id ?? 0}>
                       <TableCell className="text-xs">{l.lineNumber}</TableCell>
                       <TableCell className="text-xs">
-                        {l.itemCode ? `${l.itemCode} â ${l.itemName}` : l.description ?? "â"}
+                        {l.itemCode ? `${l.itemCode} – ${l.itemName}` : l.description ?? "—"}
                       </TableCell>
                       <TableCell className="text-xs text-right">
                         {fmt(l.quantity, 0)}
@@ -1378,9 +1378,9 @@ function QuotationsTab() {
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ââ Sales Orders Tab ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Sales Orders Tab ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
 type SoLineForm = {
   itemId?: number;
@@ -1655,7 +1655,7 @@ function SalesOrdersTab() {
                 onClick={() => setDetailId(so.id ?? null)}
               >
                 <TableCell className="font-mono text-sm">{so.code ?? ""}</TableCell>
-                <TableCell>{so.customerName ?? "â"}</TableCell>
+                <TableCell>{so.customerName ?? "—"}</TableCell>
                 <TableCell>{fmtDate(so.requestedDate)}</TableCell>
                 <TableCell>
                   <StatusBadge status={so.status} />
@@ -1665,12 +1665,12 @@ function SalesOrdersTab() {
                   {fmtDate(so.createdAt)}
                 </TableCell>
                 <TableCell className="max-w-[200px]">
-                  {so.notes ? (
+                  {so.notes?.trim() ? (
                     <span className="block truncate text-xs text-muted-foreground" title={so.notes}>
                       {so.notes}
                     </span>
                   ) : (
-                    <span className="text-muted-foreground">â</span>
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
@@ -1840,7 +1840,7 @@ function SalesOrdersTab() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Payment:</span>{" "}
-                  {det.paymentTerms ?? "â"}
+                  {det.paymentTerms ?? "—"}
                 </div>
                 <div>
                   <span className="text-muted-foreground">Currency:</span>{" "}
@@ -1872,8 +1872,8 @@ function SalesOrdersTab() {
                       <TableCell className="text-xs">{l.lineNumber}</TableCell>
                       <TableCell className="text-xs">
                         {l.itemCode
-                          ? `${l.itemCode} â ${l.itemName}`
-                          : l.description ?? "â"}
+                          ? `${l.itemCode} – ${l.itemName}`
+                          : l.description ?? "—"}
                       </TableCell>
                       <TableCell className="text-xs text-right">
                         {fmt(l.quantity, 0)}
@@ -1975,7 +1975,7 @@ function SalesOrdersTab() {
                           control={despatchForm.control}
                           name={`lines.${idx}.itemCode`}
                           render={({ field: f }) => (
-                            <span className="font-mono">{f.value ?? "â"}</span>
+                            <span className="font-mono">{f.value ?? "—"}</span>
                           )}
                         />
                         {" "}
@@ -2062,9 +2062,9 @@ function SalesOrdersTab() {
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ââ Despatches Tab ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Despatches Tab ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function DespatchesTab() {
   const { toast } = useToast();
@@ -2088,7 +2088,7 @@ function DespatchesTab() {
   async function handleConfirm(id: number) {
     try {
       await confirmMut.mutateAsync({ id });
-      toast({ title: "Despatch confirmed â inventory and GL posted" });
+      toast({ title: "Despatch confirmed — inventory and GL posted" });
       qc.invalidateQueries({ queryKey: getListDespatchesQueryKey() });
       qc.invalidateQueries({ queryKey: getGetDespatchQueryKey(id) });
       qc.invalidateQueries({ queryKey: getListSalesOrdersQueryKey() });
@@ -2170,7 +2170,7 @@ function DespatchesTab() {
                   SO-{String(d.soId).padStart(6, "0")}
                 </TableCell>
                 <TableCell>{fmtDate(d.despatchDate)}</TableCell>
-                <TableCell>{d.carrier ?? "â"}</TableCell>
+                <TableCell>{d.carrier ?? "—"}</TableCell>
                 <TableCell>
                   <StatusBadge status={d.status} />
                 </TableCell>
@@ -2224,7 +2224,7 @@ function DespatchesTab() {
             <DialogTitle>{det?.code ?? "Despatch"}</DialogTitle>
             <DialogDescription>
               {det?.status && <StatusBadge status={det.status} />}
-              {det?.trackingNumber && ` Â· ${det.trackingNumber}`}
+              {det?.trackingNumber && ` · ${det.trackingNumber}`}
             </DialogDescription>
           </DialogHeader>
           {det && (
@@ -2236,7 +2236,7 @@ function DespatchesTab() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Carrier:</span>{" "}
-                  {det.carrier ?? "â"}
+                  {det.carrier ?? "—"}
                 </div>
                 <div>
                   <span className="text-muted-foreground">GL:</span>{" "}
@@ -2255,7 +2255,7 @@ function DespatchesTab() {
                   {det.lines?.map((l) => (
                     <TableRow key={l.id ?? 0}>
                       <TableCell className="text-xs">
-                        {l.itemCode ? `${l.itemCode} â ${l.itemName}` : "â"}
+                        {l.itemCode ? `${l.itemCode} – ${l.itemName}` : "—"}
                       </TableCell>
                       <TableCell className="text-xs text-right">
                         {fmt(l.quantity, 0)}
@@ -2285,9 +2285,9 @@ function DespatchesTab() {
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ââ Invoices Tab ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Invoices Tab ──────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
 type InvLineForm = {
   soLineId?: number;
@@ -2361,7 +2361,7 @@ function InvoicesTab() {
       .filter((l) => l.lineType === "stock")
       .map((l) => ({
         soLineId: l.id,
-        description: `${l.itemCode ?? ""} â ${l.itemName ?? ""}`,
+        description: `${l.itemCode ?? ""} – ${l.itemName ?? ""}`,
         quantity: Number(l.quantity) - Number(l.invoiced_qty ?? 0),
         unitPrice: Number(l.unitPrice),
         discountPct: Number(l.discountPct ?? 0),
@@ -2463,7 +2463,7 @@ function InvoicesTab() {
                 onClick={() => setDetailId(inv.id ?? null)}
               >
                 <TableCell className="font-mono text-sm">{inv.code ?? ""}</TableCell>
-                <TableCell>{inv.customerName ?? "â"}</TableCell>
+                <TableCell>{inv.customerName ?? "—"}</TableCell>
                 <TableCell>{fmtDate(inv.invoiceDate)}</TableCell>
                 <TableCell>{fmtDate(inv.dueDate)}</TableCell>
                 <TableCell>
@@ -2471,12 +2471,12 @@ function InvoicesTab() {
                 </TableCell>
                 <TableCell className="text-right font-medium">${fmt(inv.total)}</TableCell>
                 <TableCell className="max-w-[200px]">
-                  {inv.notes ? (
+                  {inv.notes?.trim() ? (
                     <span className="block truncate text-xs text-muted-foreground" title={inv.notes}>
                       {inv.notes}
                     </span>
                   ) : (
-                    <span className="text-muted-foreground">â</span>
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()} className="space-x-1">
@@ -2547,7 +2547,7 @@ function InvoicesTab() {
                           )
                           .map((o) => (
                             <SelectItem key={o.id ?? 0} value={String(o.id ?? 0)}>
-                              {o.code ?? ""} â {o.customerName}
+                              {o.code ?? ""} – {o.customerName}
                             </SelectItem>
                           ))}
                       </SelectContent>
@@ -2698,7 +2698,7 @@ function InvoicesTab() {
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div>
                   <span className="text-muted-foreground">Customer:</span>{" "}
-                  {det.customerName ?? "â"}
+                  {det.customerName ?? "—"}
                 </div>
                 <div>
                   <span className="text-muted-foreground">Date:</span>{" "}
@@ -2731,8 +2731,8 @@ function InvoicesTab() {
                     <TableRow key={l.id ?? 0}>
                       <TableCell className="text-xs">
                         {l.itemCode
-                          ? `${l.itemCode} â ${l.itemName}`
-                          : l.description ?? "â"}
+                          ? `${l.itemCode} – ${l.itemName}`
+                          : l.description ?? "—"}
                       </TableCell>
                       <TableCell className="text-xs text-right">
                         {fmt(l.quantity, 0)}
@@ -2772,9 +2772,9 @@ function InvoicesTab() {
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ââ RMA Tab âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── RMA Tab ───────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
 type RmaLineForm = {
   itemCode?: string;
@@ -2966,7 +2966,7 @@ function RmaTab() {
                 onClick={() => setDetailId(rma.id ?? null)}
               >
                 <TableCell className="font-mono text-sm">{rma.code ?? ""}</TableCell>
-                <TableCell>{rma.customerName ?? "â"}</TableCell>
+                <TableCell>{rma.customerName ?? "—"}</TableCell>
                 <TableCell className="capitalize">{rma.resolution}</TableCell>
                 <TableCell>
                   <StatusBadge status={rma.status} />
@@ -3243,7 +3243,7 @@ function RmaTab() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Reason:</span>{" "}
-                  {det.reason ?? "â"}
+                  {det.reason ?? "—"}
                 </div>
               </div>
               <Table>
@@ -3260,7 +3260,7 @@ function RmaTab() {
                   {det.lines?.map((l) => (
                     <TableRow key={l.id ?? 0}>
                       <TableCell className="text-xs">
-                        {l.itemCode ? `${l.itemCode} â ${l.itemName}` : "â"}
+                        {l.itemCode ? `${l.itemCode} – ${l.itemName}` : "—"}
                       </TableCell>
                       <TableCell className="text-xs text-right">
                         {fmt(l.quantity, 0)}
@@ -3299,9 +3299,9 @@ function RmaTab() {
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ââ Credit Notes Tab ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Credit Notes Tab ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
 type CnLineForm = {
   description?: string;
@@ -3418,8 +3418,8 @@ function CreditNotesTab() {
             {creditNotes.map((cn) => (
               <TableRow key={cn.id ?? 0}>
                 <TableCell className="font-mono text-sm">{cn.code ?? ""}</TableCell>
-                <TableCell>{cn.customerName ?? "â"}</TableCell>
-                <TableCell className="text-xs">{cn.reason ?? "â"}</TableCell>
+                <TableCell>{cn.customerName ?? "—"}</TableCell>
+                <TableCell className="text-xs">{cn.reason ?? "—"}</TableCell>
                 <TableCell>
                   <StatusBadge status={cn.status} />
                 </TableCell>
@@ -3604,9 +3604,9 @@ function CreditNotesTab() {
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ââ Pick Slips Tab ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Pick Slips Tab ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function PickSlipsTab() {
   const qc = useQueryClient();
@@ -3718,7 +3718,7 @@ function PickSlipsTab() {
                         {fmtDateTime(ps.startedAt)}
                       </span>
                     ) : (
-                      "â"
+                      "—"
                     )}
                   </TableCell>
                   <TableCell className="text-xs" data-testid={`cell-lines-${ps.id}`}>
@@ -3733,7 +3733,7 @@ function PickSlipsTab() {
                         </div>
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">â</span>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
                   <TableCell className="text-xs" data-testid={`cell-short-${ps.id}`}>
@@ -3810,7 +3810,7 @@ function PickSlipsTab() {
                 {det.lines?.map((l) => (
                   <TableRow key={l.id ?? 0} data-testid={`row-pickline-${l.id}`}>
                     <TableCell className="text-xs align-top">
-                      {l.itemCode ? `${l.itemCode} â ${l.itemName}` : "â"}
+                      {l.itemCode ? `${l.itemCode} – ${l.itemName}` : "—"}
                     </TableCell>
                     <TableCell className="text-xs align-top">
                       <PickLineStatusBadge status={l.confirmStatus} />
@@ -3832,7 +3832,7 @@ function PickSlipsTab() {
                       {fmt(l.pickedQty, 0)}
                     </TableCell>
                     <TableCell className="text-xs align-top">
-                      {l.locationLabel ?? (l.locationId ? `Location #${l.locationId}` : "â")}
+                      {l.locationLabel ?? (l.locationId ? `Location #${l.locationId}` : "—")}
                     </TableCell>
                     <TableCell className="text-xs align-top">
                       {l.lotNumber || l.serialNumber || l.batchNumber ? (
@@ -3842,7 +3842,7 @@ function PickSlipsTab() {
                           {l.batchNumber && <div>Batch: <span className="font-mono">{l.batchNumber}</span></div>}
                         </div>
                       ) : (
-                        <span className="text-muted-foreground">â</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
                     <TableCell className="align-top">
@@ -3863,7 +3863,7 @@ function PickSlipsTab() {
                       ) : (
                         <span className="text-muted-foreground text-xs inline-flex items-center gap-1">
                           <ImageIcon className="w-3 h-3" />
-                          â
+                          —
                         </span>
                       )}
                     </TableCell>
@@ -3881,7 +3881,7 @@ function PickSlipsTab() {
                       ) : l.notes ? (
                         <span className="text-muted-foreground">{l.notes}</span>
                       ) : (
-                        <span className="text-muted-foreground">â</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
                   </TableRow>
@@ -3910,9 +3910,9 @@ function PickLineStatusBadge({ status }: { status?: string | null }) {
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ââ Supervisor Pick Board (real-time progress for warehouse supervisors) ââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Supervisor Pick Board (real-time progress for warehouse supervisors) ──────
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function SupervisorPickBoard() {
   const qc = useQueryClient();
@@ -3934,7 +3934,7 @@ function SupervisorPickBoard() {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="text-base">Picking floor</CardTitle>
-            <CardDescription>Live status across the warehouse â refreshes every 10s.</CardDescription>
+            <CardDescription>Live status across the warehouse — refreshes every 10s.</CardDescription>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -3983,7 +3983,7 @@ function SupervisorPickBoard() {
                 {inFlight.map((s) => (
                   <TableRow key={s.id} data-testid={`row-progress-${s.id}`}>
                     <TableCell className="font-mono text-xs">{s.code}</TableCell>
-                    <TableCell className="text-sm">{s.assignedToName ?? "â"}</TableCell>
+                    <TableCell className="text-sm">{s.assignedToName ?? "—"}</TableCell>
                     <TableCell className="w-48">
                       <div className="flex items-center gap-2">
                         <div className="h-2 flex-1 rounded bg-slate-200">
@@ -4002,7 +4002,7 @@ function SupervisorPickBoard() {
                       {(s.shortLines ?? 0) > 0 ? <span className="text-amber-700 font-semibold">{s.shortLines}</span> : 0}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {s.startedAt ? fmtDate(s.startedAt) : "â"}
+                      {s.startedAt ? fmtDate(s.startedAt) : "—"}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -4040,9 +4040,9 @@ function KPI({
   );
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ââ Backorders Tab ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Backorders Tab ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function BackordersTab() {
   const { toast } = useToast();
@@ -4112,8 +4112,8 @@ function BackordersTab() {
               {(backorders as BackorderRow[]).map((bo) => (
                 <TableRow key={bo.id}>
                   <TableCell className="font-mono text-sm">{bo.code}</TableCell>
-                  <TableCell>{bo.customerName ?? "â"}</TableCell>
-                  <TableCell>{bo.itemCode ? `${bo.itemCode} ${bo.itemName ?? ""}` : bo.itemName ?? "â"}</TableCell>
+                  <TableCell>{bo.customerName ?? "—"}</TableCell>
+                  <TableCell>{bo.itemCode ? `${bo.itemCode} ${bo.itemName ?? ""}` : bo.itemName ?? "—"}</TableCell>
                   <TableCell className="text-right">{fmt(bo.orderedQty, 0)}</TableCell>
                   <TableCell className="text-right font-semibold text-orange-600">{fmt(bo.backorderQty, 0)}</TableCell>
                   <TableCell className="text-right">{fmt(bo.releasedQty, 0)}</TableCell>
@@ -4152,9 +4152,9 @@ type BackorderRow = {
   status?: string;
 };
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ââ Main Sales Page âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Main Sales Page ───────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export default function Sales() {
   const [tab, setTab] = useState("dashboard");
