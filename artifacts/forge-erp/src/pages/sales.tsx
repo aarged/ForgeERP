@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Bar,
@@ -223,6 +223,59 @@ type LineEditorFormBase = { lines: LineField[] };
 
 type ItemOption = { id: number; code: string; name: string; description?: string | null; salesPrice?: string | null; unitCost?: string | null };
 
+/**
+ * Free-text item code entry. The user types an item code; on blur it is matched
+ * case-insensitively against the known items. A match resolves the line to that
+ * item; an unknown code is rejected (kept visible with an error, no item set);
+ * an empty field clears the item (description-only lines remain allowed).
+ */
+function ItemCodeInput({
+  value,
+  items,
+  onResolve,
+}: {
+  value?: number;
+  items: ItemOption[];
+  onResolve: (item: ItemOption | null) => void;
+}) {
+  const codeForId = (id?: number) => items.find((i) => i.id === id)?.code ?? "";
+  const [text, setText] = useState(() => codeForId(value));
+  const [error, setError] = useState(false);
+
+  // When the resolved item id (or the items list) changes, reflect the canonical
+  // code in the input. Guarded to a known id so rejecting a code never wipes the
+  // text the user typed.
+  useEffect(() => {
+    if (value != null) {
+      const c = codeForId(value);
+      if (c) { setText(c); setError(false); }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, items]);
+
+  const commit = () => {
+    const t = text.trim();
+    if (!t) { setError(false); onResolve(null); return; }
+    const match = items.find((i) => (i.code ?? "").toLowerCase() === t.toLowerCase());
+    if (match) { setError(false); setText(match.code); onResolve(match); }
+    else { setError(true); onResolve(null); }
+  };
+
+  return (
+    <div>
+      <Input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
+        placeholder="Item code"
+        className={`h-7 text-xs w-24 ${error ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+      />
+      {error && <p className="text-[10px] text-red-600 mt-0.5">Not found</p>}
+    </div>
+  );
+}
+
 function LineItemEditor({
   fields,
   control,
@@ -266,36 +319,20 @@ function LineItemEditor({
                     control={control}
                     name={`lines.${idx}.itemId`}
                     render={({ field: f }) => (
-                      <div>
-                        <Select
-                          value={f.value ? String(f.value) : ""}
-                          onValueChange={(v) => {
-                            const id = v ? Number(v) : undefined;
-                            f.onChange(id);
-                            if (id && setValue) {
-                              const it = items.find((i) => i.id === id);
-                              if (it) {
-                                const price = it.salesPrice ?? it.unitCost;
-                                setValue(idx, {
-                                  description: it.description ?? it.name,
-                                  unitPrice: price != null ? Number(price) : undefined,
-                                });
-                              }
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="h-7 text-xs">
-                            <SelectValue placeholder="Item..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {items.map((item) => (
-                              <SelectItem key={item.id ?? 0} value={String(item.id)}>
-                                {item.code ?? ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      <ItemCodeInput
+                        value={f.value}
+                        items={items}
+                        onResolve={(it) => {
+                          f.onChange(it ? it.id : undefined);
+                          if (it && setValue) {
+                            const price = it.salesPrice ?? it.unitCost;
+                            setValue(idx, {
+                              description: it.description ?? it.name,
+                              unitPrice: price != null ? Number(price) : undefined,
+                            });
+                          }
+                        }}
+                      />
                     )}
                   />
                 </TableCell>
