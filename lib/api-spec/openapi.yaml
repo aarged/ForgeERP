@@ -4380,7 +4380,7 @@ paths:
         - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
         - { in: query, name: status, schema: { type: string } }
         - { in: query, name: customerId, schema: { type: integer } }
-        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: search, description: "Free-text search across code, customer name, and notes (header and line notes — e.g. captured serial numbers).", schema: { type: string } }
         - { in: query, name: page, schema: { type: integer, default: 1 } }
         - { in: query, name: limit, schema: { type: integer, default: 25 } }
       responses:
@@ -4561,7 +4561,7 @@ paths:
         - { in: header, name: x-tenant-id, required: true, schema: { type: integer } }
         - { in: query, name: status, schema: { type: string } }
         - { in: query, name: customerId, schema: { type: integer } }
-        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: search, description: "Free-text search across code, customer name, and notes (header and line notes — e.g. captured serial numbers).", schema: { type: string } }
         - { in: query, name: page, schema: { type: integer, default: 1 } }
         - { in: query, name: limit, schema: { type: integer, default: 25 } }
       responses:
@@ -5037,6 +5037,7 @@ paths:
         - { in: query, name: soId, schema: { type: integer } }
         - { in: query, name: status, schema: { type: string } }
         - { in: query, name: customerId, schema: { type: integer } }
+        - { in: query, name: search, description: "Free-text search across code, customer name, and notes (header and line notes — e.g. captured serial numbers).", schema: { type: string } }
         - { in: query, name: page, schema: { type: integer, default: 1 } }
         - { in: query, name: limit, schema: { type: integer, default: 25 } }
       responses:

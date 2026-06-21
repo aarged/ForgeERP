@@ -618,7 +618,12 @@ router.get("/sales/quotations", ...tenantUserMiddleware, async (req: Request, re
         eq(quotationsTable.tenantId, tenantId), isNull(quotationsTable.deletedAt),
         status ? eq(quotationsTable.status, status) : undefined,
         customerId ? eq(quotationsTable.customerId, Number(customerId)) : undefined,
-        search ? or(ilike(quotationsTable.code, `%${search}%`), ilike(quotationsTable.customerName, `%${search}%`)) : undefined,
+        search ? or(
+          ilike(quotationsTable.code, `%${search}%`),
+          ilike(quotationsTable.customerName, `%${search}%`),
+          ilike(quotationsTable.notes, `%${search}%`),
+          sql`EXISTS (SELECT 1 FROM quotation_lines ql WHERE ql.quotation_id = ${quotationsTable.id} AND ql.tenant_id = ${quotationsTable.tenantId} AND ql.notes ILIKE ${`%${search}%`})`,
+        ) : undefined,
       ))
       .orderBy(desc(quotationsTable.createdAt)).limit(lim + 1).offset(offset));
   const hasMore = rows.length > lim;
@@ -998,7 +1003,12 @@ router.get("/sales/orders", ...tenantUserMiddleware, async (req: Request, res: R
         eq(salesOrdersTable.tenantId, tenantId), isNull(salesOrdersTable.deletedAt),
         status ? eq(salesOrdersTable.status, status) : undefined,
         customerId ? eq(salesOrdersTable.customerId, Number(customerId)) : undefined,
-        search ? or(ilike(salesOrdersTable.code, `%${search}%`), ilike(salesOrdersTable.customerName, `%${search}%`)) : undefined,
+        search ? or(
+          ilike(salesOrdersTable.code, `%${search}%`),
+          ilike(salesOrdersTable.customerName, `%${search}%`),
+          ilike(salesOrdersTable.notes, `%${search}%`),
+          sql`EXISTS (SELECT 1 FROM so_lines sl WHERE sl.so_id = ${salesOrdersTable.id} AND sl.tenant_id = ${salesOrdersTable.tenantId} AND sl.notes ILIKE ${`%${search}%`})`,
+        ) : undefined,
       ))
       .orderBy(desc(salesOrdersTable.createdAt)).limit(lim + 1).offset(offset));
   const hasMore = rows.length > lim;
@@ -1924,14 +1934,20 @@ router.delete("/sales/despatches/:id", ...tenantWriteMiddleware, async (req: Req
 
 router.get("/sales/invoices", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
-  const { soId, status, customerId, page = "1", limit = "25" } = req.query as Record<string, string>;
+  const { soId, status, customerId, search, page = "1", limit = "25" } = req.query as Record<string, string>;
   const pg = Math.max(1, Number(page)); const lim = Math.min(100, Math.max(1, Number(limit)));
   const rows = await withTenantDb(tenantId, (db) =>
     db.select().from(customerInvoicesTable)
       .where(and(eq(customerInvoicesTable.tenantId, tenantId), isNull(customerInvoicesTable.deletedAt),
         soId ? eq(customerInvoicesTable.soId, Number(soId)) : undefined,
         status ? eq(customerInvoicesTable.status, status) : undefined,
-        customerId ? eq(customerInvoicesTable.customerId, Number(customerId)) : undefined))
+        customerId ? eq(customerInvoicesTable.customerId, Number(customerId)) : undefined,
+        search ? or(
+          ilike(customerInvoicesTable.code, `%${search}%`),
+          ilike(customerInvoicesTable.customerName, `%${search}%`),
+          ilike(customerInvoicesTable.notes, `%${search}%`),
+          sql`EXISTS (SELECT 1 FROM customer_invoice_lines il WHERE il.invoice_id = ${customerInvoicesTable.id} AND il.tenant_id = ${customerInvoicesTable.tenantId} AND il.notes ILIKE ${`%${search}%`})`,
+        ) : undefined))
       .orderBy(desc(customerInvoicesTable.createdAt)).limit(lim + 1).offset((pg - 1) * lim));
   res.json({ data: rows.slice(0, lim), hasMore: rows.length > lim, page: pg });
 });

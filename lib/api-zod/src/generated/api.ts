@@ -5021,7 +5021,12 @@ export const listQuotationsQueryLimitDefault = 25;
 export const ListQuotationsQueryParams = zod.object({
   status: zod.coerce.string().optional(),
   customerId: zod.coerce.number().optional(),
-  search: zod.coerce.string().optional(),
+  search: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Free-text search across code, customer name, and notes (header and line notes — e.g. captured serial numbers).",
+    ),
   page: zod.coerce.number().default(listQuotationsQueryPageDefault),
   limit: zod.coerce.number().default(listQuotationsQueryLimitDefault),
 });
@@ -5390,7 +5395,12 @@ export const listSalesOrdersQueryLimitDefault = 25;
 export const ListSalesOrdersQueryParams = zod.object({
   status: zod.coerce.string().optional(),
   customerId: zod.coerce.number().optional(),
-  search: zod.coerce.string().optional(),
+  search: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Free-text search across code, customer name, and notes (header and line notes — e.g. captured serial numbers).",
+    ),
   page: zod.coerce.number().default(listSalesOrdersQueryPageDefault),
   limit: zod.coerce.number().default(listSalesOrdersQueryLimitDefault),
 });
@@ -6489,6 +6499,12 @@ export const ListCustomerInvoicesQueryParams = zod.object({
   soId: zod.coerce.number().optional(),
   status: zod.coerce.string().optional(),
   customerId: zod.coerce.number().optional(),
+  search: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Free-text search across code, customer name, and notes (header and line notes — e.g. captured serial numbers).",
+    ),
   page: zod.coerce.number().default(listCustomerInvoicesQueryPageDefault),
   limit: zod.coerce.number().default(listCustomerInvoicesQueryLimitDefault),
 });

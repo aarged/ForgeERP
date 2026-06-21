@@ -3800,6 +3800,9 @@ export type GetAtp200 = {
 export type ListQuotationsParams = {
   status?: string;
   customerId?: number;
+  /**
+   * Free-text search across code, customer name, and notes (header and line notes — e.g. captured serial numbers).
+   */
   search?: string;
   page?: number;
   limit?: number;
@@ -3817,6 +3820,9 @@ export type ConvertQuotationToSo201 = {
 export type ListSalesOrdersParams = {
   status?: string;
   customerId?: number;
+  /**
+   * Free-text search across code, customer name, and notes (header and line notes — e.g. captured serial numbers).
+   */
   search?: string;
   page?: number;
   limit?: number;
@@ -3856,6 +3862,10 @@ export type ListCustomerInvoicesParams = {
   soId?: number;
   status?: string;
   customerId?: number;
+  /**
+   * Free-text search across code, customer name, and notes (header and line notes — e.g. captured serial numbers).
+   */
+  search?: string;
   page?: number;
   limit?: number;
 };
