@@ -1,0 +1,1 @@
+- [Tenant deletion is soft-delete only](tenant-deletion.md) — "deleted" tenants keep all data in raw SQL; FKs are ON DELETE CASCADE so a real DELETE truly wipes them.
