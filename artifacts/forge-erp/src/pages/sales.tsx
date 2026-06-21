@@ -20,6 +20,9 @@ import {
   useUpdateQuotation,
   useSendQuotation,
   useConvertQuotationToSo,
+  useAddQuotationLine,
+  useUpdateQuotationLine,
+  useDeleteQuotationLine,
   getListQuotationsQueryKey,
   getGetQuotationQueryKey,
   useListSalesOrders,
@@ -75,6 +78,7 @@ import {
 import type {
   Quotation,
   QuotationDetail,
+  QuotationLineInput,
   SalesOrder,
   SalesOrderDetail,
   PickSlip,
@@ -128,6 +132,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   MoreHorizontal,
   Plus,
+  Trash2,
   Search,
   RefreshCw,
   TrendingUp,
@@ -273,6 +278,122 @@ function ItemCodeInput({
       />
       {error && <p className="text-[10px] text-red-600 mt-0.5">Not found</p>}
     </div>
+  );
+}
+
+type DetailLine = {
+  id?: number;
+  lineNumber?: number;
+  itemId?: number | null;
+  itemCode?: string | null;
+  itemName?: string | null;
+  description?: string | null;
+  quantity?: string;
+  unitPrice?: string;
+  lineTotal?: string;
+};
+
+/**
+ * One row of the quotation detail line table. Read-only unless `editable`, in
+ * which case the item, quantity and unit price become inline-editable and a
+ * remove control is shown. Edits are committed on blur via `onUpdate`.
+ */
+function QuoteDetailLineRow({
+  line,
+  items,
+  editable,
+  onUpdate,
+  onRemove,
+}: {
+  line: DetailLine;
+  items: ItemOption[];
+  editable: boolean;
+  onUpdate: (lineId: number, data: QuotationLineInput) => void;
+  onRemove: (lineId: number) => void;
+}) {
+  if (!editable) {
+    return (
+      <TableRow>
+        <TableCell className="text-xs">{line.lineNumber}</TableCell>
+        <TableCell className="text-xs">
+          {line.itemCode ? `${line.itemCode} – ${line.itemName}` : line.description ?? "—"}
+        </TableCell>
+        <TableCell className="text-xs text-right">{fmt(line.quantity, 0)}</TableCell>
+        <TableCell className="text-xs text-right">${fmt(line.unitPrice)}</TableCell>
+        <TableCell className="text-xs text-right font-medium">${fmt(line.lineTotal)}</TableCell>
+      </TableRow>
+    );
+  }
+
+  return (
+    <TableRow>
+      <TableCell className="text-xs align-top pt-3">{line.lineNumber}</TableCell>
+      <TableCell className="p-1">
+        <ItemCodeInput
+          value={line.itemId ?? undefined}
+          items={items}
+          onResolve={(it) => {
+            if (!line.id || !it) return;
+            const price = it.salesPrice ?? it.unitCost;
+            onUpdate(line.id, {
+              itemId: it.id,
+              itemCode: it.code,
+              itemName: it.name,
+              description: it.description ?? it.name,
+              unitPrice: price != null ? Number(price) : undefined,
+            });
+          }}
+        />
+        {!line.itemId && line.description ? (
+          <p className="text-[10px] text-muted-foreground mt-0.5">{line.description}</p>
+        ) : null}
+      </TableCell>
+      <TableCell className="p-1 align-top">
+        <Input
+          key={`qty-${line.id}-${line.quantity}`}
+          type="number"
+          min={0}
+          defaultValue={line.quantity ?? "0"}
+          onBlur={(e) => {
+            const v = Number(e.target.value);
+            if (line.id && Number.isFinite(v) && v !== Number(line.quantity)) {
+              onUpdate(line.id, { quantity: v });
+            }
+          }}
+          className="h-7 text-xs w-16 text-right ml-auto"
+        />
+      </TableCell>
+      <TableCell className="p-1 align-top">
+        <Input
+          key={`price-${line.id}-${line.unitPrice}`}
+          type="number"
+          min={0}
+          step="0.01"
+          defaultValue={line.unitPrice ?? "0"}
+          onBlur={(e) => {
+            const v = Number(e.target.value);
+            if (line.id && Number.isFinite(v) && v !== Number(line.unitPrice)) {
+              onUpdate(line.id, { unitPrice: v });
+            }
+          }}
+          className="h-7 text-xs w-20 text-right ml-auto"
+        />
+      </TableCell>
+      <TableCell className="text-xs text-right font-medium align-top pt-3">
+        ${fmt(line.lineTotal)}
+      </TableCell>
+      <TableCell className="p-1 align-top">
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+          onClick={() => line.id && onRemove(line.id)}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </Button>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -725,6 +846,9 @@ function QuotationsTab() {
   const sendMut = useSendQuotation();
   const convertMut = useConvertQuotationToSo();
   const deleteMut = useDeleteQuotation();
+  const addLineMut = useAddQuotationLine();
+  const updateLineMut = useUpdateQuotationLine();
+  const deleteLineMut = useDeleteQuotationLine();
   type EditQuotForm = {
     customerId?: number;
     customerName?: string;
@@ -746,6 +870,41 @@ function QuotationsTab() {
 
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: getListQuotationsQueryKey() });
+
+  const refreshDetail = () => {
+    if (detailId != null) qc.invalidateQueries({ queryKey: getGetQuotationQueryKey(detailId) });
+    invalidate();
+  };
+
+  async function handleAddDetailLine() {
+    if (detailId == null) return;
+    try {
+      await addLineMut.mutateAsync({ id: detailId, data: { lineType: "stock", quantity: 1, unitPrice: 0 } });
+      refreshDetail();
+    } catch {
+      toast({ title: "Failed to add line", variant: "destructive" });
+    }
+  }
+
+  async function handleUpdateDetailLine(lineId: number, data: QuotationLineInput) {
+    if (detailId == null) return;
+    try {
+      await updateLineMut.mutateAsync({ id: detailId, lineId, data });
+      refreshDetail();
+    } catch {
+      toast({ title: "Failed to update line", variant: "destructive" });
+    }
+  }
+
+  async function handleRemoveDetailLine(lineId: number) {
+    if (detailId == null) return;
+    try {
+      await deleteLineMut.mutateAsync({ id: detailId, lineId });
+      refreshDetail();
+    } catch {
+      toast({ title: "Failed to remove line", variant: "destructive" });
+    }
+  }
 
   async function onSubmit(values: QuotForm) {
     try {
@@ -1211,39 +1370,61 @@ function QuotationsTab() {
                   <span className="text-muted-foreground">—</span>
                 )}
               </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>#</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                    <TableHead className="text-right">Unit Price</TableHead>
-                    <TableHead className="text-right">Line Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {det.lines?.map((l) => (
-                    <TableRow key={l.id ?? 0}>
-                      <TableCell className="text-xs">{l.lineNumber}</TableCell>
-                      <TableCell className="text-xs">
-                        {l.itemCode ? `${l.itemCode} – ${l.itemName}` : l.description ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-xs text-right">
-                        {fmt(l.quantity, 0)}
-                      </TableCell>
-                      <TableCell className="text-xs text-right">
-                        ${fmt(l.unitPrice)}
-                      </TableCell>
-                      <TableCell className="text-xs text-right font-medium">
-                        ${fmt(l.lineTotal)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <div className="flex justify-end text-sm font-medium">
-                Total: ${fmt(det.total)}
-              </div>
+              {(() => {
+                const linesEditable =
+                  ["draft", "sent"].includes(det.status ?? "") && !det.convertedSoId;
+                return (
+                  <>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>#</TableHead>
+                          <TableHead>Item</TableHead>
+                          <TableHead className="text-right">Qty</TableHead>
+                          <TableHead className="text-right">Unit Price</TableHead>
+                          <TableHead className="text-right">Line Total</TableHead>
+                          {linesEditable && <TableHead className="w-8" />}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {det.lines?.map((l) => (
+                          <QuoteDetailLineRow
+                            key={l.id ?? 0}
+                            line={l}
+                            items={itemsList}
+                            editable={linesEditable}
+                            onUpdate={handleUpdateDetailLine}
+                            onRemove={handleRemoveDetailLine}
+                          />
+                        ))}
+                        {linesEditable && (det.lines?.length ?? 0) === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-xs text-center text-muted-foreground py-3">
+                              No lines yet. Add one below.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                    {linesEditable && (
+                      <div className="flex justify-start">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={handleAddDetailLine}
+                          disabled={addLineMut.isPending}
+                        >
+                          <Plus className="w-3 h-3 mr-1" /> Add Line
+                        </Button>
+                      </div>
+                    )}
+                    <div className="flex justify-end text-sm font-medium">
+                      Total: ${fmt(det.total)}
+                    </div>
+                  </>
+                );
+              })()}
               <div className="flex gap-2 justify-end">
                 <Button
                   size="sm"
