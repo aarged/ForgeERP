@@ -9137,6 +9137,7 @@ components:
               unitCost: { type: number }
               location: { type: string }
               lotNumber: { type: string }
+              planned: { type: string, description: "Y/N — when set, overwrites the matched item's Planned flag. Blank leaves it unchanged." }
 
     BulkImportResult:
       type: object

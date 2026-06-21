@@ -71,6 +71,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -197,6 +198,7 @@ function StockDashboardTab() {
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [importOpen, setImportOpen] = useState(false);
+  const [activityItem, setActivityItem] = useState<{ id: number; code: string; name: string } | null>(null);
 
   const { data: warehouses } = useListWarehouses({ limit: 100 });
   const { data: stock, isLoading } = useListInventoryStockDashboard({
@@ -258,6 +260,8 @@ function StockDashboardTab() {
         onSuccess={() => qc.invalidateQueries({ queryKey: getListInventoryStockDashboardQueryKey() })}
       />
 
+      <ItemActivityDialog item={activityItem} onClose={() => setActivityItem(null)} />
+
       {isLoading ? (
         <div className="py-12 text-center text-muted-foreground">Loading stock…</div>
       ) : (
@@ -280,7 +284,11 @@ function StockDashboardTab() {
               {rows.length === 0 ? (
                 <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No stock found</TableCell></TableRow>
               ) : rows.map((r) => (
-                <TableRow key={r.id}>
+                <TableRow
+                  key={r.id}
+                  className="cursor-pointer"
+                  onClick={() => r.itemId != null && setActivityItem({ id: r.itemId, code: r.itemCode ?? "", name: r.itemName ?? "" })}
+                >
                   <TableCell>
                     <div className="font-medium">{r.itemCode}</div>
                     <div className="text-xs text-muted-foreground">{r.itemName}</div>
@@ -356,6 +364,7 @@ function StockOnHandImportDialog({ open, onOpenChange, onSuccess }: {
           unitCost: toNum(getCol(r, "unitCost", "unit_cost", "cost", "Avg Cost", "averageCost")),
           location: getCol(r, "location", "Location", "locationCode", "location_code") || undefined,
           lotNumber: getCol(r, "lotNumber", "lot_number", "lot", "Lot") || undefined,
+          planned: getCol(r, "planned", "Planned", "is_planned") || undefined,
         }))
         .filter((row) => row.itemCode && row.warehouse);
 
@@ -386,7 +395,7 @@ function StockOnHandImportDialog({ open, onOpenChange, onSuccess }: {
         </DialogHeader>
         <div className="space-y-3 py-2">
           <p className="text-sm text-muted-foreground">
-            Upload a CSV with columns: <code className="text-xs bg-muted px-1 rounded">itemCode, warehouse, qtyOnHand</code> (optional: <code className="text-xs bg-muted px-1 rounded">unitCost, location, lotNumber</code>). The on-hand quantity is <strong>set</strong> to the value in the file, recorded as a stock adjustment dated today.
+            Upload a CSV with columns: <code className="text-xs bg-muted px-1 rounded">itemCode, warehouse, qtyOnHand</code> (optional: <code className="text-xs bg-muted px-1 rounded">unitCost, location, lotNumber, planned</code>). The on-hand quantity is <strong>set</strong> to the value in the file, recorded as a stock adjustment dated today. A <code className="text-xs bg-muted px-1 rounded">planned</code> value of Y/N overwrites the item's Planned flag (blank leaves it unchanged).
           </p>
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFile} />
           <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()} disabled={isParsing || importM.isPending}>
@@ -412,6 +421,71 @@ function StockOnHandImportDialog({ open, onOpenChange, onSuccess }: {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Item Activity (transaction history) Dialog ─────────────────────────────────
+
+function ItemActivityDialog({ item, onClose }: {
+  item: { id: number; code: string; name: string } | null;
+  onClose: () => void;
+}) {
+  const { data: movements, isLoading } = useListInventoryMovements(
+    { itemId: item?.id, limit: 200 },
+    { query: { enabled: item != null, queryKey: getListInventoryMovementsQueryKey({ itemId: item?.id, limit: 200 }) } },
+  );
+  const rows = movements?.data ?? [];
+
+  return (
+    <Dialog open={item != null} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Item Activity — {item?.code}</DialogTitle>
+          <DialogDescription>{item?.name}</DialogDescription>
+        </DialogHeader>
+        {isLoading ? (
+          <div className="py-12 text-center text-muted-foreground">Loading activity…</div>
+        ) : rows.length === 0 ? (
+          <div className="py-12 text-center text-muted-foreground">No transactions recorded for this item.</div>
+        ) : (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Warehouse</TableHead>
+                  <TableHead>Lot</TableHead>
+                  <TableHead className="text-right">Qty</TableHead>
+                  <TableHead className="text-right">Unit Cost</TableHead>
+                  <TableHead>Ref</TableHead>
+                  <TableHead>By</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="text-xs">{fmtDate(r.createdAt)}</TableCell>
+                    <TableCell><MovementBadge type={r.movementType ?? ""} /></TableCell>
+                    <TableCell className="text-sm">{r.warehouseName ?? "—"}</TableCell>
+                    <TableCell className="text-xs">{r.lotNumber ?? "—"}</TableCell>
+                    <TableCell className={`text-right font-mono font-semibold ${Number(r.quantity) < 0 ? "text-red-600" : "text-green-700"}`}>
+                      {Number(r.quantity) > 0 ? "+" : ""}{fmt(r.quantity, 4)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm">{r.unitCost ? `$${fmt(r.unitCost)}` : "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{r.refCode ?? r.refType ?? "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{r.postedByEmail?.split("@")[0] ?? "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

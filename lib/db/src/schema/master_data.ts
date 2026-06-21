@@ -87,6 +87,8 @@ export const itemsTable = pgTable("items", {
   costingMethod: text("costing_method").notNull().default("avco"),
   isActive: boolean("is_active").notNull().default(true),
   hasVariants: boolean("has_variants").notNull().default(false),
+  /** True when there is enough demand that this item is planned to be held in stock. */
+  planned: boolean("planned").notNull().default(false),
   notes: text("notes"),
   /** Preferred supplier for this item (FK -> suppliers.id). */
   preferredSupplierId: integer("preferred_supplier_id").references((): AnyPgColumn => suppliersTable.id, { onDelete: "set null" }),

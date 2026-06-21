@@ -652,7 +652,22 @@ const stockImportRowSchema = z.object({
   unitCost: nullableNumber,
   location: z.string().optional(),
   lotNumber: z.string().optional(),
+  planned: z.string().optional(),
 });
+
+/**
+ * Parse the optional Planned column. Returns `undefined` (leave unchanged) when
+ * blank/absent, a boolean for a recognised Y/N value, or `null` when the value
+ * is present but not recognised (so the caller can report a per-row error).
+ */
+function parsePlanned(raw: string | undefined): boolean | null | undefined {
+  if (raw === undefined) return undefined;
+  const v = raw.trim().toLowerCase();
+  if (v === "") return undefined;
+  if (["y", "yes", "true", "1"].includes(v)) return true;
+  if (["n", "no", "false", "0"].includes(v)) return false;
+  return null;
+}
 
 const stockImportSchema = z.object({
   rows: z.array(stockImportRowSchema).min(1).max(5000),
@@ -690,6 +705,10 @@ router.post("/inventory/stock/import", ...tenantWriteMiddleware, async (req: Req
     // Running on-hand per bucket so duplicate rows for the same
     // item/warehouse/location/lot set the level deterministically (last wins).
     const running = new Map<string, number>();
+    // Planned flag updates keyed by itemId. Planned is item-wide but the CSV is
+    // keyed per warehouse bucket, so if an item appears in multiple rows the
+    // last non-blank Planned value wins.
+    const plannedUpdates = new Map<number, boolean>();
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -708,6 +727,15 @@ router.post("/inventory/stock/import", ...tenantWriteMiddleware, async (req: Req
         .limit(1);
       if (!item) {
         errors.push({ row: rowNum, code: codeLabel, error: `Item "${row.itemCode}" not found` });
+        continue;
+      }
+
+      // Validate the optional Planned value up front so a bad value fails the
+      // row. The actual update is recorded only after the row fully validates
+      // (below) so a failed row never mutates the item.
+      const planned = parsePlanned(row.planned);
+      if (planned === null) {
+        errors.push({ row: rowNum, code: codeLabel, error: `Invalid Planned value "${row.planned}" (use Y or N)` });
         continue;
       }
 
@@ -736,6 +764,11 @@ router.post("/inventory/stock/import", ...tenantWriteMiddleware, async (req: Req
         }
         locationId = loc.id;
       }
+
+      // Row is fully valid — record the Planned write-over (last non-blank
+      // value wins). Done before the zero-delta skip so it still applies when
+      // the stock level is unchanged.
+      if (planned !== undefined) plannedUpdates.set(item.id, planned);
 
       const lotNumber = row.lotNumber ?? null;
       const bucketKey = `${item.id}|${wh.id}|${locationId ?? ""}|${lotNumber ?? ""}`;
@@ -770,6 +803,14 @@ router.post("/inventory/stock/import", ...tenantWriteMiddleware, async (req: Req
         qtyAdjusted: delta, unitCost: row.unitCost ?? null,
         costingMethod: (item.costingMethod ?? "avco") as "fifo" | "avco" | "standard",
       });
+    }
+
+    // Apply Planned flag write-overs to the matched items (independent of any
+    // stock-level change).
+    for (const [itemId, planned] of plannedUpdates) {
+      await db.update(itemsTable)
+        .set({ planned })
+        .where(and(eq(itemsTable.id, itemId), eq(itemsTable.tenantId, tenantId)));
     }
 
     if (lines.length === 0) return { applied: 0, adjId: null as number | null, glPostingId: null as number | null };

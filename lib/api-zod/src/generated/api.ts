@@ -1547,6 +1547,12 @@ export const ImportStockOnHandBody = zod.object({
       unitCost: zod.number().optional(),
       location: zod.string().optional(),
       lotNumber: zod.string().optional(),
+      planned: zod
+        .string()
+        .optional()
+        .describe(
+          "Y\/N — when set, overwrites the matched item's Planned flag. Blank leaves it unchanged.",
+        ),
     }),
   ),
 });

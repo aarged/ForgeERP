@@ -1455,6 +1455,8 @@ export type ImportStockOnHandBodyRowsItem = {
   unitCost?: number;
   location?: string;
   lotNumber?: string;
+  /** Y/N — when set, overwrites the matched item's Planned flag. Blank leaves it unchanged. */
+  planned?: string;
 };
 
 export interface ImportStockOnHandBody {
