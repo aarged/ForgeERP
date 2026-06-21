@@ -1448,6 +1448,19 @@ export interface ImportCustomersBody {
   customers: ImportCustomersBodyCustomersItem[];
 }
 
+export type ImportStockOnHandBodyRowsItem = {
+  itemCode: string;
+  warehouse: string;
+  qtyOnHand: string;
+  unitCost?: number;
+  location?: string;
+  lotNumber?: string;
+};
+
+export interface ImportStockOnHandBody {
+  rows: ImportStockOnHandBodyRowsItem[];
+}
+
 export type BulkImportResultErrorsItem = {
   row?: number;
   code?: string;

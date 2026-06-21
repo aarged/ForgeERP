@@ -173,6 +173,7 @@ import type {
   ImportInvoicesBody,
   ImportInvoicesResult,
   ImportItemsBody,
+  ImportStockOnHandBody,
   ImportSuppliersBody,
   InventoryAdjustment,
   InventoryStockList,
@@ -4463,6 +4464,94 @@ export const useImportCustomers = <
   TContext
 > => {
   return useMutation(getImportCustomersMutationOptions(options));
+};
+
+/**
+ * Sets the on-hand quantity for each listed item (the value SETS the level, it does not add to it). Each change is recorded through the manual-adjustment machinery as a single "recount" adjustment dated today, reason "misc", tied to GL account 1130. Rows already at the target quantity are skipped. Unknown items/warehouses/locations and invalid quantities are returned as per-row errors without aborting the batch.
+
+ * @summary Bulk-set stock on-hand levels from CSV data
+ */
+export const getImportStockOnHandUrl = () => {
+  return `/api/inventory/stock/import`;
+};
+
+export const importStockOnHand = async (
+  importStockOnHandBody: ImportStockOnHandBody,
+  options?: RequestInit,
+): Promise<BulkImportResult> => {
+  return customFetch<BulkImportResult>(getImportStockOnHandUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(importStockOnHandBody),
+  });
+};
+
+export const getImportStockOnHandMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importStockOnHand>>,
+    TError,
+    { data: BodyType<ImportStockOnHandBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof importStockOnHand>>,
+  TError,
+  { data: BodyType<ImportStockOnHandBody> },
+  TContext
+> => {
+  const mutationKey = ["importStockOnHand"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof importStockOnHand>>,
+    { data: BodyType<ImportStockOnHandBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return importStockOnHand(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ImportStockOnHandMutationResult = NonNullable<
+  Awaited<ReturnType<typeof importStockOnHand>>
+>;
+export type ImportStockOnHandMutationBody = BodyType<ImportStockOnHandBody>;
+export type ImportStockOnHandMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Bulk-set stock on-hand levels from CSV data
+ */
+export const useImportStockOnHand = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importStockOnHand>>,
+    TError,
+    { data: BodyType<ImportStockOnHandBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof importStockOnHand>>,
+  TError,
+  { data: BodyType<ImportStockOnHandBody> },
+  TContext
+> => {
+  return useMutation(getImportStockOnHandMutationOptions(options));
 };
 
 /**

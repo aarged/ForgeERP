@@ -1534,6 +1534,38 @@ export const ImportCustomersResponse = zod.object({
 });
 
 /**
+ * Sets the on-hand quantity for each listed item (the value SETS the level, it does not add to it). Each change is recorded through the manual-adjustment machinery as a single "recount" adjustment dated today, reason "misc", tied to GL account 1130. Rows already at the target quantity are skipped. Unknown items/warehouses/locations and invalid quantities are returned as per-row errors without aborting the batch.
+
+ * @summary Bulk-set stock on-hand levels from CSV data
+ */
+export const ImportStockOnHandBody = zod.object({
+  rows: zod.array(
+    zod.object({
+      itemCode: zod.string(),
+      warehouse: zod.string(),
+      qtyOnHand: zod.string(),
+      unitCost: zod.number().optional(),
+      location: zod.string().optional(),
+      lotNumber: zod.string().optional(),
+    }),
+  ),
+});
+
+export const ImportStockOnHandResponse = zod.object({
+  created: zod.number().optional(),
+  updated: zod.number().optional(),
+  errors: zod
+    .array(
+      zod.object({
+        row: zod.number().optional(),
+        code: zod.string().optional(),
+        error: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
  * @summary Get item detail
  */
 export const GetItemParams = zod.object({

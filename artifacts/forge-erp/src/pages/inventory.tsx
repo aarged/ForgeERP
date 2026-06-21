@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm, useFieldArray } from "react-hook-form";
+import Papa from "papaparse";
 import {
   useListInventoryStockDashboard,
   useListInventoryMovements,
@@ -40,11 +41,14 @@ import {
   useCreateDirectReceive,
   useCreateInventoryRepack,
   useCreateInventoryBuild,
+  useImportStockOnHand,
+  type BulkImportResult,
   getTraceLotNumberQueryKey,
   getListInventoryTransfersQueryKey,
   getListSerialNumbersQueryKey,
   getGetSerialNumberQueryKey,
   getListInventoryMovementsQueryKey,
+  getListInventoryStockDashboardQueryKey,
   type InventoryAdjustment,
   type InventoryAdjustmentLinesItem,
   type CreateInventoryTransfer201,
@@ -101,6 +105,7 @@ import {
   Tag,
   Hash,
   Download,
+  Upload,
   CheckCircle2,
   PackageCheck,
   Truck,
@@ -187,9 +192,11 @@ function StatusBadge({ status }: { status: string }) {
 
 function StockDashboardTab() {
   const { data: tenant } = useGetCurrentTenant();
+  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data: warehouses } = useListWarehouses({ limit: 100 });
   const { data: stock, isLoading } = useListInventoryStockDashboard({
@@ -242,7 +249,14 @@ function StockDashboardTab() {
           rows.map((r) => [r.itemCode, r.itemName, r.warehouseName, r.locationCode ?? r.locationName, r.lotNumber, r.qtyOnHand, r.qtyReserved, r.qtyAvailable, r.averageCost, r.stockValue]),
           tenant?.slug
         )}><Download className="h-4 w-4 mr-1" />Export CSV</Button>
+        <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}><Upload className="h-4 w-4 mr-1" />Import CSV</Button>
       </div>
+
+      <StockOnHandImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onSuccess={() => qc.invalidateQueries({ queryKey: getListInventoryStockDashboardQueryKey() })}
+      />
 
       {isLoading ? (
         <div className="py-12 text-center text-muted-foreground">Loading stock…</div>
@@ -286,6 +300,121 @@ function StockDashboardTab() {
         </div>
       )}
     </div>
+  );
+}
+
+// ── Stock On Hand CSV Import Dialog ────────────────────────────────────────────
+
+function StockOnHandImportDialog({ open, onOpenChange, onSuccess }: {
+  open: boolean; onOpenChange: (v: boolean) => void; onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const importM = useImportStockOnHand();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [result, setResult] = useState<BulkImportResult | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+
+  const getCol = (row: Record<string, string>, ...keys: string[]): string | undefined => {
+    for (const k of keys) {
+      const v = row[k]?.trim();
+      if (v) return v;
+      const lower = Object.keys(row).find((rk) => rk.toLowerCase() === k.toLowerCase());
+      if (lower) { const v2 = row[lower]?.trim(); if (v2) return v2; }
+    }
+    return undefined;
+  };
+  const toNum = (v: string | undefined): number | undefined => {
+    if (!v) return undefined;
+    const n = Number(v);
+    return isNaN(n) ? undefined : n;
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsParsing(true);
+    try {
+      const parsed = await new Promise<Papa.ParseResult<Record<string, string>>>((resolve) => {
+        Papa.parse<Record<string, string>>(file, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (h) => h.trim().replace(/^\uFEFF/, ""),
+          complete: resolve,
+        });
+      });
+
+      if (parsed.errors.length > 0 && parsed.data.length === 0) {
+        toast({ title: "CSV parse error", description: parsed.errors[0]?.message, variant: "destructive" });
+        return;
+      }
+
+      const rows = parsed.data
+        .map((r) => ({
+          itemCode: getCol(r, "itemCode", "item_code", "code", "Item Code") ?? "",
+          warehouse: getCol(r, "warehouse", "Warehouse", "warehouseCode", "warehouse_code", "warehouseName", "warehouse_name") ?? "",
+          qtyOnHand: getCol(r, "qtyOnHand", "qty_on_hand", "onHand", "on_hand", "quantity", "qty", "On Hand") ?? "",
+          unitCost: toNum(getCol(r, "unitCost", "unit_cost", "cost", "Avg Cost", "averageCost")),
+          location: getCol(r, "location", "Location", "locationCode", "location_code") || undefined,
+          lotNumber: getCol(r, "lotNumber", "lot_number", "lot", "Lot") || undefined,
+        }))
+        .filter((row) => row.itemCode && row.warehouse);
+
+      if (!rows.length) {
+        toast({ title: "No valid rows found", description: "Ensure the CSV has 'itemCode', 'warehouse' and 'qtyOnHand' columns with at least one data row.", variant: "destructive" });
+        return;
+      }
+
+      const res = await importM.mutateAsync({ data: { rows } });
+      setResult(res);
+      toast({ title: `Import complete: ${res.updated} applied${res.errors?.length ? `, ${res.errors.length} errors` : ""}` });
+      onSuccess();
+    } catch (err: unknown) {
+      toast({ title: "Import failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setIsParsing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleClose = () => { setResult(null); onOpenChange(false); };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Import Stock On Hand from CSV</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <p className="text-sm text-muted-foreground">
+            Upload a CSV with columns: <code className="text-xs bg-muted px-1 rounded">itemCode, warehouse, qtyOnHand</code> (optional: <code className="text-xs bg-muted px-1 rounded">unitCost, location, lotNumber</code>). The on-hand quantity is <strong>set</strong> to the value in the file, recorded as a stock adjustment dated today.
+          </p>
+          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFile} />
+          <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()} disabled={isParsing || importM.isPending}>
+            <Upload className="h-4 w-4 mr-2" />
+            {isParsing || importM.isPending ? "Processing…" : "Choose CSV file"}
+          </Button>
+          {result && (
+            <div className="rounded-md border p-3 text-sm space-y-1">
+              <div className="font-medium">Results</div>
+              <div className="text-muted-foreground">Applied: <span className="text-foreground font-medium">{result.updated}</span></div>
+              {result.errors && result.errors.length > 0 && (
+                <div className="text-destructive">Errors: {result.errors.length} row(s) failed</div>
+              )}
+              {result.errors && result.errors.length > 0 && (
+                <ul className="mt-1 max-h-32 overflow-y-auto text-xs text-destructive space-y-0.5">
+                  {result.errors.slice(0, 50).map((err, i) => (
+                    <li key={i}>Row {err.row}{err.code ? ` (${err.code})` : ""}: {err.error}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

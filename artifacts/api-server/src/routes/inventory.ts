@@ -635,6 +635,242 @@ router.post("/inventory/adjust", ...tenantWriteMiddleware, async (req: Request, 
   res.status(201).json({ id: result.adjId, code: genCode("ADJ", result.adjId), lines: result.lineCount, glPostingId: result.glPostingId });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ── Stock On Hand CSV Import ──────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Bulk-SET the on-hand quantity for each listed item. Each change is written
+// through the manual-adjustment machinery as a single "recount" adjustment dated
+// today, reason "misc", tied to GL account 1130. The CSV value SETS the level
+// (delta = target − current); zero-delta rows are skipped.
+
+const STOCK_IMPORT_GL_CODE = "1130";
+
+const stockImportRowSchema = z.object({
+  itemCode: z.string().min(1),
+  warehouse: z.string().min(1),
+  qtyOnHand: z.string(),
+  unitCost: nullableNumber,
+  location: z.string().optional(),
+  lotNumber: z.string().optional(),
+});
+
+const stockImportSchema = z.object({
+  rows: z.array(stockImportRowSchema).min(1).max(5000),
+});
+
+router.post("/inventory/stock/import", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
+  const parsed = stockImportSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Validation failed", details: parsed.error.issues });
+    return;
+  }
+
+  const { rows } = parsed.data;
+  const errors: { row: number; code: string; error: string }[] = [];
+
+  const result = await withTenantDb(tenantId, async (db) => {
+    // Resolve the GL adjustment account from code 1130
+    const [glAcc] = await db.select({ id: glAccountsTable.id, code: glAccountsTable.code, name: glAccountsTable.name })
+      .from(glAccountsTable)
+      .where(and(eq(glAccountsTable.tenantId, tenantId), eq(glAccountsTable.code, STOCK_IMPORT_GL_CODE), isNull(glAccountsTable.deletedAt)))
+      .limit(1);
+    if (!glAcc) return { glMissing: true as const };
+
+    // Resolve tenant's configured inventory asset account (shared lookup)
+    const invGlAcc = await lookupInventoryGlAccount(db, tenantId);
+
+    type ImportLine = {
+      itemId: number; itemCode: string; itemName: string;
+      warehouseId: number; locationId: number | null; lotNumber: string | null;
+      qtyAdjusted: number; unitCost: number | null;
+      costingMethod: "fifo" | "avco" | "standard";
+    };
+    const lines: ImportLine[] = [];
+    // Running on-hand per bucket so duplicate rows for the same
+    // item/warehouse/location/lot set the level deterministically (last wins).
+    const running = new Map<string, number>();
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 1;
+      const codeLabel = row.itemCode;
+
+      const target = Number(row.qtyOnHand.trim());
+      if (row.qtyOnHand.trim() === "" || !Number.isFinite(target) || target < 0) {
+        errors.push({ row: rowNum, code: codeLabel, error: "Invalid quantity on hand" });
+        continue;
+      }
+
+      const [item] = await db.select({ id: itemsTable.id, code: itemsTable.code, name: itemsTable.name, costingMethod: itemsTable.costingMethod })
+        .from(itemsTable)
+        .where(and(eq(itemsTable.code, row.itemCode), eq(itemsTable.tenantId, tenantId), isNull(itemsTable.deletedAt)))
+        .limit(1);
+      if (!item) {
+        errors.push({ row: rowNum, code: codeLabel, error: `Item "${row.itemCode}" not found` });
+        continue;
+      }
+
+      const [wh] = await db.select({ id: warehousesTable.id })
+        .from(warehousesTable)
+        .where(and(
+          eq(warehousesTable.tenantId, tenantId),
+          isNull(warehousesTable.deletedAt),
+          or(eq(warehousesTable.code, row.warehouse), eq(warehousesTable.name, row.warehouse)),
+        ))
+        .limit(1);
+      if (!wh) {
+        errors.push({ row: rowNum, code: codeLabel, error: `Warehouse "${row.warehouse}" not found` });
+        continue;
+      }
+
+      let locationId: number | null = null;
+      if (row.location) {
+        const [loc] = await db.select({ id: warehouseLocationsTable.id })
+          .from(warehouseLocationsTable)
+          .where(and(eq(warehouseLocationsTable.tenantId, tenantId), eq(warehouseLocationsTable.warehouseId, wh.id), eq(warehouseLocationsTable.code, row.location)))
+          .limit(1);
+        if (!loc) {
+          errors.push({ row: rowNum, code: codeLabel, error: `Location "${row.location}" not found in warehouse` });
+          continue;
+        }
+        locationId = loc.id;
+      }
+
+      const lotNumber = row.lotNumber ?? null;
+      const bucketKey = `${item.id}|${wh.id}|${locationId ?? ""}|${lotNumber ?? ""}`;
+
+      // Current on-hand for this exact bucket. If an earlier row in this same
+      // import already touched the bucket, use that running value so deltas
+      // chain correctly and the final level matches the last row (set semantics).
+      let current: number;
+      if (running.has(bucketKey)) {
+        current = running.get(bucketKey)!;
+      } else {
+        const [bucket] = await db.select({ qtyOnHand: inventoryStockTable.qtyOnHand })
+          .from(inventoryStockTable)
+          .where(and(
+            eq(inventoryStockTable.tenantId, tenantId),
+            eq(inventoryStockTable.itemId, item.id),
+            eq(inventoryStockTable.warehouseId, wh.id),
+            locationId ? eq(inventoryStockTable.locationId, locationId) : isNull(inventoryStockTable.locationId),
+            lotNumber ? eq(inventoryStockTable.lotNumber, lotNumber) : isNull(inventoryStockTable.lotNumber),
+          ))
+          .limit(1);
+        current = bucket ? Number(bucket.qtyOnHand) : 0;
+      }
+      running.set(bucketKey, target);
+
+      const delta = target - current;
+      if (Math.abs(delta) < 0.0001) continue; // already at target — skip
+
+      lines.push({
+        itemId: item.id, itemCode: item.code, itemName: item.name,
+        warehouseId: wh.id, locationId, lotNumber,
+        qtyAdjusted: delta, unitCost: row.unitCost ?? null,
+        costingMethod: (item.costingMethod ?? "avco") as "fifo" | "avco" | "standard",
+      });
+    }
+
+    if (lines.length === 0) return { applied: 0, adjId: null as number | null, glPostingId: null as number | null };
+
+    // Create the recount adjustment document (reason "misc", GL 1130, dated today)
+    const [adj] = await db.insert(inventoryAdjustmentsTable).values({
+      tenantId, code: "ADJ-PENDING",
+      adjustmentType: "recount",
+      reason: "misc",
+      glAccountId: glAcc.id,
+      glAccountCode: glAcc.code,
+      glAccountName: glAcc.name,
+      status: "posted",
+      postedAt: new Date(),
+      postedByClerkId: clerkUserId,
+      postedByEmail: userEmail ?? undefined,
+      notes: "Stock on hand import",
+    } as typeof inventoryAdjustmentsTable.$inferInsert).returning();
+
+    const adjCode = genCode("ADJ", adj.id);
+    await db.update(inventoryAdjustmentsTable).set({ code: adjCode }).where(eq(inventoryAdjustmentsTable.id, adj.id));
+
+    const glLines: Array<{ accountCode: string; accountName: string; debit: number; credit: number; description: string }> = [];
+
+    for (const line of lines) {
+      const [movement] = await db.insert(inventoryMovementsTable).values({
+        tenantId,
+        itemId: line.itemId,
+        itemCode: line.itemCode,
+        itemName: line.itemName,
+        warehouseId: line.warehouseId,
+        locationId: line.locationId ?? undefined,
+        movementType: "adjustment",
+        quantity: String(line.qtyAdjusted),
+        unitCost: line.unitCost != null ? String(line.unitCost) : undefined,
+        adjReason: "misc",
+        refType: "adjustment",
+        refId: adj.id,
+        refCode: adjCode,
+        lotNumber: line.lotNumber ?? undefined,
+        postedByClerkId: clerkUserId,
+        postedByEmail: userEmail ?? undefined,
+        notes: "Stock on hand import",
+      } as typeof inventoryMovementsTable.$inferInsert).returning();
+
+      await updateStockLevel(db, tenantId, line.itemId, line.warehouseId, line.locationId, line.qtyAdjusted, line.unitCost, line.lotNumber, movement.id, line.costingMethod);
+
+      await db.insert(inventoryAdjustmentLinesTable).values({
+        tenantId, adjustmentId: adj.id,
+        itemId: line.itemId,
+        itemCode: line.itemCode,
+        itemName: line.itemName,
+        warehouseId: line.warehouseId,
+        locationId: line.locationId ?? undefined,
+        lotNumber: line.lotNumber ?? undefined,
+        qtyAdjusted: String(line.qtyAdjusted),
+        unitCost: line.unitCost != null ? String(line.unitCost) : undefined,
+        movementId: movement.id,
+      } as typeof inventoryAdjustmentLinesTable.$inferInsert);
+
+      if (invGlAcc && line.unitCost) {
+        const value = Math.abs(line.qtyAdjusted * line.unitCost);
+        const isIncrease = line.qtyAdjusted > 0;
+        glLines.push({
+          accountCode: invGlAcc.code, accountName: invGlAcc.name,
+          debit: isIncrease ? value : 0,
+          credit: isIncrease ? 0 : value,
+          description: `${line.itemCode} qty adj ${line.qtyAdjusted}`,
+        });
+        glLines.push({
+          accountCode: glAcc.code, accountName: glAcc.name,
+          debit: isIncrease ? 0 : value,
+          credit: isIncrease ? value : 0,
+          description: "misc",
+        });
+      }
+    }
+
+    let glPostingId: number | null = null;
+    if (glLines.length > 0) {
+      glPostingId = await createInventoryGlPosting(db, tenantId, "inventory_adjustment", adj.id, adjCode, clerkUserId, userEmail, glLines);
+      if (glPostingId) {
+        await db.update(inventoryAdjustmentsTable).set({ glPostingId }).where(eq(inventoryAdjustmentsTable.id, adj.id));
+      }
+    }
+
+    return { applied: lines.length, adjId: adj.id, glPostingId };
+  });
+
+  if ("glMissing" in result) {
+    res.status(200).json({ created: 0, updated: 0, errors: [{ row: 0, code: STOCK_IMPORT_GL_CODE, error: `GL account ${STOCK_IMPORT_GL_CODE} not found. Create it before importing stock.` }] });
+    return;
+  }
+
+  if (result.adjId) {
+    await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "inventory.stock_imported", entityType: "inventory_adjustment", entityId: String(result.adjId), newValues: { applied: result.applied, errors: errors.length } });
+  }
+
+  res.status(200).json({ created: 0, updated: result.applied, errors });
+});
+
 // List adjustments
 router.get("/inventory/adjustments", ...tenantUserMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;

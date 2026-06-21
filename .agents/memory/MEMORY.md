@@ -1,1 +1,2 @@
 - [Tenant deletion is soft-delete only](tenant-deletion.md) — "deleted" tenants keep all data in raw SQL; FKs are ON DELETE CASCADE so a real DELETE truly wipes them.
+- [Bulk SET importers](bulk-set-importers.md) — delta-from-snapshot importers must chain duplicate buckets off running state; validate CSV numerics server-side via raw strings, not frontend coercion.
