@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@clerk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Bar,
@@ -989,6 +990,7 @@ type QuotForm = {
 
 function QuotationsTab() {
   const { toast } = useToast();
+  const { getToken } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -1202,7 +1204,20 @@ function QuotationsTab() {
 
   async function handleDownload(id: number, code?: string) {
     try {
-      const res = await fetch(`/api/sales/quotations/${id}/pdf`, { credentials: "include" });
+      // The session cookie is not sent on /api/* requests inside the Replit
+      // cross-site dev iframe, so attach the Clerk bearer token explicitly
+      // (mirrors the generated API client's auth transport). A transient token
+      // failure falls back to cookie auth rather than blocking the download.
+      let token: string | null = null;
+      try {
+        token = await getToken();
+      } catch {
+        token = null;
+      }
+      const res = await fetch(`/api/sales/quotations/${id}/pdf`, {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!res.ok) throw new Error(String(res.status));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
