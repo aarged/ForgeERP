@@ -1,0 +1,56 @@
+I need to verify that this app's PRODUCTION deployment is live and correctly
+serving the API that an external system (Cyntric) calls. Cyntric is hitting
+the production URL https://asset-attached-aarongedge.replit.app and every
+request currently fails with "fetch failed" (connection never completes).
+Please run and report on ALL of the following checks. For each one, tell me
+PASS/FAIL with the actual evidence (status code, response time, response body
+snippet). Do not change any code unless a check fails and you can clearly fix it.
+1. DEPLOYMENT STATUS
+   - Confirm this app is actually Published/Deployed (not just running in dev),
+     and that the production deployment is currently awake and healthy.
+   - Confirm the production URL is exactly https://asset-attached-aarongedge.replit.app
+     and that it resolves and responds (GET / should return a response, not a
+     timeout or connection refused).
+   - Report the deployment type (autoscale/reserved) and whether it can sleep.
+     If it can sleep, note that, because a sleeping deployment is the most likely
+     cause of "fetch failed".
+2. AUTHENTICATION
+   - Cyntric authenticates with an HTTP header: Authorization: Bearer <API_TOKEN>,
+     plus Content-Type: application/json and Accept: application/json.
+   - Confirm the API expects exactly this scheme.
+   - Confirm there is a valid, active API token configured for Cyntric, and that
+     calls carrying it are accepted (and that its "last used" timestamp updates
+     when a request arrives).
+   - Confirm that a request WITHOUT a valid token is rejected with 401 (so we
+     know auth is enforced and the endpoint is actually reachable).
+3. ENDPOINT AVAILABILITY (these are the exact endpoints Cyntric calls)
+   For each, confirm it exists in production, responds with valid JSON, and
+   returns a sensible status (200 for a found record, an empty result or 404 for
+   a missing one — but NOT a 5xx or a hang). Test each with the Bearer token:
+   GET  /api/master-data/items/lookup?code=TEST
+   GET  /api/master-data/customers/lookup?code=TEST
+   GET  /api/master-data/items?search=test
+   GET  /api/master-data/customers?search=test
+   GET  /api/inventory/stock?search=test
+   GET  /api/inventory/serials/lookup?serial=TEST
+   GET  /api/inventory/movements?search=test
+   GET  /api/sales/quotations
+   GET  /api/sales/orders
+   GET  /api/sales/invoices
+   POST /api/sales/quotations   (a draft-quotation create endpoint — confirm it
+        accepts a JSON body and returns the created quotation; do NOT actually
+        submit/finalize anything, just confirm the endpoint is reachable and
+        validates input)
+4. NETWORK / ACCESS RULES
+   - Confirm there is NO IP allowlist, firewall rule, CORS restriction, Cloudflare
+     challenge, "Deployment protection"/password page, or bot protection that
+     would block a server-to-server call from another Replit app. Cyntric calls
+     are plain HTTPS requests with a Bearer token and no browser.
+   - Confirm the production deployment serves real JSON for these API routes and
+     is not returning an HTML login/landing page for /api/* requests.
+5. RESPONSE TIME
+   - Report the response time for each endpoint above. Flag anything that takes
+     more than a few seconds, since slow responses compound on Cyntric's side.
+6. SUMMARY
+   - Give me a final PASS/FAIL summary table, and if anything failed, the single
+     most likely reason the production instance is unreachable and the exact fix.
