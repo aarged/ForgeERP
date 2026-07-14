@@ -1311,7 +1311,6 @@ function QuotationsTab() {
           <Plus className="w-4 h-4 mr-1" /> New Quotation
         </Button>
       </div>
-
       <div className="border rounded-md">
         <Table>
           <TableHeader>
@@ -1378,9 +1377,7 @@ function QuotationsTab() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setDetailId(q.id ?? null)}>
-                        View Details
-                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setDetailId(q.id ?? null)}>Edit Lines</DropdownMenuItem>
                       {["draft", "sent"].includes(q.status ?? "") && (
                         <DropdownMenuItem onClick={() => openEditDialog(q)}>
                           <Pencil className="w-4 h-4 mr-2" /> Edit Quote
@@ -1417,7 +1414,6 @@ function QuotationsTab() {
           </TableBody>
         </Table>
       </div>
-
       {/* Create Dialog */}
       <Dialog
         open={showCreate}
@@ -1505,7 +1501,6 @@ function QuotationsTab() {
           </form>
         </DialogContent>
       </Dialog>
-
       {/* Detail Dialog */}
       <Dialog open={detailId !== null} onOpenChange={(v) => { if (!v) setDetailId(null); }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" hideClose>
@@ -1637,7 +1632,6 @@ function QuotationsTab() {
           )}
         </DialogContent>
       </Dialog>
-
       {/* Send Quote Dialog */}
       <Dialog open={sendId !== null} onOpenChange={(v) => { if (!v) setSendId(null); }}>
         <DialogContent className="max-w-md">
@@ -1666,7 +1660,6 @@ function QuotationsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
       {/* Edit Quote Dialog */}
       <Dialog open={editId !== null} onOpenChange={(v) => { if (!v) setEditId(null); }}>
         <DialogContent className="max-w-lg">
@@ -4031,7 +4024,6 @@ function PickSlipsTab() {
           <RefreshCw className="w-4 h-4" />
         </Button>
       </div>
-
       <div className="border rounded-md">
         <Table>
           <TableHeader>
@@ -4140,7 +4132,6 @@ function PickSlipsTab() {
           </TableBody>
         </Table>
       </div>
-
       {/* Detail Dialog */}
       <Dialog open={detailId !== null} onOpenChange={(v) => { if (!v) setDetailId(null); }}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
