@@ -1508,8 +1508,17 @@ function QuotationsTab() {
 
       {/* Detail Dialog */}
       <Dialog open={detailId !== null} onOpenChange={(v) => { if (!v) setDetailId(null); }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" hideClose>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="absolute right-4 top-4"
+            onClick={() => setDetailId(null)}
+          >
+            Save and Close
+          </Button>
+          <DialogHeader className="pr-36">
             <DialogTitle>{det?.code ?? "Quotation"}</DialogTitle>
             <DialogDescription className="flex items-center gap-2 flex-wrap">
               {det?.customerId != null && customerCodeById.get(det.customerId) && (
