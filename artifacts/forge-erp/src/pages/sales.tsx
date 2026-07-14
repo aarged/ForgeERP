@@ -1380,7 +1380,7 @@ function QuotationsTab() {
                       <DropdownMenuItem onClick={() => setDetailId(q.id ?? null)}>Edit Lines</DropdownMenuItem>
                       {["draft", "sent"].includes(q.status ?? "") && (
                         <DropdownMenuItem onClick={() => openEditDialog(q)}>
-                          <Pencil className="w-4 h-4 mr-2" /> Edit Quote
+                          <Pencil className="w-4 h-4 mr-2" /> Edit Header
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem onClick={() => handleDownload(q.id!, q.code)}>
