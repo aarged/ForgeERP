@@ -244,6 +244,27 @@ const itemCreateSchema = z.object({
   supplierItemNumber: z.string().nullable().optional(),
 });
 
+/** Find a non-deleted item whose code matches case-insensitively for the tenant. */
+async function findItemByCode(tenantId: number, code: string) {
+  const [existing] = await withTenantDb(tenantId, (db) =>
+    db.select({ id: itemsTable.id, code: itemsTable.code }).from(itemsTable)
+      .where(and(
+        eq(itemsTable.tenantId, tenantId),
+        isNull(itemsTable.deletedAt),
+        sql`lower(${itemsTable.code}) = lower(${code})`,
+      ))
+      .limit(1),
+  );
+  return existing;
+}
+
+/** True when the error is a Postgres unique-constraint violation (23505). */
+function isUniqueViolation(e: unknown): boolean {
+  return typeof e === "object" && e !== null &&
+    ("code" in e && (e as { code?: string }).code === "23505" ||
+     "cause" in e && isUniqueViolation((e as { cause?: unknown }).cause));
+}
+
 router.post(
   "/master-data/items",
   ...tenantWriteMiddleware,
@@ -252,9 +273,24 @@ router.post(
     const parsed = itemCreateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
 
-    const [item] = await withTenantDb(tenantId, (db) =>
-      db.insert(itemsTable).values({ ...parsed.data, tenantId } as typeof itemsTable.$inferInsert).returning(),
-    );
+    const duplicate = await findItemByCode(tenantId, parsed.data.code);
+    if (duplicate) {
+      res.status(409).json({ error: `Item code ${parsed.data.code} already exists` });
+      return;
+    }
+
+    let item: typeof itemsTable.$inferSelect | undefined;
+    try {
+      [item] = await withTenantDb(tenantId, (db) =>
+        db.insert(itemsTable).values({ ...parsed.data, tenantId } as typeof itemsTable.$inferInsert).returning(),
+      );
+    } catch (e: unknown) {
+      if (isUniqueViolation(e)) {
+        res.status(409).json({ error: `Item code ${parsed.data.code} already exists` });
+        return;
+      }
+      throw e;
+    }
 
     await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "item.created", entityType: "item", entityId: item!.id, newValues: parsed.data });
     res.status(201).json(item);
@@ -272,12 +308,29 @@ router.patch(
     const parsed = itemCreateSchema.partial().safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
 
-    const [item] = await withTenantDb(tenantId, (db) =>
-      db.update(itemsTable)
-        .set(parsed.data as Record<string, unknown>)
-        .where(and(eq(itemsTable.id, id), eq(itemsTable.tenantId, tenantId), isNull(itemsTable.deletedAt)))
-        .returning(),
-    );
+    if (parsed.data.code !== undefined) {
+      const duplicate = await findItemByCode(tenantId, parsed.data.code);
+      if (duplicate && duplicate.id !== id) {
+        res.status(409).json({ error: `Item code ${parsed.data.code} already exists` });
+        return;
+      }
+    }
+
+    let item: typeof itemsTable.$inferSelect | undefined;
+    try {
+      [item] = await withTenantDb(tenantId, (db) =>
+        db.update(itemsTable)
+          .set(parsed.data as Record<string, unknown>)
+          .where(and(eq(itemsTable.id, id), eq(itemsTable.tenantId, tenantId), isNull(itemsTable.deletedAt)))
+          .returning(),
+      );
+    } catch (e: unknown) {
+      if (isUniqueViolation(e)) {
+        res.status(409).json({ error: `Item code ${parsed.data.code} already exists` });
+        return;
+      }
+      throw e;
+    }
 
     if (!item) { res.status(404).json({ error: "Item not found" }); return; }
     await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "item.updated", entityType: "item", entityId: id, newValues: parsed.data });
@@ -491,7 +544,7 @@ router.post(
         try {
           const existing = await withTenantDb(tenantId, (db) =>
             db.select({ id: itemsTable.id }).from(itemsTable)
-              .where(and(eq(itemsTable.code, item.code), eq(itemsTable.tenantId, tenantId), isNull(itemsTable.deletedAt)))
+              .where(and(sql`lower(${itemsTable.code}) = lower(${item.code})`, eq(itemsTable.tenantId, tenantId), isNull(itemsTable.deletedAt)))
               .limit(1),
           );
           if (existing.length > 0) {

@@ -7,8 +7,10 @@ import {
   numeric,
   boolean,
   jsonb,
+  uniqueIndex,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { tenantsTable } from "./tenants";
 
 // ── Warehouses ──────────────────────────────────────────────────────────────
@@ -97,7 +99,11 @@ export const itemsTable = pgTable("items", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
+}, (t) => [
+  uniqueIndex("items_tenant_code_unique_idx")
+    .on(t.tenantId, sql`lower(${t.code})`)
+    .where(sql`${t.deletedAt} IS NULL`),
+]);
 
 // ── Item Variants ───────────────────────────────────────────────────────────
 export const itemVariantsTable = pgTable("item_variants", {

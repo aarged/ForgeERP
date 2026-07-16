@@ -99,6 +99,7 @@ import type {
   ImportInvoicesResult,
   ImportInvoicesBody,
 } from "@workspace/api-client-react";
+import { ApiError } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -1389,7 +1390,7 @@ function ItemModal({
   const update = useUpdateItem();
   const isEdit = !!item;
 
-  const { register, control, handleSubmit, reset, formState: { errors } } = useForm<CreateItemBody>({
+  const { register, control, handleSubmit, reset, setError, formState: { errors } } = useForm<CreateItemBody>({
     defaultValues: {
       code: "", name: "", description: "", itemType: "stock",
       unitOfMeasure: "", barcode: "", category: "", notes: "", isActive: true,
@@ -1432,6 +1433,11 @@ function ItemModal({
       onSuccess();
       onOpenChange(false);
     } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 409) {
+        const msg = (e.data as { error?: string } | null)?.error ?? `Item code ${data.code} already exists`;
+        setError("code", { type: "duplicate", message: msg });
+        return;
+      }
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
     }
   });
@@ -1448,7 +1454,9 @@ function ItemModal({
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Item Number" required>
               <Input {...register("code", { required: true })} placeholder="ITEM-001" />
-              {errors.code && <p className="text-xs text-destructive">Required</p>}
+              {errors.code && (
+                <p className="text-xs text-destructive">{errors.code.message || "Required"}</p>
+              )}
             </FormField>
             <FormField label="Item Type">
               <Controller control={control} name="itemType" render={({ field }) => (
