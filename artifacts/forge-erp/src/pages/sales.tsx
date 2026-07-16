@@ -157,7 +157,6 @@ import {
   User,
   Clock,
   Image as ImageIcon,
-  Pencil,
   Download,
   Check,
   ChevronsUpDown,
@@ -1379,23 +1378,15 @@ function QuotationsTab() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setDetailId(q.id ?? null)}>Edit Lines</DropdownMenuItem>
                       {["draft", "sent"].includes(q.status ?? "") && (
-                        <DropdownMenuItem onClick={() => openEditDialog(q)}>
-                          <Pencil className="w-4 h-4 mr-2" /> Edit Header
-                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEditDialog(q)}>Edit Header</DropdownMenuItem>
                       )}
-                      <DropdownMenuItem onClick={() => handleDownload(q.id!, q.code)}>
-                        <Download className="w-4 h-4 mr-2" /> Download PDF
-                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleDownload(q.id!, q.code)}>Download PDF</DropdownMenuItem>
                       {["draft", "sent"].includes(q.status ?? "") && (
-                        <DropdownMenuItem onClick={() => openSendDialog(q.id!, q.customerEmail)}>
-                          <Send className="w-4 h-4 mr-2" /> Send to Customer
-                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openSendDialog(q.id!, q.customerEmail)}>Send to Customer</DropdownMenuItem>
                       )}
                       {["draft", "sent", "accepted"].includes(q.status ?? "") &&
                         !q.convertedSoId && (
-                          <DropdownMenuItem onClick={() => handleConvert(q.id!)}>
-                            <ArrowRight className="w-4 h-4 mr-2" /> Convert to Sales Order
-                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleConvert(q.id!)}>Convert to Sales Order</DropdownMenuItem>
                         )}
                       <DropdownMenuSeparator />
                       {["draft", "sent"].includes(q.status ?? "") && (
