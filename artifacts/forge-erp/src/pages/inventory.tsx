@@ -590,6 +590,7 @@ function AdjustmentsTab() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [lineItemErrors, setLineItemErrors] = useState<number[]>([]);
 
   const { data: list, isLoading } = useListInventoryAdjustments({ limit: 50 });
   const { data: detail } = useGetInventoryAdjustment(detailId!, { query: { enabled: detailId !== null, queryKey: getGetInventoryAdjustmentQueryKey(detailId!) } });
@@ -606,6 +607,14 @@ function AdjustmentsTab() {
   const invalidate = () => qc.invalidateQueries({ queryKey: getListInventoryAdjustmentsQueryKey() });
 
   async function onSubmit(vals: AdjForm) {
+    const bad = vals.lines
+      .map((l, i) => (!l.itemId || Number(l.itemId) <= 0 ? i : -1))
+      .filter((i) => i >= 0);
+    if (bad.length > 0) {
+      setLineItemErrors(bad);
+      return;
+    }
+    setLineItemErrors([]);
     try {
       await createMut.mutateAsync({ data: { ...vals, lines: vals.lines.map((l) => ({ ...l, itemId: Number(l.itemId), warehouseId: Number(l.warehouseId) })) } });
       toast({ title: "Adjustment posted" });
@@ -666,7 +675,7 @@ function AdjustmentsTab() {
       )}
 
       {/* Create Adjustment Dialog */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+      <Dialog open={showCreate} onOpenChange={(o) => { setShowCreate(o); if (!o) setLineItemErrors([]); }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>New Stock Adjustment</DialogTitle></DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -717,14 +726,18 @@ function AdjustmentsTab() {
                 <div key={field.id} className="grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-4">
                     {i === 0 && <Label className="text-xs">Item</Label>}
-                    <Select value={String(form.watch(`lines.${i}.itemId`))} onValueChange={(v) => {
-                      const item = items?.items?.find((it) => it.id === Number(v));
-                      form.setValue(`lines.${i}.itemId`, Number(v));
-                      form.setValue(`lines.${i}.itemCode`, item?.code ?? "");
-                    }}>
-                      <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
-                      <SelectContent>{(items?.items ?? []).map((it) => <SelectItem key={it.id} value={String(it.id)}>{it.code} — {it.name}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <ItemSearchInput
+                      value={form.watch(`lines.${i}.itemId`) || undefined}
+                      items={(items?.items ?? []) as ItemSearchOption[]}
+                      onSelect={(it) => {
+                        form.setValue(`lines.${i}.itemId`, it?.id ?? 0);
+                        form.setValue(`lines.${i}.itemCode`, it?.code ?? "");
+                        if (it) setLineItemErrors((prev) => prev.filter((idx) => idx !== i));
+                      }}
+                    />
+                    {lineItemErrors.includes(i) && (
+                      <p className="text-xs text-red-600 mt-0.5">Select a valid item</p>
+                    )}
                   </div>
                   <div className="col-span-3">
                     {i === 0 && <Label className="text-xs">Warehouse</Label>}
@@ -743,7 +756,7 @@ function AdjustmentsTab() {
                   </div>
                   <div className="col-span-1">
                     {i === 0 && <Label className="text-xs invisible">Del</Label>}
-                    <Button type="button" size="sm" variant="ghost" onClick={() => remove(i)} className="text-destructive w-full">✕</Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => { remove(i); setLineItemErrors([]); }} className="text-destructive w-full">✕</Button>
                   </div>
                 </div>
               ))}
