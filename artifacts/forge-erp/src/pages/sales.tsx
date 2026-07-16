@@ -2803,12 +2803,23 @@ function InvoicesTab({
         };
       });
     form.setValue("lines", lines);
+    lastPopulatedSoId.current = soDetail.id ?? null;
     onPrefillHandled?.();
   }, [prefillDespatchId, prefillDespatchData, selectedSo]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function onSoChange() {
+  // ── Populate lines from the selected sales order once its detail loads ─────
+  // (effect-driven rather than a timer, so slow fetches still populate)
+  const lastPopulatedSoId = useRef<number | null>(null);
+  useEffect(() => {
+    if (!showCreate) {
+      lastPopulatedSoId.current = null;
+      return;
+    }
+    // The despatch-prefill effect above owns population when a despatch is set.
+    if (prefillDespatchId != null || form.getValues("despatchId") != null) return;
     const soDetail = selectedSo as SalesOrderDetail | undefined;
-    if (!soDetail?.lines) return;
+    if (!soDetail?.lines || soDetail.id !== selectedSoId) return;
+    if (lastPopulatedSoId.current === soDetail.id) return;
     const lines: InvLineForm[] = soDetail.lines
       .filter((l) => l.lineType === "stock")
       .map((l) => ({
@@ -2820,7 +2831,8 @@ function InvoicesTab({
         taxPct: Number(l.taxPct ?? 0),
       }));
     form.setValue("lines", lines);
-  }
+    lastPopulatedSoId.current = soDetail.id ?? null;
+  }, [showCreate, selectedSo, selectedSoId, prefillDespatchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function onSubmit(values: InvForm) {
     try {
@@ -2992,7 +3004,7 @@ function InvoicesTab({
                       onValueChange={(v) => {
                         f.onChange(v ? Number(v) : undefined);
                         form.setValue("despatchId", undefined);
-                        setTimeout(onSoChange, 200);
+                        lastPopulatedSoId.current = null;
                       }}
                     >
                       <SelectTrigger>
@@ -3000,11 +3012,7 @@ function InvoicesTab({
                       </SelectTrigger>
                       <SelectContent>
                         {orders
-                          .filter((o) =>
-                            ["despatched", "partially_despatched", "confirmed"].includes(
-                              o.status ?? ""
-                            )
-                          )
+                          .filter((o) => o.status === "despatched")
                           .map((o) => (
                             <SelectItem key={o.id ?? 0} value={String(o.id ?? 0)}>
                               {o.code ?? ""} – {o.customerName}

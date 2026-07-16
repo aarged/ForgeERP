@@ -2087,6 +2087,21 @@ router.post("/sales/invoices", ...tenantWriteMiddleware, async (req: Request, re
   const [so] = await withTenantDb(tenantId, (db) => db.select().from(salesOrdersTable).where(and(eq(salesOrdersTable.id, parsed.data.soId), eq(salesOrdersTable.tenantId, tenantId))).limit(1));
   if (!so) { res.status(404).json({ error: "Sales order not found" }); return; }
 
+  // Only fully despatched orders may be invoiced (no partial-shipment invoicing)
+  const allSoLines = await withTenantDb(tenantId, (db) =>
+    db.select({ lineType: soLinesTable.lineType, quantity: soLinesTable.quantity, despatched_qty: soLinesTable.despatched_qty })
+      .from(soLinesTable)
+      .where(and(eq(soLinesTable.soId, parsed.data.soId), eq(soLinesTable.tenantId, tenantId))));
+  const stockSoLines = allSoLines.filter((l) => l.lineType === "stock");
+  const fullyDespatched = stockSoLines.length > 0 && stockSoLines.every((l) => Number(l.despatched_qty ?? 0) >= Number(l.quantity ?? 0));
+  if (!fullyDespatched) {
+    res.status(422).json({
+      error: "Sales order not fully despatched",
+      detail: `Sales order ${so.code ?? so.id} cannot be invoiced yet: all lines must be despatched in full before invoicing. Despatch the remaining goods first.`,
+    });
+    return;
+  }
+
   // Credit limit enforcement at invoice creation
   if (so.customerId) {
     const [cust] = await withTenantDb(tenantId, (db) =>
