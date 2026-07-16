@@ -90,6 +90,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ItemSearchInput, type ItemSearchOption } from "@/components/item-search-input";
 import { useToast } from "@/hooks/use-toast";
 import {
   Package,
@@ -810,6 +811,7 @@ function TransfersTab() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [itemError, setItemError] = useState(false);
 
   const { data: items } = useListItems({ limit: 500 });
   const { data: warehouses } = useListWarehouses({ limit: 100 });
@@ -823,6 +825,10 @@ function TransfersTab() {
   const form = useForm<TransferForm>({ defaultValues: { quantity: 0 } });
 
   async function onSubmit(vals: TransferForm) {
+    if (!vals.itemId || Number(vals.itemId) <= 0) {
+      setItemError(true);
+      return;
+    }
     try {
       const res = await createMut.mutateAsync({ data: { ...vals, itemId: Number(vals.itemId), fromWarehouseId: Number(vals.fromWarehouseId), toWarehouseId: Number(vals.toWarehouseId) } });
       toast({ title: `Transfer ${(res as CreateInventoryTransfer201).transferCode} created` });
@@ -911,16 +917,21 @@ function TransfersTab() {
         </div>
       )}
 
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+      <Dialog open={showCreate} onOpenChange={(o) => { setShowCreate(o); if (!o) setItemError(false); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>New Stock Transfer</DialogTitle></DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div>
               <Label>Item *</Label>
-              <Select value={String(form.watch("itemId") || "")} onValueChange={(v) => form.setValue("itemId", Number(v))}>
-                <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
-                <SelectContent>{(items?.items ?? []).map((it) => <SelectItem key={it.id} value={String(it.id)}>{it.code} — {it.name}</SelectItem>)}</SelectContent>
-              </Select>
+              <ItemSearchInput
+                value={form.watch("itemId") || undefined}
+                items={(items?.items ?? []) as ItemSearchOption[]}
+                onSelect={(it) => {
+                  form.setValue("itemId", it?.id ?? 0);
+                  if (it) setItemError(false);
+                }}
+              />
+              {itemError && <p className="text-xs text-red-600 mt-0.5">Select a valid item</p>}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
