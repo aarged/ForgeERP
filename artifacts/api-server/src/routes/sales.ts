@@ -1748,17 +1748,29 @@ router.post("/sales/despatches", ...tenantWriteMiddleware, async (req: Request, 
   res.status(201).json({ ...full, lines: fullLines });
 });
 
+/** Error carrying a user-facing reason for a failed despatch confirmation */
+class DespatchConfirmError extends Error {}
+
+/** Format a quantity without trailing zeros (e.g. 1 instead of 1.0000) */
+function fmtQty(n: number): string {
+  return String(Number(n.toFixed(4)));
+}
+
 router.post("/sales/despatches/:id/confirm", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
   const [despatch] = await withTenantDb(tenantId, (db) => db.select().from(despatchesTable).where(and(eq(despatchesTable.id, id), eq(despatchesTable.tenantId, tenantId))).limit(1));
   if (!despatch) { res.status(404).json({ error: "Despatch not found" }); return; }
   if (despatch.status !== "draft") { res.status(400).json({ error: "Despatch is already confirmed" }); return; }
-  if (!despatch.warehouseId) { res.status(400).json({ error: "Despatch has no warehouse; cannot post inventory" }); return; }
+  if (!despatch.warehouseId) { res.status(400).json({ error: "No warehouse assigned to this despatch. Assign a warehouse before confirming." }); return; }
 
   const lines = await withTenantDb(tenantId, (db) => db.select().from(despatchLinesTable).where(and(eq(despatchLinesTable.despatchId, id), eq(despatchLinesTable.tenantId, tenantId))));
+  const [warehouse] = await withTenantDb(tenantId, (db) => db.select({ name: warehousesTable.name, code: warehousesTable.code }).from(warehousesTable).where(and(eq(warehousesTable.id, despatch.warehouseId!), eq(warehousesTable.tenantId, tenantId))).limit(1));
+  const warehouseLabel = warehouse?.name ?? warehouse?.code ?? `#${despatch.warehouseId}`;
 
-  const result = await withTenantDb(tenantId, async (db) => {
+  let result;
+  try {
+    result = await withTenantDb(tenantId, async (db) => {
     // 1. Decrement inventory stock and create movements
     for (const line of lines) {
       const resolvedItemId = line.itemId;
@@ -1774,10 +1786,11 @@ router.post("/sales/despatches/:id/confirm", ...tenantWriteMiddleware, async (re
           locationId ? eq(inventoryStockTable.locationId, locationId) : isNull(inventoryStockTable.locationId)))
         .limit(1);
 
+      const itemLabel = line.itemCode ?? line.itemName ?? `item #${resolvedItemId}`;
       if (!stock) {
         // No matching stock bucket — fail the transaction to prevent phantom inventory movement
-        throw new Error(
-          `No stock record found for item ${resolvedItemId} in warehouse ${warehouseId}` +
+        throw new DespatchConfirmError(
+          `No stock record found for ${itemLabel} in warehouse ${warehouseLabel}` +
           (locationId ? ` / location ${locationId}` : "") +
           `. Receive the item into inventory before despatching.`,
         );
@@ -1785,7 +1798,7 @@ router.post("/sales/despatches/:id/confirm", ...tenantWriteMiddleware, async (re
 
       const currentQty = Number(stock.qtyOnHand ?? 0);
       if (currentQty < qty - 0.0001) {
-        throw new Error(`Insufficient stock for item ${resolvedItemId}: on-hand ${currentQty.toFixed(4)}, required ${qty.toFixed(4)}. Adjust stock or reduce despatch quantity.`);
+        throw new DespatchConfirmError(`Insufficient stock for ${itemLabel} in warehouse ${warehouseLabel}: ${fmtQty(currentQty)} on hand, ${fmtQty(qty)} required. Adjust stock or reduce the despatch quantity.`);
       }
       const unitCostForMovement = line.unitCost ?? stock.averageCost ?? undefined;
       await db.update(inventoryStockTable)
@@ -1879,7 +1892,14 @@ router.post("/sales/despatches/:id/confirm", ...tenantWriteMiddleware, async (re
     }
 
     return confirmed;
-  });
+    });
+  } catch (err) {
+    if (err instanceof DespatchConfirmError) {
+      res.status(422).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "despatch.confirmed", entityType: "despatch", entityId: String(id) });
   res.json(result);

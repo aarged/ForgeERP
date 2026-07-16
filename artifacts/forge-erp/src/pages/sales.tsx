@@ -174,6 +174,11 @@ import {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+function apiErrorMessage(e: unknown): string | undefined {
+  const data = (e as { data?: { error?: string; detail?: string } } | null)?.data;
+  return data?.detail ?? data?.error;
+}
+
 function fmt(val: string | number | null | undefined, decimals = 2): string {
   const n = Number(val ?? 0);
   return isNaN(n) ? "0.00" : n.toFixed(decimals);
@@ -2441,7 +2446,7 @@ function SalesOrdersTab() {
 // ── Despatches Tab ────────────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function DespatchesTab() {
+function DespatchesTab({ onCreateInvoice }: { onCreateInvoice: (despatchId: number) => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("all");
@@ -2467,8 +2472,12 @@ function DespatchesTab() {
       qc.invalidateQueries({ queryKey: getListDespatchesQueryKey() });
       qc.invalidateQueries({ queryKey: getGetDespatchQueryKey(id) });
       qc.invalidateQueries({ queryKey: getListSalesOrdersQueryKey() });
-    } catch {
-      toast({ title: "Failed to confirm despatch", variant: "destructive" });
+    } catch (e) {
+      toast({
+        title: "Failed to confirm despatch",
+        description: apiErrorMessage(e),
+        variant: "destructive",
+      });
     }
   }
 
@@ -2564,15 +2573,24 @@ function DespatchesTab() {
                     </Button>
                   )}
                   {d.status === "confirmed" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      asChild
-                    >
-                      <a href={`/forge-erp-api/api/sales/despatches/${d.id}/pdf`} target="_blank" rel="noreferrer">
-                        <Printer className="w-3 h-3 mr-1" /> Delivery Docket
-                      </a>
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onCreateInvoice(d.id!)}
+                      >
+                        <ReceiptText className="w-3 h-3 mr-1" /> Create Invoice
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        asChild
+                      >
+                        <a href={`/forge-erp-api/api/sales/despatches/${d.id}/pdf`} target="_blank" rel="noreferrer">
+                          <Printer className="w-3 h-3 mr-1" /> Delivery Docket
+                        </a>
+                      </Button>
+                    </>
                   )}
                   {d.status === "draft" && (
                     <Button
@@ -2652,6 +2670,18 @@ function DespatchesTab() {
                   </Button>
                 </div>
               )}
+              {det.status === "confirmed" && (
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => {
+                      setDetailId(null);
+                      onCreateInvoice(det.id!);
+                    }}
+                  >
+                    <ReceiptText className="w-4 h-4 mr-1" /> Create Invoice
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
@@ -2674,13 +2704,20 @@ type InvLineForm = {
 };
 type InvForm = {
   soId?: number;
+  despatchId?: number;
   invoiceDate?: string;
   dueDate?: string;
   notes?: string;
   lines: InvLineForm[];
 };
 
-function InvoicesTab() {
+function InvoicesTab({
+  prefillDespatchId,
+  onPrefillHandled,
+}: {
+  prefillDespatchId?: number | null;
+  onPrefillHandled?: () => void;
+}) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("all");
@@ -2729,6 +2766,46 @@ function InvoicesTab() {
   const orders = (orderList as { data?: SalesOrder[] })?.data ?? [];
   const det = detail as CustomerInvoiceDetail | undefined;
 
+  // ── Prefill from a confirmed despatch (Create Invoice action) ──────────────
+  const { data: prefillDespatchData } = useGetDespatch(prefillDespatchId!, {
+    query: {
+      enabled: prefillDespatchId != null,
+      queryKey: getGetDespatchQueryKey(prefillDespatchId!),
+    },
+  });
+
+  useEffect(() => {
+    if (prefillDespatchId == null) return;
+    const d = prefillDespatchData as DespatchDetail | undefined;
+    if (!d?.id) return;
+    form.setValue("soId", d.soId);
+    form.setValue("despatchId", d.id);
+    setShowCreate(true);
+  }, [prefillDespatchId, prefillDespatchData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (prefillDespatchId == null) return;
+    const d = prefillDespatchData as DespatchDetail | undefined;
+    const soDetail = selectedSo as SalesOrderDetail | undefined;
+    if (!d?.lines || !soDetail?.lines || soDetail.id !== d.soId) return;
+    const soLineById = new Map(soDetail.lines.map((l) => [l.id, l]));
+    const lines: InvLineForm[] = d.lines
+      .filter((l) => Number(l.quantity) > 0)
+      .map((l) => {
+        const soLine = l.soLineId != null ? soLineById.get(l.soLineId) : undefined;
+        return {
+          soLineId: l.soLineId ?? undefined,
+          description: `${l.itemCode ?? ""} – ${l.itemName ?? ""}`,
+          quantity: Number(l.quantity),
+          unitPrice: Number(l.unitPrice ?? soLine?.unitPrice ?? 0),
+          discountPct: Number(soLine?.discountPct ?? 0),
+          taxPct: Number(soLine?.taxPct ?? 0),
+        };
+      });
+    form.setValue("lines", lines);
+    onPrefillHandled?.();
+  }, [prefillDespatchId, prefillDespatchData, selectedSo]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function onSoChange() {
     const soDetail = selectedSo as SalesOrderDetail | undefined;
     if (!soDetail?.lines) return;
@@ -2750,6 +2827,7 @@ function InvoicesTab() {
       await createMut.mutateAsync({
         data: {
           soId: values.soId!,
+          despatchId: values.despatchId,
           invoiceDate: values.invoiceDate,
           dueDate: values.dueDate,
           notes: values.notes,
@@ -2767,8 +2845,13 @@ function InvoicesTab() {
       setShowCreate(false);
       form.reset({ lines: [] });
       qc.invalidateQueries({ queryKey: getListCustomerInvoicesQueryKey() });
-    } catch {
-      toast({ title: "Failed to create invoice", variant: "destructive" });
+      qc.invalidateQueries({ queryKey: getListSalesOrdersQueryKey() });
+    } catch (e) {
+      toast({
+        title: "Failed to create invoice",
+        description: apiErrorMessage(e),
+        variant: "destructive",
+      });
     }
   }
 
@@ -2888,6 +2971,7 @@ function InvoicesTab() {
         onOpenChange={(v) => {
           setShowCreate(v);
           if (!v) form.reset({ lines: [] });
+          if (!v) onPrefillHandled?.();
         }}
       >
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -2907,6 +2991,7 @@ function InvoicesTab() {
                       value={f.value ? String(f.value) : ""}
                       onValueChange={(v) => {
                         f.onChange(v ? Number(v) : undefined);
+                        form.setValue("despatchId", undefined);
                         setTimeout(onSoChange, 200);
                       }}
                     >
@@ -4520,6 +4605,7 @@ type BackorderRow = {
 
 export default function Sales() {
   const [tab, setTab] = useState("dashboard");
+  const [invoiceDespatchId, setInvoiceDespatchId] = useState<number | null>(null);
   return (
     <div className="space-y-6">
       <div>
@@ -4573,10 +4659,18 @@ export default function Sales() {
           <PickSlipsTab />
         </TabsContent>
         <TabsContent value="despatches" className="mt-4">
-          <DespatchesTab />
+          <DespatchesTab
+            onCreateInvoice={(despatchId) => {
+              setInvoiceDespatchId(despatchId);
+              setTab("invoices");
+            }}
+          />
         </TabsContent>
         <TabsContent value="invoices" className="mt-4">
-          <InvoicesTab />
+          <InvoicesTab
+            prefillDespatchId={invoiceDespatchId}
+            onPrefillHandled={() => setInvoiceDespatchId(null)}
+          />
         </TabsContent>
         <TabsContent value="credit-notes" className="mt-4">
           <CreditNotesTab />
