@@ -284,7 +284,7 @@ router.post(
   "/onboarding/validate-abn",
   requireAuth,
   async (req: Request, res: Response): Promise<void> => {
-    const { taxId, country } = req.body as { taxId?: string; country?: string };
+    const { taxId, country } = (req.body ?? {}) as { taxId?: string; country?: string };
     if (!taxId || typeof taxId !== "string") {
       res.status(400).json({ error: "taxId is required" });
       return;

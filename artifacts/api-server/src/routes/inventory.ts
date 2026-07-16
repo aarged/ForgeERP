@@ -1158,7 +1158,7 @@ router.get("/inventory/transfers", ...tenantUserMiddleware, async (req: Request,
 router.post("/inventory/transfers/:id/receive", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const transferId = Number(req.params.id);
-  const { notes, toLocationId } = req.body as { notes?: string; toLocationId?: number };
+  const { notes, toLocationId } = (req.body ?? {}) as { notes?: string; toLocationId?: number };
 
   const [transfer] = await withTenantDb(tenantId, (db) =>
     db.select().from(inventoryTransfersTable)
@@ -1938,7 +1938,7 @@ router.post("/inventory/serials", ...tenantWriteMiddleware, async (req: Request,
 router.patch("/inventory/serials/:serialNumber", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = req as TenantRequest;
   const serialNumber = String(req.params.serialNumber);
-  const { status, warehouseId, locationId, notes } = req.body as { status?: string; warehouseId?: number; locationId?: number; notes?: string };
+  const { status, warehouseId, locationId, notes } = (req.body ?? {}) as { status?: string; warehouseId?: number; locationId?: number; notes?: string };
 
   const [existing] = await withTenantDb(tenantId, (db) =>
     db.select({ id: serialNumbersTable.id }).from(serialNumbersTable)
@@ -2110,7 +2110,7 @@ router.patch("/inventory/stocktakes/:id/lines/:lineId", ...tenantWriteMiddleware
 router.post("/inventory/stocktakes/:id/post", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
-  const { glAccountId } = req.body as { glAccountId?: number };
+  const { glAccountId } = (req.body ?? {}) as { glAccountId?: number };
 
   const [run] = await withTenantDb(tenantId, (db) =>
     db.select().from(stocktakeRunsTable).where(and(eq(stocktakeRunsTable.id, id), eq(stocktakeRunsTable.tenantId, tenantId))).limit(1));

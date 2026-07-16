@@ -1885,7 +1885,7 @@ function buildPoEmailHtml(po: PoRecord): string {
 router.post("/procurement/purchase-orders/:id/send", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
-  const { supplierEmail: bodyEmail } = req.body as { supplierEmail?: string };
+  const { supplierEmail: bodyEmail } = (req.body ?? {}) as { supplierEmail?: string };
 
   const [po] = await withTenantDb(tenantId, (db) =>
     db.select().from(purchaseOrdersTable)
@@ -1952,7 +1952,7 @@ router.post("/procurement/purchase-orders/:id/send", ...tenantWriteMiddleware, a
 router.post("/procurement/purchase-orders/:id/pdf", ...tenantWriteMiddleware, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, clerkUserId, userEmail } = req as TenantRequest;
   const id = Number(req.params.id);
-  const { dispatchEmail } = req.body as { dispatchEmail?: string };
+  const { dispatchEmail } = (req.body ?? {}) as { dispatchEmail?: string };
 
   const [po] = await withTenantDb(tenantId, (db) =>
     db.select().from(purchaseOrdersTable)

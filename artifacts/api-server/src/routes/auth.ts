@@ -183,7 +183,7 @@ router.get("/auth/me", requireAuth, async (req: Request, res: Response): Promise
  */
 router.patch("/auth/me", tenantContext, async (req: Request, res: Response): Promise<void> => {
   const { clerkUserId: clerkId, tenantId } = req as TenantRequest;
-  const { firstName, lastName } = req.body as { firstName?: string; lastName?: string };
+  const { firstName, lastName } = (req.body ?? {}) as { firstName?: string; lastName?: string };
 
   const membership = await withTenantDb(tenantId, async (txDb) => {
     await txDb
