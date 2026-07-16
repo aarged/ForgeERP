@@ -293,7 +293,7 @@ function StockDashboardTab() {
                     <div className="font-medium">{r.itemCode}</div>
                     <div className="text-xs text-muted-foreground">{r.itemName}</div>
                   </TableCell>
-                  <TableCell>{r.warehouseName}</TableCell>
+                  <TableCell>{r.warehouseName ?? "—"}</TableCell>
                   <TableCell>{r.locationCode ?? r.locationName ?? "—"}</TableCell>
                   <TableCell>{r.lotNumber ?? "—"}</TableCell>
                   <TableCell className="text-right font-mono">{fmt(r.qtyOnHand, 4)}</TableCell>

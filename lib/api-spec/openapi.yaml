@@ -11030,7 +11030,7 @@ components:
         itemCode: { type: string, nullable: true }
         itemName: { type: string, nullable: true }
         category: { type: string, nullable: true }
-        warehouseId: { type: integer }
+        warehouseId: { type: integer, nullable: true }
         warehouseName: { type: string, nullable: true }
         locationId: { type: integer, nullable: true }
         locationCode: { type: string, nullable: true }

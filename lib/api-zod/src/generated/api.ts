@@ -7731,7 +7731,7 @@ export const ListInventoryStockDashboardResponse = zod.object({
         itemCode: zod.string().nullish(),
         itemName: zod.string().nullish(),
         category: zod.string().nullish(),
-        warehouseId: zod.number().optional(),
+        warehouseId: zod.number().nullish(),
         warehouseName: zod.string().nullish(),
         locationId: zod.number().nullish(),
         locationCode: zod.string().nullish(),

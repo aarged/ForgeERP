@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import PDFDocument from "pdfkit";
-import { eq, and, isNull, desc, sql, or, ilike, asc, gt, inArray, ne } from "drizzle-orm";
+import { eq, and, isNull, desc, sql, or, ilike, asc, gt, inArray, ne, notExists } from "drizzle-orm";
+import { unionAll } from "drizzle-orm/pg-core";
 import {
   inventoryStockTable,
   inventoryMovementsTable,
@@ -311,15 +312,17 @@ router.get("/inventory/stock", ...tenantUserMiddleware, async (req: Request, res
   const pg = Math.max(1, Number(page));
   const lim = Math.min(200, Math.max(1, Number(limit)));
 
-  const rows = await withTenantDb(tenantId, (db) =>
-    db.select({
+  const includeZeroStock = !warehouseId && !locationId;
+
+  const rows = await withTenantDb(tenantId, (db) => {
+    const stockQuery = db.select({
       id: inventoryStockTable.id,
       itemId: inventoryStockTable.itemId,
       itemCode: itemsTable.code,
       itemName: itemsTable.name,
       category: itemsTable.category,
-      warehouseId: inventoryStockTable.warehouseId,
-      warehouseName: warehousesTable.name,
+      warehouseId: sql<number | null>`${inventoryStockTable.warehouseId}`,
+      warehouseName: sql<string | null>`${warehousesTable.name}`,
       locationId: inventoryStockTable.locationId,
       locationCode: warehouseLocationsTable.code,
       locationName: warehouseLocationsTable.name,
@@ -358,9 +361,59 @@ router.get("/inventory/stock", ...tenantUserMiddleware, async (req: Request, res
       itemId ? eq(inventoryStockTable.itemId, Number(itemId)) : undefined,
       category ? eq(itemsTable.category, category) : undefined,
       search ? or(ilike(itemsTable.code, `%${search}%`), ilike(itemsTable.name, `%${search}%`)) : undefined,
-    ))
-    .orderBy(itemsTable.code, warehousesTable.name)
-    .limit(lim + 1).offset((pg - 1) * lim));
+    ));
+
+    if (!includeZeroStock) {
+      return stockQuery
+        .orderBy(itemsTable.code, warehousesTable.name)
+        .limit(lim + 1).offset((pg - 1) * lim);
+    }
+
+    const zeroStockQuery = db.select({
+      id: sql<number>`-${itemsTable.id}`,
+      itemId: itemsTable.id,
+      itemCode: itemsTable.code,
+      itemName: itemsTable.name,
+      category: itemsTable.category,
+      warehouseId: sql<number | null>`NULL::integer`,
+      warehouseName: sql<string | null>`NULL::text`,
+      locationId: sql<number | null>`NULL::integer`,
+      locationCode: sql<string | null>`NULL::text`,
+      locationName: sql<string | null>`NULL::text`,
+      lotNumber: sql<string | null>`NULL::text`,
+      serialNumber: sql<string | null>`NULL::text`,
+      batchNumber: sql<string | null>`NULL::text`,
+      expiryDate: sql<string | null>`NULL::date`,
+      qtyOnHand: sql<string>`0::numeric`,
+      qtyReserved: sql<string>`0::numeric`,
+      qtyAvailable: sql<string>`0::numeric`,
+      averageCost: sql<string | null>`NULL::numeric`,
+      stockValue: sql<string>`0::numeric`,
+      lastMovementAt: sql<Date | null>`NULL::timestamptz`,
+    })
+    .from(itemsTable)
+    .where(and(
+      eq(itemsTable.tenantId, tenantId),
+      isNull(itemsTable.deletedAt),
+      eq(itemsTable.isActive, true),
+      eq(itemsTable.itemType, "stock"),
+      notExists(
+        db.select({ one: sql`1` })
+          .from(inventoryStockTable)
+          .where(and(
+            eq(inventoryStockTable.tenantId, tenantId),
+            eq(inventoryStockTable.itemId, itemsTable.id),
+          )),
+      ),
+      itemId ? eq(itemsTable.id, Number(itemId)) : undefined,
+      category ? eq(itemsTable.category, category) : undefined,
+      search ? or(ilike(itemsTable.code, `%${search}%`), ilike(itemsTable.name, `%${search}%`)) : undefined,
+    ));
+
+    return unionAll(stockQuery, zeroStockQuery)
+      .orderBy(sql`3`, sql`7 NULLS LAST`)
+      .limit(lim + 1).offset((pg - 1) * lim);
+  });
 
   const hasMore = rows.length > lim;
   res.json({ data: rows.slice(0, lim).map((r) => ({ ...r, qtyOnHand: Number(r.qtyOnHand), qtyReserved: Number(r.qtyReserved), qtyAvailable: Number(r.qtyAvailable), stockValue: Number(r.stockValue) })), hasMore, page: pg });

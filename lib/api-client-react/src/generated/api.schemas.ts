@@ -3235,7 +3235,7 @@ export interface StockLine {
   itemCode?: string | null;
   itemName?: string | null;
   category?: string | null;
-  warehouseId?: number;
+  warehouseId?: number | null;
   warehouseName?: string | null;
   locationId?: number | null;
   locationCode?: string | null;
