@@ -32,6 +32,7 @@ import {
   useDeleteSalesOrder,
   useConfirmSalesOrder,
   useCancelSalesOrder,
+  useUpdateSalesOrder,
   getListSalesOrdersQueryKey,
   getGetSalesOrderQueryKey,
   useListPickSlips,
@@ -1835,6 +1836,7 @@ function SalesOrdersTab() {
   const cancelMut = useCancelSalesOrder();
   const deleteMut = useDeleteSalesOrder();
   const createDespatchMut = useCreateDespatch();
+  const updateMut = useUpdateSalesOrder();
 
   const form = useForm<SoForm>({ defaultValues: { lines: [] } });
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "lines" });
@@ -1879,6 +1881,17 @@ function SalesOrdersTab() {
       invalidate();
     } catch {
       toast({ title: "Failed to create sales order", variant: "destructive" });
+    }
+  }
+
+  async function handleWarehouseChange(id: number, warehouseId: number) {
+    try {
+      await updateMut.mutateAsync({ id, data: { warehouseId } });
+      toast({ title: "Warehouse assigned" });
+      invalidate();
+      qc.invalidateQueries({ queryKey: getGetSalesOrderQueryKey(id) });
+    } catch {
+      toast({ title: "Failed to assign warehouse", variant: "destructive" });
     }
   }
 
@@ -2227,6 +2240,42 @@ function SalesOrdersTab() {
                   {det.currencyCode}
                 </div>
               </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground shrink-0">Warehouse:</span>
+                {["draft", "confirmed", "picking", "partially_despatched"].includes(det.status ?? "") ? (
+                  <Select
+                    value={det.warehouseId ? String(det.warehouseId) : ""}
+                    onValueChange={(v) => {
+                      if (v) handleWarehouseChange(detailId!, Number(v));
+                    }}
+                    disabled={updateMut.isPending}
+                  >
+                    <SelectTrigger className="w-56 h-8">
+                      <SelectValue placeholder="Select warehouse..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {warehouseList.map((w) => (
+                        <SelectItem key={w.id ?? 0} value={String(w.id)}>
+                          {w.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <span>
+                    {det.warehouseId
+                      ? warehouseList.find((w) => w.id === det.warehouseId)?.name ??
+                        `#${det.warehouseId}`
+                      : "—"}
+                  </span>
+                )}
+                {!det.warehouseId &&
+                  ["confirmed", "picking", "partially_despatched"].includes(det.status ?? "") && (
+                    <span className="text-xs text-amber-600">
+                      Assign a warehouse to enable despatch
+                    </span>
+                  )}
+              </div>
               <div className="text-sm">
                 <span className="text-muted-foreground">Notes:</span>{" "}
                 {det.notes?.trim() ? (
@@ -2284,6 +2333,8 @@ function SalesOrdersTab() {
                   <Button
                     size="sm"
                     variant="outline"
+                    disabled={!det.warehouseId}
+                    title={!det.warehouseId ? "Assign a warehouse first" : undefined}
                     onClick={() => openDespatch(detailId!)}
                   >
                     <Truck className="w-3 h-3 mr-1" /> Create Despatch

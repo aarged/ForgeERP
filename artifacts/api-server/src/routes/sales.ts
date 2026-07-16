@@ -922,10 +922,14 @@ router.post("/sales/quotations/:id/convert", ...tenantWriteMiddleware, async (re
     if (existingSo) { res.json({ so: existingSo, alreadyConverted: true }); return; }
   }
   const quotLines = await withTenantDb(tenantId, (db) => db.select().from(quotationLinesTable).where(and(eq(quotationLinesTable.quotationId, id), eq(quotationLinesTable.tenantId, tenantId))).orderBy(quotationLinesTable.lineNumber));
+  // Auto-assign warehouse when the tenant has exactly one, so converted SOs are despatchable
+  const tenantWarehouses = await withTenantDb(tenantId, (db) => db.select({ id: warehousesTable.id }).from(warehousesTable).where(eq(warehousesTable.tenantId, tenantId)).limit(2));
+  const autoWarehouseId = tenantWarehouses.length === 1 ? tenantWarehouses[0]!.id : undefined;
   const so = await withTenantDb(tenantId, async (db) => {
     const [newSo] = await db.insert(salesOrdersTable).values({
       tenantId, code: "SO-TEMP", quotationId: id, customerId: quot.customerId ?? undefined,
       customerName: quot.customerName, customerEmail: quot.customerEmail ?? undefined, customerRef: quot.customerRef ?? undefined,
+      warehouseId: autoWarehouseId,
       currencyCode: quot.currencyCode, paymentTerms: quot.paymentTerms ?? undefined,
       subtotal: quot.subtotal, taxAmount: quot.taxAmount, total: quot.total,
       notes: quot.notes ?? undefined, status: "draft", createdByClerkId: clerkUserId, createdByEmail: userEmail,
@@ -1156,7 +1160,15 @@ router.patch("/sales/orders/:id", ...tenantWriteMiddleware, async (req: Request,
   if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.issues }); return; }
   const [existing] = await withTenantDb(tenantId, (db) => db.select({ status: salesOrdersTable.status }).from(salesOrdersTable).where(and(eq(salesOrdersTable.id, id), eq(salesOrdersTable.tenantId, tenantId))).limit(1));
   if (!existing) { res.status(404).json({ error: "Sales order not found" }); return; }
-  if (!["draft", "confirmed"].includes(existing.status)) { res.status(400).json({ error: `Cannot edit SO in status: ${existing.status}` }); return; }
+  if (!["draft", "confirmed", "picking", "partially_despatched"].includes(existing.status)) { res.status(400).json({ error: `Cannot edit SO in status: ${existing.status}` }); return; }
+  if (["picking", "partially_despatched"].includes(existing.status)) {
+    const otherFields = Object.keys(parsed.data).filter((k) => k !== "warehouseId");
+    if (otherFields.length > 0) { res.status(400).json({ error: "Only the warehouse can be changed once picking or despatching has started" }); return; }
+  }
+  if (parsed.data.warehouseId != null) {
+    const [wh] = await withTenantDb(tenantId, (db) => db.select({ id: warehousesTable.id }).from(warehousesTable).where(and(eq(warehousesTable.id, parsed.data.warehouseId!), eq(warehousesTable.tenantId, tenantId))).limit(1));
+    if (!wh) { res.status(400).json({ error: "Warehouse not found" }); return; }
+  }
   const [updated] = await withTenantDb(tenantId, (db) => db.update(salesOrdersTable).set(parsed.data as Record<string, unknown>).where(and(eq(salesOrdersTable.id, id), eq(salesOrdersTable.tenantId, tenantId))).returning());
   await writeAuditLog({ req, actorClerkId: clerkUserId, actorEmail: userEmail, tenantId, action: "sales_order.updated", entityType: "sales_order", entityId: String(id), newValues: parsed.data });
   res.json(updated);
