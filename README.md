@@ -1,6 +1,6 @@
 # Forge ERP
 
-**A modern, intuitive ERP built for real-world operations** — especially in heavy machinery parts and supply chain businesses.
+**A modern, intuitive ERP built for real-world operations** 
 
 For over a decade I've lived and breathed ERP systems — first as a daily user in purchasing and parts roles, then as a superuser, and eventually as the SME leading Pronto implementation, custom dashboards, inventory optimization, and process improvements at TRT. I know exactly where traditional ERPs fall short: clunky interfaces, disconnected modules, painful mobile workflows for warehouse teams, and approval processes that slow everything down.
 
