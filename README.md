@@ -18,7 +18,7 @@ It's a complete multi-tenant SaaS ERP focused on the core flows every parts/supp
 Everything is designed for **real-time flow**, intuitive navigation, and mobile use. No more switching between clunky screens or printing-then-updating.
 
 ### Why I Built It
-This isn't a generic ERP clone. It's shaped by years on the warehouse and parts counter floor — fixing the exact pain points I (and my teams) experienced daily. The goal was always to create a foundation that pairs perfectly with AI tools like Cyntric for smarter quoting, knowledge retrieval, and operational insights.
+This isn't a generic ERP clone. It's shaped by years on the warehouse and parts counter floor — fixing the exact pain points my teams experience daily. The goal was always to create a foundation that pairs perfectly with AI tools like Cyntric for smarter quoting, knowledge retrieval, and operational insights.
 
 ### Tech Highlights (For Developers)
 - Next.js 15 frontend with Tailwind + shadcn/ui
