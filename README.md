@@ -2,7 +2,7 @@
 
 **A modern, intuitive ERP built for real-world operations** — especially in heavy machinery parts and supply chain businesses.
 
-Hi, I'm Aaron. For over a decade I've lived and breathed ERP systems — first as a daily user in purchasing and parts roles, then as a superuser, and eventually as the SME leading Pronto implementation, custom dashboards, inventory optimization, and process improvements at TRT. I know exactly where traditional ERPs fall short: clunky interfaces, disconnected modules, painful mobile workflows for warehouse teams, and approval processes that slow everything down.
+For over a decade I've lived and breathed ERP systems — first as a daily user in purchasing and parts roles, then as a superuser, and eventually as the SME leading Pronto implementation, custom dashboards, inventory optimization, and process improvements at TRT. I know exactly where traditional ERPs fall short: clunky interfaces, disconnected modules, painful mobile workflows for warehouse teams, and approval processes that slow everything down.
 
 Forge ERP was born from that frustration. As my Joint Venture with TRT was winding down, I needed to prove seamless integration between my AI knowledge platform (Cyntric) and a real ERP for agentic quoting and parts intelligence. Rather than waiting, I decided to build the ERP I always wished existed — clean, fast, mobile-first, and actually pleasant to use.
 
